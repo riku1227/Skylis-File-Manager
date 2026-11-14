@@ -1,0 +1,77 @@
+[
+  {
+    "concept": 1,
+    "checks": "passed: rows/search/empty/escape/selection/pane/density/sort/theme",
+    "dimensions": {
+      "width": 1100,
+      "scroll": 1100,
+      "rows": 12,
+      "files": [
+        {
+          "w": 674,
+          "sw": 674,
+          "h": 435,
+          "sh": 518
+        },
+        {
+          "w": 0,
+          "sw": 0,
+          "h": 0,
+          "sh": 0
+        }
+      ]
+    },
+    "errors": [],
+    "requests": []
+  },
+  {
+    "concept": 2,
+    "checks": "passed: rows/search/empty/escape/selection/pane/density/sort/theme",
+    "dimensions": {
+      "width": 1100,
+      "scroll": 1100,
+      "rows": 12,
+      "files": [
+        {
+          "w": 1028,
+          "sw": 1028,
+          "h": 312,
+          "sh": 398
+        },
+        {
+          "w": 0,
+          "sw": 0,
+          "h": 0,
+          "sh": 0
+        }
+      ]
+    },
+    "errors": [],
+    "requests": []
+  },
+  {
+    "concept": 3,
+    "checks": "passed: rows/search/empty/escape/selection/pane/density/sort/theme",
+    "dimensions": {
+      "width": 1100,
+      "scroll": 1100,
+      "rows": 12,
+      "files": [
+        {
+          "w": 572,
+          "sw": 572,
+          "h": 346,
+          "sh": 434
+        },
+        {
+          "w": 473,
+          "sw": 473,
+          "h": 245,
+          "sh": 245
+        }
+      ]
+    },
+    "errors": [],
+    "requests": []
+  }
+]

@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Air — 浮かぶ面</title>
+<style>
+/* ===== 共有CSS（仮アイコン・プレビュー・レビュー用パネル） ===== */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:default}
+input{font:inherit;color:inherit}
+:root{--fold-back:#e6a426;--fold-front:#f9c94c;--fold-hi:#fde08a;--fold-glyph:#9a6a0e}
+:root[data-icons="mac"]{--fold-back:#4c9ce8;--fold-front:#7cbcf6;--fold-hi:#a6d3fa;--fold-glyph:#1f5fa8}
+.ic{flex:none;display:block}
+.obj{flex:none;display:block}
+.thumb{flex:none;display:block;border-radius:4px;overflow:hidden;box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
+.thumb .photo{display:block}
+mark{background:var(--mark-bg,rgba(255,200,0,.42));color:inherit;border-radius:2px;padding:0 1px}
+.os-mac-only{display:none!important}
+:root[data-os="mac"] .os-mac-only{display:flex!important}
+:root[data-os="mac"] .os-win-only{display:none!important}
+.traffic{gap:8px;align-items:center}
+.traffic i{width:12px;height:12px;border-radius:50%;background:#ff5f57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.18)}
+.traffic i:nth-child(2){background:#febc2e}.traffic i:nth-child(3){background:#28c840}
+.caption{display:flex;align-items:stretch;height:100%}
+.caption button{width:46px;display:grid;place-items:center;color:var(--text-2)}
+.caption button:hover{background:var(--hover)}
+.caption button.close:hover{background:#c42b1c;color:#fff}
+
+/* プレビュー */
+.pv{position:relative;width:100%;aspect-ratio:16/11;border-radius:inherit;overflow:hidden;display:grid;place-items:center}
+.pv .photo{width:100%;height:100%;display:block}
+.pv-icon{flex-direction:column;align-content:center;gap:8px}
+.pv-cap{font-size:12px;color:var(--text-2);text-align:center}
+.pv-play{position:absolute;inset:0;margin:auto;width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.38);display:grid;place-items:center;backdrop-filter:blur(6px)}
+.pv-dur{position:absolute;right:10px;bottom:9px;font-size:11px;font-weight:600;color:#fff;background:rgba(0,0,0,.45);border-radius:6px;padding:2px 6px}
+.pv-doc .page{width:56%;aspect-ratio:1/1.3;background:#fff;border-radius:3px;box-shadow:0 1px 2px rgba(0,0,0,.12),0 8px 24px rgba(0,0,0,.12);padding:9% 9% 0;display:flex;flex-direction:column;gap:5px;overflow:hidden}
+.pv-doc .pg-t{height:3px;width:30%;border-radius:2px}
+.pv-doc .pg-h{font:600 9px/1.3 system-ui,"Yu Gothic UI",sans-serif;color:#222;margin:2px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-doc i{display:block;height:3px;border-radius:2px;background:#dfe2e7;width:100%}
+.pv-doc b{display:block;height:24px;border-radius:3px;background:#eef1f5;margin:3px 0}
+.pv-sheet table{border-collapse:collapse;background:#fff;font:9.5px/1 system-ui,sans-serif;color:#333;box-shadow:0 6px 20px rgba(0,0,0,.12);border-radius:3px;overflow:hidden}
+.pv-sheet th{background:#eef4ef;color:#4b6b55;font-weight:600;padding:5px 9px;border:1px solid #dfe7e1}
+.pv-sheet td{padding:5px 9px;border:1px solid #e6e8eb;text-align:right}
+.pv-sheet td:first-child{text-align:left;color:#555}
+.pv-slide .slide{width:80%;aspect-ratio:16/9;border-radius:4px;background:linear-gradient(135deg,#fff 55%,#ffe9e0);box-shadow:0 8px 24px rgba(0,0,0,.14);position:relative;padding:7% 8%;overflow:hidden}
+.sl-k{font:700 7px/1 system-ui;color:#d2522b;letter-spacing:.1em}
+.sl-t{font:700 15px/1.2 system-ui,"Yu Gothic UI";color:#222;margin:5px 0 9px}
+.sl-b i{display:block;height:3px;border-radius:2px;background:#e3e3e3;width:52%;margin-bottom:5px}
+.sl-shape{position:absolute;right:-10%;bottom:-25%;width:46%;aspect-ratio:1;border-radius:50%;background:#d2522b;opacity:.85}
+.pv-text{place-items:stretch;background:var(--code-bg,#fafafa)}
+.pv-text pre{margin:0;padding:14px 16px;font:11.5px/1.6 "Cascadia Mono",Consolas,ui-monospace,monospace;color:var(--text);white-space:pre-wrap;overflow:hidden}
+
+/* レビュー用パネル */
+.rv-btn{position:fixed;right:10px;bottom:10px;z-index:90;width:22px;height:22px;border-radius:50%;font:600 12px/22px system-ui;text-align:center;color:#666;background:rgba(255,255,255,.75);box-shadow:0 0 0 1px rgba(0,0,0,.12);opacity:.55;cursor:pointer}
+.rv-btn:hover{opacity:1}
+:root[data-theme="dark"] .rv-btn{color:#bbb;background:rgba(30,30,30,.75);box-shadow:0 0 0 1px rgba(255,255,255,.14)}
+.rv-panel{position:fixed;right:12px;bottom:40px;z-index:91;width:340px;max-height:calc(100% - 60px);overflow:auto;background:#fffef8;color:#2b2a26;border:1px dashed #b9ac7a;border-radius:10px;padding:12px 14px 14px;font:12px/1.6 "Segoe UI","Yu Gothic UI",system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.rv-panel[hidden]{display:none}
+.rv-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.rv-x{font-size:16px;width:24px;height:24px;cursor:pointer}
+.rv-k{font-weight:700;margin:10px 0 4px;color:#7a6a2f}
+.rv-row{display:flex;justify-content:space-between;align-items:center;margin:4px 0}
+.rv-seg{display:flex;border:1px solid #d8cfa6;border-radius:6px;overflow:hidden}
+.rv-seg button{padding:2px 9px;cursor:pointer}.rv-seg button.on{background:#2b2a26;color:#fff}
+.rv-note{margin:4px 0;color:#4a473c}
+.rv-panel ul{margin:2px 0;padding-left:18px}
+
+/* ===== 案1 Air: 明るく軽やか。色づいた地の上に面が浮く ===== */
+:root{
+  --font:"Segoe UI Variable Text","Segoe UI","Yu Gothic UI","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --font-display:"Segoe UI Variable Display","Segoe UI","Yu Gothic UI","Hiragino Sans",system-ui,sans-serif;
+  --base:#eef1f8;
+  --wash-a:#cfdcff; --wash-b:#ffd9c8; --wash-c:#dcf7ec; --wash-d:#efe1ff;
+  --glass:rgba(255,255,255,.58); --glass-strong:rgba(255,255,255,.78); --glass-edge:rgba(255,255,255,.9);
+  --sheet:#ffffff; --sheet-edge:rgba(20,30,80,.06);
+  --text:#161a2b; --text-2:#5a6075; --text-3:#6e738d;
+  --accent:#4a5cf0; --accent-2:#8a5cf6; --accent-soft:#eef0ff; --on-accent:#fff;
+  --hover:rgba(40,60,160,.055); --press:rgba(40,60,160,.1);
+  --sel:#e6eaff; --sel-ring:rgba(74,92,240,.30); --sel-text:#1b2580;
+  --well:#f3f5fb; --line:rgba(20,30,80,.07);
+  --shadow-card:0 1px 1px rgba(30,40,90,.04),0 8px 28px rgba(30,40,90,.07);
+  --shadow-float:0 1px 2px rgba(30,40,90,.08),0 14px 36px rgba(30,40,90,.16);
+  --mark-bg:rgba(255,196,0,.45); --code-bg:#f7f8fc;
+  --r-card:18px; --r-row:10px; --r-pill:999px;
+  --w-side:228px; --w-insp:300px;
+}
+:root[data-theme="dark"]{
+  --base:#0d0f17; --wash-a:#1e2a63; --wash-b:#3b1a38; --wash-c:#0f3029; --wash-d:#2a1a4a;
+  --glass:rgba(34,37,52,.58); --glass-strong:rgba(44,47,66,.82); --glass-edge:rgba(255,255,255,.08);
+  --sheet:#161823; --sheet-edge:rgba(255,255,255,.06);
+  --text:#eceefa; --text-2:#a3a8c0; --text-3:#848aa8;
+  --accent:#8794ff; --accent-2:#b493ff; --accent-soft:rgba(135,148,255,.14); --on-accent:#0d0f17;
+  --hover:rgba(180,190,255,.06); --press:rgba(180,190,255,.11);
+  --sel:rgba(120,136,255,.22); --sel-ring:rgba(150,162,255,.42); --sel-text:#ffffff;
+  --well:#1e2130; --line:rgba(255,255,255,.07);
+  --shadow-card:0 1px 1px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  --shadow-float:0 1px 2px rgba(0,0,0,.4),0 16px 40px rgba(0,0,0,.5);
+  --mark-bg:rgba(255,196,0,.32); --code-bg:#1b1e2b;
+}
+body{font:13px/1.45 var(--font);color:var(--text);background:var(--base);-webkit-font-smoothing:antialiased}
+.win{height:100vh;display:grid;grid-template-columns:var(--w-side) 1fr;gap:10px;padding:10px;position:relative;
+  background:
+   radial-gradient(900px 520px at -5% -10%, var(--wash-a), transparent 62%),
+   radial-gradient(760px 520px at 105% 110%, var(--wash-b), transparent 60%),
+   radial-gradient(520px 380px at 60% 0%, var(--wash-c), transparent 70%),
+   radial-gradient(600px 500px at 0% 100%, var(--wash-d), transparent 65%), var(--base)}
+.glass{background:var(--glass);backdrop-filter:blur(28px) saturate(1.6);-webkit-backdrop-filter:blur(28px) saturate(1.6);box-shadow:inset 0 0 0 1px var(--glass-edge),var(--shadow-card)}
+
+/* サイドバー */
+.side{border-radius:var(--r-card);padding:10px 8px;display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0}
+.side .traffic{padding:6px 8px 10px}
+.side-h{font-size:11px;font-weight:600;color:var(--text-3);padding:12px 10px 4px;letter-spacing:.02em}
+.side-h:first-of-type{padding-top:6px}
+.nav{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:10px;color:var(--text);white-space:nowrap}
+.nav .ic{color:var(--accent)}
+.nav:hover{background:var(--hover)}
+.nav.on{background:var(--glass-strong);box-shadow:0 1px 2px rgba(30,40,90,.08),inset 0 0 0 1px var(--glass-edge);font-weight:600}
+.drive{display:grid;grid-template-columns:18px 1fr;column-gap:10px;padding:7px 10px;border-radius:10px}
+.drive:hover{background:var(--hover)}
+.drive .ic{color:var(--accent);grid-row:span 2;margin-top:1px}
+.drive b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meter{height:4px;border-radius:4px;background:var(--line);margin:5px 0 3px;overflow:hidden;grid-column:2}
+.meter i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+.meter.warn i{background:linear-gradient(90deg,#ff9a3c,#ff5a5a)}
+.drive small{grid-column:2;color:var(--text-2);font-size:11.5px}
+.tagi{display:flex;align-items:center;gap:10px;height:30px;padding:0 10px;border-radius:10px}
+.tagi:hover{background:var(--hover)} .tagi.on{background:var(--glass-strong);font-weight:600}
+.tagi i{width:10px;height:10px;border-radius:50%;margin:0 4px}
+
+/* 右側 */
+.right{display:flex;flex-direction:column;min-width:0;min-height:0}
+.top{height:46px;display:flex;align-items:center;gap:8px;padding:0 0 8px 2px;flex:none;position:relative}
+.cap{display:flex;align-items:center;height:36px;border-radius:var(--r-pill);padding:0 3px;gap:0}
+.cap button{height:30px;min-width:32px;border-radius:var(--r-pill);display:grid;place-items:center;color:var(--text-2);padding:0 7px}
+.cap button:hover{background:var(--hover);color:var(--text)}
+.cap button:disabled{opacity:.35;background:none}
+.cap button.on{background:var(--sheet);color:var(--text);box-shadow:0 1px 3px rgba(30,40,90,.14)}
+:root[data-theme="dark"] .cap button.on{background:rgba(255,255,255,.14)}
+.crumbs{display:flex;align-items:center;gap:2px;color:var(--text-2);font-size:12.5px;min-width:0;overflow:hidden;white-space:nowrap;padding-left:4px}
+.crumbs button{padding:3px 6px;border-radius:7px}.crumbs button:hover{background:var(--hover);color:var(--text)}
+.crumbs .ic{color:var(--text-3)}
+.crumbs .last{color:var(--text);font-weight:600}
+.spacer{flex:1}
+.search{display:flex;align-items:center;gap:8px;height:36px;width:270px;border-radius:var(--r-pill);padding:0 8px 0 13px;color:var(--text-2);flex:none}
+.search input{flex:1;min-width:0;border:0;outline:0;background:none;font-size:13px;color:var(--text)}
+.search input::placeholder{color:var(--text-3)}
+.search kbd{font:500 10.5px/1 var(--font);color:var(--text-3);border:1px solid var(--line);border-radius:6px;padding:3px 5px;background:rgba(255,255,255,.35)}
+:root[data-theme="dark"] .search kbd{background:rgba(255,255,255,.04)}
+.search:focus-within{background:var(--glass-strong);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 28%,transparent),inset 0 0 0 1px var(--accent)}
+.search .clear{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:var(--text-3)}
+.search .clear:hover{background:var(--hover)}
+.caption.os-win-only{margin:-10px -10px 0 4px;height:40px;align-self:flex-start}
+
+.body{flex:1;display:flex;gap:10px;min-height:0}
+.sheet{flex:1;min-width:0;background:var(--sheet);border-radius:var(--r-card);box-shadow:inset 0 0 0 1px var(--sheet-edge),var(--shadow-card);display:flex;flex-direction:column;position:relative;overflow:hidden}
+.head{padding:20px 24px 10px;flex:none}
+.title{display:flex;align-items:baseline;gap:12px;min-width:0}
+.title h1{font:700 26px/1.15 var(--font-display);letter-spacing:-.01em;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title span{color:var(--text-2);font-size:12.5px;white-space:nowrap}
+.chips{display:flex;align-items:center;gap:6px;margin-top:14px;overflow:hidden}
+.chip{height:28px;padding:0 11px;border-radius:var(--r-pill);display:flex;align-items:center;gap:6px;color:var(--text-2);background:var(--well);white-space:nowrap;font-size:12.5px}
+.chip:hover{color:var(--text);background:color-mix(in srgb,var(--well) 70%,var(--accent) 8%)}
+.chip.on{background:var(--text);color:var(--sheet);font-weight:600}
+.chip em{font-style:normal;opacity:.6;font-size:11.5px}
+.chip.sort{margin-left:auto;background:none;color:var(--text-2)}
+.chip.sort:hover{background:var(--hover)}
+
+.listwrap{flex:1;min-height:0;overflow:auto;padding:0 14px 76px;scroll-padding:36px 0 70px;container-type:inline-size}
+.lh,.row{display:grid;grid-template-columns:minmax(0,1fr) 132px 132px 82px;align-items:center;column-gap:12px;padding:0 12px}
+.lh{position:sticky;top:0;z-index:2;height:32px;background:var(--sheet);color:var(--text-3);font-size:11.5px;font-weight:500}
+.lh button{display:flex;align-items:center;gap:3px;height:24px;padding:0 6px;margin:0 -6px;border-radius:6px;white-space:nowrap}
+.lh button:hover{background:var(--hover);color:var(--text)}
+.lh button.on{color:var(--text)}
+.lh .r,.row .r{justify-content:flex-end;text-align:right}
+.row{height:36px;border-radius:var(--r-row);color:var(--text)}
+.row:hover{background:var(--hover)}
+.row .nm{display:flex;align-items:center;gap:11px;min-width:0}
+.row .nm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .nm .thumb{border-radius:5px}
+.dots{display:flex;gap:3px;flex:none}.dots i{width:7px;height:7px;border-radius:50%}
+.row .c{color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.row.sel{background:var(--sel);box-shadow:inset 0 0 0 1px var(--sel-ring);color:var(--sel-text)}
+.row.sel .nm span{font-weight:600}
+.row.sel .c{color:color-mix(in srgb,var(--sel-text) 72%,transparent)}
+.row.focus{outline:2px solid var(--accent);outline-offset:-2px}
+@container (max-width:620px){ .lh,.row{grid-template-columns:minmax(0,1fr) 124px 76px} .k{display:none} }
+@container (max-width:420px){ .lh,.row{grid-template-columns:minmax(0,1fr) 76px} .m{display:none} }
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px;padding:6px 0}
+.tile{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px 10px;border-radius:14px;text-align:center}
+.tile:hover{background:var(--hover)}
+.tile .tv{height:68px;display:grid;place-items:center}
+.tile .thumb{border-radius:9px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.tile span{font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+.tile small{color:var(--text-3);font-size:11px;margin-top:-5px}
+.tile.sel{background:var(--sel);box-shadow:inset 0 0 0 1px var(--sel-ring);color:var(--sel-text)}
+.tile.focus{outline:2px solid var(--accent);outline-offset:-2px}
+.empty{display:grid;place-items:center;height:60%;color:var(--text-3);text-align:center;gap:6px}
+
+/* 浮かぶ選択バー */
+.selbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;height:44px;padding:0 6px 0 16px;border-radius:var(--r-pill);background:var(--glass-strong);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);box-shadow:inset 0 0 0 1px var(--glass-edge),var(--shadow-float);white-space:nowrap;z-index:5}
+.selbar .lbl{font-weight:600;margin-right:8px;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.selbar .lbl small{font-weight:400;color:var(--text-2);margin-left:6px}
+.selbar button{height:34px;min-width:34px;border-radius:var(--r-pill);display:grid;place-items:center;color:var(--text-2)}
+.selbar button:hover{background:var(--hover);color:var(--text)}
+.selbar .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.toast{position:absolute;left:50%;bottom:70px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:var(--text);color:var(--sheet);font-size:12.5px;box-shadow:var(--shadow-float);z-index:6;white-space:nowrap}
+
+/* インスペクター */
+.insp{width:var(--w-insp);flex:none;border-radius:var(--r-card);padding:14px;overflow:auto;display:flex;flex-direction:column;gap:14px}
+.insp .pvbox{border-radius:14px;background:var(--well);overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+.insp h2{font:650 16px/1.3 var(--font-display);margin:0;word-break:break-all}
+.insp .sub{color:var(--text-2);font-size:12px;margin-top:3px}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.tagc{display:flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--r-pill);background:var(--glass-strong);font-size:11.5px;box-shadow:inset 0 0 0 1px var(--glass-edge)}
+.tagc i{width:7px;height:7px;border-radius:50%}
+.acts{display:flex;gap:6px}
+.btn{height:32px;padding:0 13px;border-radius:var(--r-pill);display:flex;align-items:center;gap:6px;background:var(--glass-strong);box-shadow:inset 0 0 0 1px var(--glass-edge),0 1px 2px rgba(30,40,90,.06);font-size:12.5px;white-space:nowrap}
+.btn:hover{background:var(--sheet)}
+.btn.primary{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 88%,#fff),var(--accent));color:var(--on-accent);box-shadow:0 1px 2px rgba(40,50,160,.25),inset 0 1px 0 rgba(255,255,255,.25);font-weight:600}
+.btn.icon{width:32px;padding:0;justify-content:center}
+.props{display:grid;grid-template-columns:auto 1fr;gap:7px 14px;font-size:12px;margin:0}
+.props dt{color:var(--text-2)} .props dd{margin:0;word-break:break-all;font-variant-numeric:tabular-nums}
+.sect{font-size:11px;font-weight:600;color:var(--text-3);letter-spacing:.02em;margin-bottom:-6px}
+.stack{position:relative;height:150px;display:grid;place-items:center}
+.stack>*{position:absolute;box-shadow:0 4px 14px rgba(0,0,0,.14);border-radius:10px;background:var(--sheet);padding:10px}
+
+@media (max-width:1180px){ :root{--w-side:200px;--w-insp:262px} .search{width:220px} .head{padding:16px 20px 8px} .title h1{font-size:23px} }
+@media (max-height:740px){ .head{padding-top:14px} .chips{margin-top:10px} .side-h{padding-top:9px} }
+</style>
+</head>
+<body>
+<div class="win">
+  <nav class="side glass" id="side"></nav>
+  <div class="right">
+    <div class="top">
+      <div class="cap glass" id="navcap"></div>
+      <div class="crumbs" id="crumbs"></div>
+      <div class="spacer"></div>
+      <label class="search glass">
+        <svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+        <input data-search id="q" placeholder="検索" autocomplete="off" spellcheck="false">
+        <span id="qx"></span>
+      </label>
+      <div class="cap glass" id="viewcap"></div>
+      <div class="caption os-win-only" id="caption"></div>
+    </div>
+    <div class="body">
+      <main class="sheet" id="sheet"></main>
+      <aside class="insp glass" id="insp"></aside>
+    </div>
+  </div>
+</div>
+<script>
+/* ===== 共有: サンプルデータ / アイコン / 状態管理（3案共通） ===== */
+(function(){
+'use strict';
+const NOW = new Date(2026,10,15,10,0);
+const T = (mo,d,h=12,mi=0,y=2026)=>new Date(y,mo-1,d,h,mi);
+const KB=1024, MB=KB*1024, GB=MB*1024;
+
+/* ---- ツリー（すべて架空） ---- */
+let _id=0;
+function fo(name, mod, children=[], o={}){ return Object.assign({id:o.id||('n'+(++_id)), name, kind:'folder', mod, created:o.created||mod, children}, o); }
+function fi(name, mod, size, o={}){ const ext=(name.split('.').pop()||'').toLowerCase(); return Object.assign({id:'n'+(++_id), name, kind:'file', ext, mod, created:o.created||new Date(mod.getTime()-86400000*9), size}, o); }
+
+const docs = fo('ドキュメント', T(11,14,9,41), [
+  fo('アーカイブ', T(4,3,9,20), [ fi('2025年度_決算資料.zip', T(4,3,9,20), 86*MB), fi('旧ロゴ一式.zip', T(3,28,18,2), 12.4*MB) ]),
+  fo('プロジェクト', T(11,13,18,2), [
+    fo('explorer-gpui', T(11,13,18,2), [ fi('README.md', T(11,13,18,2), 4.2*KB), fi('設計メモ.md', T(11,12,10,30), 9.8*KB), fi('screenshot.png', T(11,11,14,4), 412*KB, {seed:4}) ]),
+    fo('サイトリニューアル', T(10,28,11,0), [ fi('ワイヤー_v2.pdf', T(10,28,11,0), 2.1*MB), fi('トップ案.png', T(10,27,16,40), 1.8*MB, {seed:5}) ]),
+    fi('進行表.xlsx', T(11,12,9,15), 64*KB, {tags:['orange']}),
+  ], {tags:['orange']}),
+  fo('会議メモ', T(11,12,16,30), [ fi('定例_1105.md', T(11,5,15,0), 2.4*KB), fi('定例_1112.md', T(11,12,16,30), 3.1*KB), fi('振り返り.md', T(10,31,18,10), 5.6*KB) ]),
+  fo('請求書', T(11,1,10,5), [ fi('請求書_2026-10.pdf', T(11,1,10,5), 128*KB), fi('請求書_2026-09.pdf', T(10,1,9,50), 126*KB), fi('請求書_2026-08.pdf', T(9,1,9,41), 131*KB) ]),
+  fo('設計資料', T(11,2,13,0), [ fi('画面遷移図.pdf', T(11,2,13,0), 3.4*MB), fi('コンポーネント一覧.xlsx', T(10,30,17,22), 88*KB) ]),
+  fi('メモ.txt', T(11,15,8,12), 1.4*KB),
+  fi('2026年度_予算案.xlsx', T(11,14,9,41), 48.2*KB, {tags:['red']}),
+  fi('企画書_v3.docx', T(11,13,21,7), 1.2*MB, {tags:['red','blue'], created:T(10,20,14,2), author:'青井 ひなた', pages:12}),
+  fi('議事録_2026-11-12.docx', T(11,12,17,3), 36.4*KB),
+  fi('キックオフ資料.pptx', T(11,11,19,25), 6.8*MB, {tags:['green']}),
+  fi('デモ動画.mp4', T(11,10,22,15), 312*MB, {dur:'3:42'}),
+  fi('契約書_署名済み.pdf', T(11,8,12,14), 842*KB, {tags:['red']}),
+  fi('素材一式.zip', T(11,6,20,33), 128*MB),
+  fi('売上データ_10月.csv', T(11,2,8,55), 214*KB),
+  fi('setup-tool.exe', T(10,30,9,8), 18.4*MB),
+  fi('ロゴ_最終版.png', T(10,24,15,9), 286*KB, {seed:1, dim:'2048 × 2048'}),
+  fi('集合写真_秋合宿.jpg', T(10,19,13,47), 4.6*MB, {seed:2, dim:'6000 × 4000', tags:['green']}),
+  fi('README.md', T(9,18,11,22), 3.1*KB),
+  fi('backup.ps1', T(9,2,23,40), 2.2*KB),
+], {id:'docs', special:'docs'});
+
+const pics = fo('ピクチャ', T(11,9,19,2), [
+  fo('スクリーンショット', T(11,14,11,30), [ fi('画面 2026-11-14 113012.png', T(11,14,11,30), 820*KB, {seed:4}), fi('画面 2026-11-10 090144.png', T(11,10,9,1), 640*KB, {seed:6}) ]),
+  fi('夕焼けの海.jpg', T(11,9,19,2), 5.2*MB, {seed:3, dim:'6000 × 4000'}),
+  fi('山の朝.jpg', T(11,3,6,40), 4.8*MB, {seed:7, dim:'6000 × 4000'}),
+  fi('集合写真_秋合宿.jpg', T(10,19,13,47), 4.6*MB, {seed:2, dim:'6000 × 4000'}),
+  fi('ロゴ_最終版.png', T(10,24,15,9), 286*KB, {seed:1}),
+  fi('ねこ.heic', T(9,21,15,12), 2.9*MB, {seed:8}),
+  fi('街の夜.jpg', T(8,30,21,5), 3.9*MB, {seed:6}),
+  fi('花.jpg', T(5,4,10,20), 3.1*MB, {seed:5}),
+], {id:'pics', special:'pics'});
+
+const dl = fo('ダウンロード', T(11,14,22,10), [
+  fi('installer-2.4.1.exe', T(11,14,22,10), 96*MB),
+  fi('明細_2026年10月.pdf', T(11,5,8,30), 211*KB),
+  fi('fonts.zip', T(10,22,20,1), 34*MB),
+  fi('参加者リスト.csv', T(11,11,12,0), 12*KB),
+], {id:'dl', special:'dl'});
+
+const desk = fo('デスクトップ', T(11,15,9,5), [
+  fi('やること.txt', T(11,15,9,5), 0.6*KB),
+  fi('スクリーンショット 2026-11-15.png', T(11,15,8,58), 1.1*MB, {seed:4}),
+], {id:'desk', special:'desk'});
+
+const music = fo('ミュージック', T(8,2,12,0), [], {id:'music', special:'music'});
+const videos = fo('ビデオ', T(11,10,22,15), [ fi('デモ動画.mp4', T(11,10,22,15), 312*MB, {dur:'3:42'}) ], {id:'videos', special:'videos'});
+
+const aoi = fo('aoi', T(11,15,9,5), [desk, docs, dl, pics, videos, music], {id:'home', special:'home'});
+const users = fo('ユーザー', T(6,1,9,0), [aoi], {id:'users'});
+const cdrive = fo('ローカル ディスク (C:)', T(11,15,9,5), [users, fo('Program Files', T(10,30,9,8), []), fo('Windows', T(11,11,3,0), [])], {id:'c', drive:true, letter:'C:', total:476*GB, free:182*GB});
+const ddrive = fo('データ (D:)', T(11,6,20,33), [fo('バックアップ', T(11,6,20,33), []), fo('写真ライブラリ', T(10,19,13,47), [])], {id:'d', drive:true, letter:'D:', total:932*GB, free:74*GB});
+const pc = fo('PC', NOW, [cdrive, ddrive], {id:'pc'});
+
+const byId = new Map();
+(function walk(n, parent){ n.parent=parent||null; byId.set(n.id, n); (n.children||[]).forEach(c=>walk(c, n)); })(pc, null);
+function sizeOf(n){ if(n.kind==='file') return n.size; return (n.children||[]).reduce((a,c)=>a+sizeOf(c),0); }
+
+const PLACES = [
+  {id:'home', name:'ホーム', icon:'home'},
+  {id:'desk', name:'デスクトップ', icon:'monitor'},
+  {id:'docs', name:'ドキュメント', icon:'fileText'},
+  {id:'dl', name:'ダウンロード', icon:'download'},
+  {id:'pics', name:'ピクチャ', icon:'image'},
+  {id:'videos', name:'ビデオ', icon:'film'},
+];
+const DRIVES = ['c','d'];
+const TAGS = [ {id:'red', name:'重要', color:'#ef4b4b'}, {id:'orange', name:'進行中', color:'#f59a23'}, {id:'green', name:'共有', color:'#2fb36b'}, {id:'blue', name:'個人', color:'#3a86ff'} ];
+
+/* ---- 種類 ---- */
+const KIND = {
+  folder:{label:'ファイル フォルダー', cat:'folder'},
+  docx:{label:'DOCX 文書', cat:'doc', color:'#2b6fd6', tag:'DOC'},
+  pdf:{label:'PDF 文書', cat:'doc', color:'#d93636', tag:'PDF'},
+  txt:{label:'テキスト', cat:'doc', color:'#7a808a', tag:'TXT'},
+  md:{label:'Markdown', cat:'doc', color:'#5b6170', tag:'MD'},
+  xlsx:{label:'XLSX 表計算', cat:'sheet', color:'#1f8a4c', tag:'XLS'},
+  csv:{label:'CSV データ', cat:'sheet', color:'#2c9d5d', tag:'CSV'},
+  pptx:{label:'PPTX スライド', cat:'slide', color:'#d2522b', tag:'PPT'},
+  png:{label:'PNG 画像', cat:'image', color:'#1e9bb0', tag:'PNG'},
+  jpg:{label:'JPG 画像', cat:'image', color:'#1e9bb0', tag:'JPG'},
+  heic:{label:'HEIC 画像', cat:'image', color:'#1e9bb0', tag:'HEIC'},
+  mp4:{label:'MP4 動画', cat:'video', color:'#7b4fd6', tag:'MP4'},
+  zip:{label:'ZIP 圧縮', cat:'archive', color:'#b9842a', tag:'ZIP'},
+  exe:{label:'アプリケーション', cat:'app', color:'#4a5563', tag:'EXE'},
+  ps1:{label:'PowerShell スクリプト', cat:'app', color:'#2c5f9e', tag:'PS1'},
+};
+const CATS = [ {id:'all', name:'すべて'}, {id:'doc', name:'書類'}, {id:'sheet', name:'表・データ'}, {id:'image', name:'画像'}, {id:'video', name:'動画'}, {id:'archive', name:'圧縮'} ];
+function kindOf(n){ if(n.kind==='folder') return n.drive?{label:'ローカル ディスク',cat:'folder'}:KIND.folder; return KIND[n.ext]||{label:(n.ext||'').toUpperCase()+' ファイル',cat:'other',color:'#7a808a',tag:(n.ext||'').toUpperCase()}; }
+
+/* ---- 書式 ---- */
+const p2=n=>String(n).padStart(2,'0');
+function fmtSize(b){ if(b==null) return ''; const f=(v,u)=>(v>=100?Math.round(v):v.toFixed(1))+' '+u; if(b<KB) return Math.round(b)+' B'; if(b<MB) return f(b/KB,'KB'); if(b<GB) return f(b/MB,'MB'); return f(b/GB,'GB'); }
+function sameDay(a,b){ return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate(); }
+function fmtRel(d){ const y=new Date(NOW); y.setDate(y.getDate()-1); const hm=d.getHours()+':'+p2(d.getMinutes());
+  if(sameDay(d,NOW)) return '今日 '+hm; if(sameDay(d,y)) return '昨日 '+hm; if(d.getFullYear()===NOW.getFullYear()) return (d.getMonth()+1)+'月'+d.getDate()+'日 '+hm; return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate(); }
+function fmtShort(d){ return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate())+' '+d.getHours()+':'+p2(d.getMinutes()); }
+function fmtFull(d){ return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+d.getHours()+':'+p2(d.getMinutes()); }
+function dateGroup(d){ const days=Math.floor((new Date(NOW.getFullYear(),NOW.getMonth(),NOW.getDate())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/86400000);
+  if(days<=0) return {k:0,label:'今日'}; if(days===1) return {k:1,label:'昨日'}; if(days<7) return {k:2,label:'今週'}; if(d.getMonth()===NOW.getMonth()&&d.getFullYear()===NOW.getFullYear()) return {k:3,label:'今月'}; if(days<62) return {k:4,label:'先月'}; return {k:5,label:'それ以前'}; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function hl(name,q){ if(!q) return esc(name); const i=name.toLowerCase().indexOf(q.toLowerCase()); if(i<0) return esc(name); return esc(name.slice(0,i))+'<mark>'+esc(name.slice(i,i+q.length))+'</mark>'+esc(name.slice(i+q.length)); }
+
+/* ---- 操作アイコン（自作の線画。24pxグリッド・currentColor） ---- */
+const P = {
+  chevL:'<path d="M15 18l-6-6 6-6"/>', chevR:'<path d="M9 18l6-6-6-6"/>', chevD:'<path d="M6 9l6 6 6-6"/>', chevU:'<path d="M18 15l-6-6-6 6"/>',
+  arrowUp:'<path d="M12 19V5M6 11l6-6 6 6"/>', arrowR:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  refresh:'<path d="M20 11.5A8 8 0 1 0 17.7 17"/><path d="M20 5v6h-6"/>',
+  search:'<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+  list:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" stroke-width="2.4"/>',
+  grid:'<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
+  columns:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.2 4.5v15M14.8 4.5v15"/>',
+  panelR:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/>',
+  panelL:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/>',
+  sun:'<circle cx="12" cy="12" r="3.8"/><path d="M12 3v1.8M12 19.2V21M3 12h1.8M19.2 12H21M5.6 5.6l1.3 1.3M17.1 17.1l1.3 1.3M5.6 18.4l1.3-1.3M17.1 6.9l1.3-1.3"/>',
+  moon:'<path d="M19.5 14.2A7.8 7.8 0 1 1 9.8 4.5a6.2 6.2 0 0 0 9.7 9.7z"/>',
+  x:'<path d="M17 7L7 17M7 7l10 10"/>', plus:'<path d="M12 5v14M5 12h14"/>',
+  more:'<path d="M5.5 12h.01M12 12h.01M18.5 12h.01" stroke-width="2.6"/>',
+  share:'<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M6 11.5v6.5a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-6.5"/>',
+  trash:'<path d="M4.5 7h15M10 11v5.5M14 11v5.5"/><path d="M6.5 7l.8 11.2a2 2 0 0 0 2 1.8h5.4a2 2 0 0 0 2-1.8L17.5 7M9.5 7V4.5h5V7"/>',
+  copy:'<rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.2"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/>',
+  home:'<path d="M4 11l8-6.5 8 6.5"/><path d="M6 9.5V19a1 1 0 0 0 1 1h3.5v-5h3v5H17a1 1 0 0 0 1-1V9.5"/>',
+  monitor:'<rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M8.5 20h7M12 16v4"/>',
+  fileText:'<path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3.5V8h4.5M9 12.5h6M9 16h6"/>',
+  download:'<path d="M12 4v10.5M7.5 10l4.5 4.5 4.5-4.5M5 19.5h14"/>',
+  image:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="M20.5 15.5l-4.5-4.5-8.5 8.5"/>',
+  film:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M7.5 4.5v15M16.5 4.5v15M3.5 9.5h4M3.5 14.5h4M16.5 9.5h4M16.5 14.5h4"/>',
+  drive:'<path d="M3.5 14l2.6-7.6A2 2 0 0 1 8 5h8a2 2 0 0 1 1.9 1.4L20.5 14"/><rect x="3.5" y="14" width="17" height="5.5" rx="1.8"/><path d="M7.5 16.8h.01M10.5 16.8h.01" stroke-width="2.2"/>',
+  pc:'<rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M8.5 20h7M12 16v4"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  star:'<path d="M12 4l2.4 5 5.3.6-3.9 3.7 1 5.3L12 16l-4.8 2.6 1-5.3-3.9-3.7 5.3-.6z"/>',
+  tag:'<path d="M3.5 12.2V5a1.5 1.5 0 0 1 1.5-1.5h7.2l8.3 8.3-8.7 8.7z"/><circle cx="8" cy="8" r="1.4"/>',
+  info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8h.01"/>',
+  eye:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  sort:'<path d="M8 9l4-4 4 4M8 15l4 4 4-4"/>',
+  external:'<path d="M14 4h6v6M20 4l-8.5 8.5"/><path d="M18 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4.5"/>',
+  sliders:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  folder:'<path d="M3.5 7.5a2 2 0 0 1 2-2h3.8l2 2h7.2a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
+  cloud:'<path d="M7 18.5a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.2 4 4 0 0 1-.4 7.8z"/>',
+  check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  edit:'<path d="M4.5 19.5h4l10-10-4-4-10 10z"/><path d="M13 7l4 4"/>',
+  open:'<path d="M5 19.5h14M12 4v11M7.5 10.5L12 15l4.5-4.5" transform="rotate(180 12 12)"/>',
+  layers:'<path d="M12 4l8.5 4.5L12 13 3.5 8.5z"/><path d="M3.5 12.5L12 17l8.5-4.5M3.5 16.5L12 21l8.5-4.5"/>',
+  minus:'<path d="M5 12h14"/>', square:'<rect x="5.5" y="5.5" width="13" height="13" rx="1.5"/>',
+  command:'<path d="M9 6.5a2.5 2.5 0 1 0-2.5 2.5H17.5A2.5 2.5 0 1 0 15 6.5v11a2.5 2.5 0 1 0 2.5-2.5H6.5A2.5 2.5 0 1 0 9 17.5z"/>',
+  group:'<path d="M4 6h16M4 12h10M4 18h7"/>',
+  pin:'<path d="M9 4h6l-1 5 3 3v1.5H7V12l3-3zM12 13.5V20"/>',
+};
+function ic(name, size=16, extra=''){ return '<svg class="ic" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" '+(extra.includes('stroke-width')?'':'stroke-width="1.7" ')+'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" '+extra+'>'+(P[name]||'')+'</svg>'; }
+
+/* ---- 仮のOSアイコン（カラー。実装ではOSから取得して置き換わる） ---- */
+function objIcon(n, size=16){
+  const s=size;
+  if(n.kind==='folder' && n.drive){
+    return '<svg class="obj" width="'+s+'" height="'+s+'" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="26" height="15" rx="3" fill="#b9bfc9"/><rect x="3" y="9" width="26" height="9" rx="3" fill="#dfe3ea"/><rect x="3" y="17" width="26" height="7" rx="2" fill="#9aa2ae"/><circle cx="24.5" cy="20.5" r="1.5" fill="#35d07f"/></svg>';
+  }
+  if(n.kind==='folder'){
+    const glyph = n.special && s>=28 ? '<g transform="translate(10.5 13.5) scale(.46)" fill="none" stroke="var(--fold-glyph)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'+P[({home:'home',docs:'fileText',dl:'download',pics:'image',desk:'monitor',music:'star',videos:'film'})[n.special]||'folder']+'</g>' : '';
+    return '<svg class="obj" width="'+s+'" height="'+s+'" viewBox="0 0 32 32" aria-hidden="true"><path d="M2.5 8A2.5 2.5 0 0 1 5 5.5h6.4l2.6 2.6h13A2.5 2.5 0 0 1 29.5 10.6V24A2.5 2.5 0 0 1 27 26.5H5A2.5 2.5 0 0 1 2.5 24z" fill="var(--fold-back)"/><path d="M2.5 12.6A1.6 1.6 0 0 1 4.1 11h23.8a1.6 1.6 0 0 1 1.6 1.6V24A2.5 2.5 0 0 1 27 26.5H5A2.5 2.5 0 0 1 2.5 24z" fill="var(--fold-front)"/><path d="M2.5 12.6A1.6 1.6 0 0 1 4.1 11h23.8a1.6 1.6 0 0 1 1.6 1.6v.6H2.5z" fill="var(--fold-hi)"/>'+glyph+'</svg>';
+  }
+  const k=kindOf(n);
+  const big = s>=40;
+  const label = big ? '<text x="12" y="23.6" font-size="'+(k.tag.length>3?4.6:5.6)+'" font-weight="700" fill="#fff" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif">'+k.tag+'</text>' : '';
+  return '<svg class="obj" width="'+s+'" height="'+s+'" viewBox="0 0 32 32" aria-hidden="true"><path d="M8.5 2.5h10.8L26 9.2V27a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 6 27V5a2.5 2.5 0 0 1 2.5-2.5z" fill="#fbfbfc" stroke="#c3c8d0" stroke-width=".9"/><path d="M19.3 2.5v4.6a2 2 0 0 0 2 2H26" fill="#e9ecf1" stroke="#c3c8d0" stroke-width=".9"/><rect x="'+(big?2.5:3.5)+'" y="'+(big?18:16.5)+'" width="'+(big?19:14)+'" height="'+(big?8:9)+'" rx="1.8" fill="'+k.color+'"/>'+label+'</svg>';
+}
+
+/* ---- 仮のサムネイル（写真の代わりに描いた風景） ---- */
+const SCENES = {
+  1:{sky:['#f5f3ff','#e9e4ff'], logo:true},
+  2:{sky:['#ffcf9e','#ff8c6b'], hills:['#c4573f','#7a2f3a'], sun:'#fff3c4'},
+  3:{sky:['#ffb27a','#d9567a'], hills:['#4a2c6b','#21183d'], sun:'#ffe2a8', sea:true},
+  4:{sky:['#eef2f7','#dfe6ef'], ui:true},
+  5:{sky:['#fde2ec','#f7b8cf'], hills:['#e46f9a','#b63f6f'], sun:'#fff'},
+  6:{sky:['#1b2147','#3a2f6b'], hills:['#2a2350','#120f2a'], sun:'#ffd36b', night:true},
+  7:{sky:['#bfe3ff','#e8f6ff'], hills:['#6fa58f','#3d6f63'], sun:'#ffffff'},
+  8:{sky:['#efe6da','#d9c7b1'], cat:true},
+};
+function photo(seed, w=160, h=110, uid=''){
+  const s=SCENES[seed]||SCENES[7]; const id='g'+seed+uid+Math.random().toString(36).slice(2,6);
+  let body='<defs><linearGradient id="'+id+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+s.sky[0]+'"/><stop offset="1" stop-color="'+s.sky[1]+'"/></linearGradient></defs><rect width="160" height="110" fill="url(#'+id+')"/>';
+  if(s.logo) body+='<g transform="translate(80 55)"><circle r="30" fill="#6d5dfc"/><path d="M-12 -4 L0 -16 L12 -4 L0 8z" fill="#fff"/><path d="M-12 6 L0 18 L12 6" fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"/></g>';
+  else if(s.ui) body+='<rect x="18" y="16" width="124" height="80" rx="6" fill="#fff" stroke="#cdd5e0"/><rect x="18" y="16" width="34" height="80" rx="6" fill="#f1f4f8"/><g fill="#d7dee8"><rect x="58" y="26" width="70" height="6" rx="3"/><rect x="58" y="40" width="60" height="5" rx="2.5"/><rect x="58" y="51" width="66" height="5" rx="2.5"/><rect x="58" y="62" width="52" height="5" rx="2.5"/></g><rect x="56" y="48.5" width="76" height="10" rx="3" fill="#5b8cff" opacity=".35"/>';
+  else if(s.cat) body+='<ellipse cx="80" cy="84" rx="40" ry="16" fill="#8b6f55" opacity=".25"/><path d="M52 86 Q50 50 80 48 Q110 50 108 86z" fill="#5a4636"/><circle cx="80" cy="46" r="20" fill="#5a4636"/><path d="M64 34 L62 18 L74 30z M96 34 L98 18 L86 30z" fill="#5a4636"/><circle cx="73" cy="45" r="2.6" fill="#f5d36b"/><circle cx="87" cy="45" r="2.6" fill="#f5d36b"/>';
+  else { body+='<circle cx="112" cy="'+(s.night?28:40)+'" r="'+(s.night?9:14)+'" fill="'+s.sun+'" opacity=".95"/>';
+    if(s.night) body+='<g fill="#fff" opacity=".7"><circle cx="30" cy="20" r=".9"/><circle cx="58" cy="12" r=".7"/><circle cx="84" cy="24" r=".8"/><circle cx="140" cy="16" r=".7"/></g>';
+    body+='<path d="M0 72 Q30 50 60 66 T120 60 T160 64 V110 H0z" fill="'+s.hills[0]+'"/>';
+    if(s.sea) body+='<rect y="80" width="160" height="30" fill="'+s.hills[1]+'"/><path d="M96 86h32M88 94h48M100 102h24" stroke="'+s.sun+'" stroke-width="1.5" opacity=".6"/>';
+    else body+='<path d="M0 88 Q40 70 80 84 T160 80 V110 H0z" fill="'+s.hills[1]+'"/>';
+    if(seed===2) body+='<g fill="#3a1a22">'+[34,46,58,70,82,94,106,118].map((x,i)=>'<circle cx="'+x+'" cy="'+(80-(i%2)*3)+'" r="4"/><rect x="'+(x-5)+'" y="'+(84-(i%2)*3)+'" width="10" height="16" rx="4"/>').join('')+'</g>';
+    if(s.night) body+='<g fill="#ffd36b" opacity=".8"><rect x="20" y="92" width="2" height="2"/><rect x="40" y="96" width="2" height="2"/><rect x="70" y="94" width="2" height="2"/><rect x="120" y="98" width="2" height="2"/></g>';
+  }
+  return '<svg class="photo" viewBox="0 0 160 110" width="'+w+'" height="'+h+'" preserveAspectRatio="xMidYMid slice" aria-hidden="true">'+body+'</svg>';
+}
+function isImage(n){ return n.kind==='file' && kindOf(n).cat==='image'; }
+function thumb(n, size){ if(isImage(n)) return '<span class="thumb" style="width:'+size+'px;height:'+size+'px">'+photo(n.seed, size, size)+'</span>'; return objIcon(n, size); }
+
+const TEXTS = {
+  'メモ.txt':'・GPUI のリスト仮想化を確認\n・アイコン取得はキャッシュ前提\n・11/18 までに試作を共有\n・検索は入力ごとに即時反映',
+  'README.md':'# 社内ツール置き場\n\nこのフォルダーには共有前の資料を置く。\n\n## ルール\n- ファイル名は日付から始める\n- 確定版は「アーカイブ」へ移動\n- 機密は「請求書」には置かない',
+  'backup.ps1':'$src = "$env:USERPROFILE\\Documents"\n$dst = "D:\\バックアップ\\$(Get-Date -f yyyyMMdd)"\nrobocopy $src $dst /MIR /R:1 /W:1\nWrite-Host "完了: $dst"',
+  'やること.txt':'- 試作レビュー\n- 経費精算',
+};
+/* 大きいプレビュー */
+function preview(n, w=260, h=180){
+  const k=kindOf(n);
+  if(n.kind==='folder'){ const c=(n.children||[]).length; return '<div class="pv pv-icon">'+objIcon(n, 96)+'<div class="pv-cap">'+c+' 項目</div></div>'; }
+  if(k.cat==='image') return '<div class="pv pv-photo">'+photo(n.seed, w, h)+'</div>';
+  if(n.ext==='mp4') return '<div class="pv pv-video">'+photo(6, w, h)+'<span class="pv-play">'+'<svg width="22" height="22" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="#fff"/></svg></span><span class="pv-dur">'+(n.dur||'')+'</span></div>';
+  if(n.ext==='docx'||n.ext==='pdf'){ const c=k.color; return '<div class="pv pv-doc"><div class="page"><div class="pg-t" style="background:'+c+'"></div><div class="pg-h">'+esc(n.name.replace(/\.[^.]+$/,'').replace(/_/g,' '))+'</div>'+'<i></i><i></i><i style="width:72%"></i><i></i><i style="width:58%"></i><b></b><i></i><i style="width:80%"></i><i></i><i style="width:40%"></i></div></div>'; }
+  if(n.ext==='xlsx'||n.ext==='csv'){ let rows=''; for(let r=0;r<7;r++){ rows+='<tr>'; for(let c=0;c<5;c++) rows+= r===0?'<th>'+'ABCDE'[c]+'</th>':'<td>'+(c===0?['','食費','交通','機材','外注','広告','合計'][r]:(r*137*(c+3)%900+100).toLocaleString())+'</td>'; rows+='</tr>'; } return '<div class="pv pv-sheet"><table>'+rows+'</table></div>'; }
+  if(n.ext==='pptx') return '<div class="pv pv-slide"><div class="slide"><div class="sl-k">2026 Q4</div><div class="sl-t">キックオフ</div><div class="sl-b"><i></i><i></i><i style="width:60%"></i></div><div class="sl-shape"></div></div></div>';
+  if(TEXTS[n.name]) return '<div class="pv pv-text"><pre>'+esc(TEXTS[n.name])+'</pre></div>';
+  return '<div class="pv pv-icon">'+objIcon(n, 88)+'</div>';
+}
+
+/* ---- 状態 ---- */
+const params = new URLSearchParams(location.hash.slice(1));
+const S = {
+  path: params.get('path') || 'docs', back:[], fwd:[],
+  sort:{key:'name', dir:1}, q:'', cat:'all', group:'date',
+  sel:new Set(), anchor:null, focus:null,
+  view: params.get('view') || 'list', pane: params.get('pane')!=='0',
+  theme: params.get('theme') || (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),
+  os: params.get('os') || 'win', folderStyle: params.get('icons') || 'win',
+  listFocused: true, toast:null,
+};
+let renderFn = ()=>{}, gridColsFn = ()=>1, orderFn=null;
+
+function node(id){ return byId.get(id); }
+function cur(){ return node(S.path); }
+function ancestors(id){ const a=[]; let n=node(id); while(n){ a.unshift(n); n=n.parent; } return a; }
+function cmp(a,b){
+  if(a.kind!==b.kind) return a.kind==='folder'?-1:1;
+  const k=S.sort.key; let r=0;
+  if(k==='name') r=a.name.localeCompare(b.name,'ja',{numeric:true});
+  else if(k==='mod') r=a.mod-b.mod;
+  else if(k==='size') r=sizeOf(a)-sizeOf(b);
+  else if(k==='kind') r=kindOf(a).label.localeCompare(kindOf(b).label,'ja');
+  if(r===0) r=a.name.localeCompare(b.name,'ja',{numeric:true});
+  return r*S.sort.dir;
+}
+function visible(){
+  const n=cur(); let list=(n.children||[]).slice();
+  if(S.q){ const q=S.q.toLowerCase(); list=list.filter(c=>c.name.toLowerCase().includes(q)); }
+  if(S.cat!=='all') list=list.filter(c=>kindOf(c).cat===S.cat);
+  return list.sort(cmp);
+}
+function order(){ return orderFn ? orderFn() : visible(); }
+function selectedNodes(){ return order().filter(n=>S.sel.has(n.id)); }
+
+function render(){ document.documentElement.dataset.theme=S.theme; document.documentElement.dataset.os=S.os; document.documentElement.dataset.icons=S.folderStyle; renderFn(); }
+const A = {
+  open(id){ const n=node(id); if(!n) return; if(n.kind!=='folder'){ A.toast('「'+n.name+'」を既定のアプリで開く（試作では開きません）'); return; }
+    if(id===S.path) return; S.back.push(S.path); S.fwd=[]; S.path=id; A.resetView(); render(); },
+  go(id){ A.open(id); },
+  resetView(){ S.sel.clear(); S.anchor=null; S.focus=null; S.q=''; S.cat='all'; const s=document.querySelector('[data-search]'); if(s) s.value=''; const l=order(); if(l.length){ S.focus=l[0].id; } },
+  back(){ if(!S.back.length) return; S.fwd.push(S.path); S.path=S.back.pop(); A.resetView(); render(); },
+  forward(){ if(!S.fwd.length) return; S.back.push(S.path); S.path=S.fwd.pop(); A.resetView(); render(); },
+  up(){ const p=cur().parent; if(p){ const from=S.path; A.open(p.id); S.sel=new Set([from]); S.focus=from; S.anchor=from; render(); } },
+  sortBy(key){ if(S.sort.key===key) S.sort.dir*=-1; else { S.sort.key=key; S.sort.dir= key==='name'||key==='kind'?1:-1; } render(); },
+  query(q){ S.q=q; const l=order(); if(S.focus && !l.find(n=>n.id===S.focus)) S.focus=l[0]?l[0].id:null; for(const id of [...S.sel]) if(!l.find(n=>n.id===id)) S.sel.delete(id); render(); },
+  cat(c){ S.cat=c; A.query(S.q); },
+  click(id, e){ const l=order(); const ids=l.map(n=>n.id);
+    if(e && (e.ctrlKey||e.metaKey)){ S.sel.has(id)?S.sel.delete(id):S.sel.add(id); S.anchor=id; }
+    else if(e && e.shiftKey && S.anchor && ids.includes(S.anchor)){ const a=ids.indexOf(S.anchor), b=ids.indexOf(id); S.sel=new Set(ids.slice(Math.min(a,b), Math.max(a,b)+1)); }
+    else { S.sel=new Set([id]); S.anchor=id; }
+    S.focus=id; S.listFocused=true; render(); },
+  move(delta, shift){ const l=order(); if(!l.length) return; const ids=l.map(n=>n.id); let i=ids.indexOf(S.focus); if(i<0) i=delta>0?-1:ids.length;
+    if(S.sel.size || shift || Math.abs(delta)>1000 || ids.indexOf(S.focus)<0) i=Math.max(0, Math.min(ids.length-1, i+delta)); const id=ids[i];
+    if(shift){ if(!S.anchor) S.anchor=S.focus||id; const a=ids.indexOf(S.anchor); S.sel=new Set(ids.slice(Math.min(a,i), Math.max(a,i)+1)); }
+    else { S.sel=new Set([id]); S.anchor=id; }
+    S.focus=id; render(); const el=document.querySelector('[data-id="'+CSS.escape(id)+'"]'); if(el) el.scrollIntoView({block:'nearest'}); },
+  all(){ S.sel=new Set(order().map(n=>n.id)); render(); },
+  clear(){ S.sel.clear(); render(); },
+  view(v){ S.view=v; render(); },
+  pane(v){ S.pane = v==null ? !S.pane : v; render(); },
+  theme(t){ S.theme = t || (S.theme==='dark'?'light':'dark'); render(); },
+  os(o){ S.os=o; render(); }, icons(s){ S.folderStyle=s; render(); },
+  group(g){ S.group=g; render(); },
+  toast(msg){ S.toast=msg; render(); clearTimeout(A._t); A._t=setTimeout(()=>{ S.toast=null; render(); }, 2400); },
+};
+
+/* ---- キーボード ---- */
+document.addEventListener('keydown', e=>{
+  const t=e.target, inField = t.matches && t.matches('input,textarea');
+  if((e.ctrlKey||e.metaKey) && (e.key==='f'||e.key==='k')){ e.preventDefault(); const s=document.querySelector('[data-search]'); if(s){ s.focus(); s.select(); } return; }
+  if(inField){
+    if(e.key==='Escape'){ if(t.value){ t.value=''; A.query(''); } else t.blur(); e.preventDefault(); }
+    else if(e.key==='ArrowDown' || e.key==='Enter'){ e.preventDefault(); t.blur(); S.listFocused=true; if(!S.sel.size) A.move(1,false); else render(); }
+    return;
+  }
+  if(e.key==='?' ){ Review.toggle(); return; }
+  if(e.key==='/'){ e.preventDefault(); const s=document.querySelector('[data-search]'); if(s) s.focus(); return; }
+  if(e.altKey && e.key==='ArrowLeft'){ e.preventDefault(); A.back(); return; }
+  if(e.altKey && e.key==='ArrowRight'){ e.preventDefault(); A.forward(); return; }
+  if(e.altKey && e.key==='ArrowUp'){ e.preventDefault(); A.up(); return; }
+  if(e.key==='Backspace'){ e.preventDefault(); A.back(); return; }
+  const cols = S.view==='grid' ? Math.max(1, gridColsFn()) : 1;
+  if(e.key==='ArrowDown'){ e.preventDefault(); A.move(cols, e.shiftKey); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); A.move(-cols, e.shiftKey); }
+  else if(e.key==='ArrowRight' && S.view==='grid'){ e.preventDefault(); A.move(1, e.shiftKey); }
+  else if(e.key==='ArrowLeft' && S.view==='grid'){ e.preventDefault(); A.move(-1, e.shiftKey); }
+  else if(e.key==='Home'){ e.preventDefault(); A.move(-9999, e.shiftKey); }
+  else if(e.key==='End'){ e.preventDefault(); A.move(9999, e.shiftKey); }
+  else if(e.key==='Enter' && S.focus){ e.preventDefault(); A.open(S.focus); }
+  else if((e.ctrlKey||e.metaKey) && e.key==='a'){ e.preventDefault(); A.all(); }
+  else if(e.key==='Escape'){ A.clear(); }
+});
+
+/* ---- 共通の委譲イベント ---- */
+document.addEventListener('click', e=>{
+  const a=e.target.closest('[data-act]'); if(a){ const [fn,arg]=a.dataset.act.split(':'); if(A[fn]) { e.preventDefault(); A[fn](arg===undefined?undefined:arg); } return; }
+  const r=e.target.closest('[data-id]'); if(r && r.closest('[data-list]')){ A.click(r.dataset.id, e); return; }
+  const g=e.target.closest('[data-go]'); if(g){ A.open(g.dataset.go); return; }
+  if(e.target.closest('[data-list]') && !e.target.closest('[data-id]') && !e.target.closest('[data-keep]')){ A.clear(); }
+});
+document.addEventListener('dblclick', e=>{ const r=e.target.closest('[data-id]'); if(r && r.closest('[data-list]')) A.open(r.dataset.id); });
+document.addEventListener('input', e=>{ if(e.target.matches('[data-search]')) A.query(e.target.value); });
+
+/* ---- レビュー用パネル（本体の外。? キーまたは右下の小ボタン） ---- */
+const Review = {
+  html:'', open:false,
+  mount(html){ Review.html=html; const b=document.createElement('button'); b.className='rv-btn'; b.title='試作メモ（?）'; b.textContent='?'; b.onclick=()=>Review.toggle(); if(params.get('shot')==='1') b.style.display='none'; document.body.appendChild(b);
+    const p=document.createElement('aside'); p.className='rv-panel'; p.hidden=true; document.body.appendChild(p); Review.el=p; },
+  toggle(v){ Review.open = v==null?!Review.open:v; Review.draw(); },
+  draw(){ const p=Review.el; if(!p) return; p.hidden=!Review.open; if(!Review.open) return;
+    const seg=(name,cur,opts)=>'<div class="rv-seg">'+opts.map(([v,l])=>'<button data-rv="'+name+':'+v+'" class="'+(cur===v?'on':'')+'">'+l+'</button>').join('')+'</div>';
+    p.innerHTML='<div class="rv-h"><b>試作メモ（レビュー用）</b><button class="rv-x" data-rv="close:">×</button></div>'+Review.html+
+      '<div class="rv-k">表示の切替</div><div class="rv-row"><span>テーマ</span>'+seg('theme',S.theme,[['light','ライト'],['dark','ダーク']])+'</div>'+
+      '<div class="rv-row"><span>OS</span>'+seg('os',S.os,[['win','Windows'],['mac','macOS']])+'</div>'+
+      '<div class="rv-row"><span>仮フォルダー色</span>'+seg('icons',S.folderStyle,[['win','Windows風'],['mac','macOS風']])+'</div>'+
+      '<p class="rv-note">ファイル・フォルダー・ドライブのカラーアイコンと写真サムネイルは<b>すべて仮素材</b>（実在OSアイコン未取得）。実装ではOSのシェルアイコン／サムネイルに置き換わる。操作アイコンは自作の線画SVG。データはすべて架空。</p>'+
+      '<div class="rv-k">キー操作</div><p class="rv-note">↑↓（グリッドは←→も）移動 / Shift 範囲 / Ctrl+クリック 追加 / Enter・ダブルクリック 開く / Backspace・Alt+← 戻る / Alt+↑ 上へ / Ctrl+F・/ 検索 / Ctrl+A 全選択 / Esc 解除 / ? このメモ</p>';
+  },
+};
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-rv]'); if(!b) return; const [k,v]=b.dataset.rv.split(':'); if(k==='close') Review.toggle(false); else { A[k](v); Review.draw(); } });
+
+window.X = { NOW, node, cur, ancestors, visible, order, selectedNodes, sizeOf, kindOf, CATS, PLACES, DRIVES, TAGS, KIND, fmtSize, fmtRel, fmtShort, fmtFull, dateGroup, esc, hl, ic, objIcon, photo, thumb, preview, isImage, S, A, Review, params,
+  setRender(fn){ renderFn=fn; }, setGridCols(fn){ gridColsFn=fn; }, setOrder(fn){ orderFn=fn; }, render,
+  start(){ const l=order(); if(params.get('sel')){ const n=l.find(x=>x.name===params.get('sel')); if(n){ S.sel.add(n.id); S.focus=n.id; S.anchor=n.id; } } else if(l.length){ S.focus=null; } if(params.get('q')){ S.q=params.get('q'); const s=document.querySelector('[data-search]'); if(s) s.value=S.q; } render(); Review.draw(); const se=document.querySelector('[data-list] .sel'); if(se) se.scrollIntoView({block:'nearest'}); } };
+})();
+
+</script>
+<script>
+(function(){
+const {S,A,ic,esc,hl,objIcon,thumb,preview,fmtSize,fmtRel,fmtFull,kindOf,sizeOf,node,cur,ancestors,visible,CATS,PLACES,DRIVES,TAGS} = X;
+let tagFilter=null;
+X.setOrder(()=>{ let l=visible(); if(tagFilter) l=l.filter(n=>(n.tags||[]).includes(tagFilter)); return l; });
+const order = X.order;
+const $=id=>document.getElementById(id);
+const tagDots = n => (n.tags&&n.tags.length) ? '<span class="dots">'+n.tags.map(t=>'<i style="background:'+TAGS.find(x=>x.id===t).color+'"></i>').join('')+'</span>' : '';
+
+document.addEventListener('click', e=>{ const t=e.target.closest('[data-tag]'); if(t){ tagFilter = tagFilter===t.dataset.tag?null:t.dataset.tag; S.sel.clear(); X.render(); }
+  const p=e.target.closest('[data-place]'); if(p){ tagFilter=null; A.open(p.dataset.place); } });
+
+function side(){
+  const path=ancestors(S.path).map(n=>n.id);
+  let h='<div class="traffic os-mac-only"><i></i><i></i><i></i></div>';
+  h+='<div class="side-h">よく使う場所</div>';
+  for(const p of PLACES) h+='<button class="nav'+(S.path===p.id&&!tagFilter?' on':'')+'" data-place="'+p.id+'">'+ic(p.icon,18)+'<span>'+p.name+'</span></button>';
+  h+='<div class="side-h">ドライブ</div>';
+  for(const id of DRIVES){ const d=node(id); const used=1-d.free/d.total; h+='<button class="drive'+(S.path===id?' nav on':'')+'" data-place="'+id+'" style="text-align:left">'+ic('drive',18)+'<b>'+esc(d.name)+'</b><span class="meter'+(used>.9?' warn':'')+'"><i style="width:'+(used*100).toFixed(0)+'%"></i></span><small>空き '+fmtSize(d.free)+' / '+fmtSize(d.total)+'</small></button>'; }
+  h+='<div class="side-h">タグ</div>';
+  for(const t of TAGS) h+='<button class="tagi'+(tagFilter===t.id?' on':'')+'" data-tag="'+t.id+'"><i style="background:'+t.color+'"></i>'+t.name+'</button>';
+  $('side').innerHTML=h;
+}
+function top(){
+  $('navcap').innerHTML='<button data-act="back" title="戻る (Alt+←)"'+(S.back.length?'':' disabled')+'>'+ic('chevL',17)+'</button><button data-act="forward" title="進む (Alt+→)"'+(S.fwd.length?'':' disabled')+'>'+ic('chevR',17)+'</button><button data-act="up" title="上へ (Alt+↑)"'+(cur().parent?'':' disabled')+'>'+ic('arrowUp',16)+'</button>';
+  const a=ancestors(S.path); const keep = innerWidth<1180 ? 2 : 9; const cut=a.length>keep+1;
+  const segs = cut ? a.slice(-keep) : a;
+  $('crumbs').innerHTML=(cut?'<button data-go="'+a[a.length-keep-1].id+'" title="'+esc(a.slice(0,-keep).map(x=>x.name).join(' › '))+'">…</button>':'')+segs.map((n,i)=>((i||cut)?ic('chevR',12):'')+'<button data-go="'+n.id+'" class="'+(n===a[a.length-1]?'last':'')+'">'+esc(n.name)+'</button>').join('');
+  $('q').placeholder=cur().name+'内を検索';
+  $('qx').innerHTML = S.q ? '<button class="clear" title="クリア" onclick="document.getElementById(\'q\').value=\'\';X.A.query(\'\')">'+ic('x',13)+'</button>' : '<kbd>Ctrl F</kbd>';
+  $('viewcap').innerHTML='<button data-act="view:list" class="'+(S.view==='list'?'on':'')+'" title="リスト">'+ic('list',16)+'</button><button data-act="view:grid" class="'+(S.view==='grid'?'on':'')+'" title="アイコン">'+ic('grid',16)+'</button><button data-act="pane" class="'+(S.pane?'on':'')+'" title="詳細パネル">'+ic('panelR',16)+'</button><button data-act="theme" title="テーマ切替">'+ic(S.theme==='dark'?'sun':'moon',16)+'</button>';
+  $('caption').innerHTML='<button title="最小化">'+ic('minus',14)+'</button><button title="最大化">'+ic('square',12)+'</button><button class="close" title="閉じる">'+ic('x',15)+'</button>';
+}
+function sheet(){
+  const n=cur(), all=(n.children||[]), l=order();
+  const tf = tagFilter ? TAGS.find(t=>t.id===tagFilter) : null;
+  let h='<div class="head"><div class="title"><h1>'+esc(n.name)+'</h1><span>'+all.length+' 項目 · '+fmtSize(sizeOf(n))+(tf?' · <b style="color:'+tf.color+'">● '+tf.name+'</b>':'')+'</span></div>';
+  h+='<div class="chips">';
+  for(const c of CATS){ const cnt = c.id==='all'?all.length:all.filter(x=>kindOf(x).cat===c.id).length; if(c.id!=='all'&&!cnt) continue; h+='<button class="chip'+(S.cat===c.id?' on':'')+'" data-act="cat:'+c.id+'">'+c.name+' <em>'+cnt+'</em></button>'; }
+  const sk={name:'名前',mod:'更新日時',size:'サイズ',kind:'種類'};
+  h+='<button class="chip sort" id="sortchip" title="並べ替えを切替">'+ic('sort',14)+sk[S.sort.key]+(S.sort.dir>0?' ↑':' ↓')+'</button></div></div>';
+  h+='<div class="listwrap" data-list>';
+  if(!l.length){ h+='<div class="empty"><div>'+ic(S.q?'search':'folder',28)+'</div><div>'+(S.q?'「'+esc(S.q)+'」に一致する項目はありません':'このフォルダーは空です')+'</div></div>'; }
+  else if(S.view==='list'){
+    const col=(k,label,cls='')=>'<button data-act="sortBy:'+k+'" class="'+(S.sort.key===k?'on':'')+'">'+label+(S.sort.key===k?ic(S.sort.dir>0?'chevU':'chevD',12):'')+'</button>';
+    h+='<div class="lh"><div>'+col('name','名前')+'</div><div class="m">'+col('mod','更新日時')+'</div><div class="k">'+col('kind','種類')+'</div><div class="r" style="display:flex">'+col('size','サイズ')+'</div></div>';
+    for(const c of l){ const s=S.sel.has(c.id), f=S.focus===c.id&&!s&&S.sel.size>0;
+      h+='<div class="row'+(s?' sel':'')+(f?' focus':'')+'" data-id="'+c.id+'"><div class="nm">'+thumb(c,20)+'<span>'+hl(c.name,S.q)+'</span>'+tagDots(c)+'</div><div class="c m">'+fmtRel(c.mod)+'</div><div class="c k">'+kindOf(c).label+'</div><div class="c r">'+(c.kind==='file'?fmtSize(c.size):(c.children.length+' 項目'))+'</div></div>'; }
+  } else {
+    h+='<div class="grid" id="grid">';
+    for(const c of l){ const s=S.sel.has(c.id);
+      h+='<div class="tile'+(s?' sel':'')+'" data-id="'+c.id+'"><div class="tv">'+(X.isImage(c)?'<span class="thumb" style="width:84px;height:62px">'+X.photo(c.seed,84,62)+'</span>':objIcon(c,60))+'</div><span>'+hl(c.name,S.q)+'</span><small>'+(c.kind==='file'?fmtSize(c.size):c.children.length+' 項目')+'</small></div>'; }
+    h+='</div>';
+  }
+  h+='</div>';
+  const sel=X.selectedNodes();
+  if(sel.length){ const tot=sel.reduce((a,c)=>a+sizeOf(c),0);
+    h+='<div class="selbar" data-keep><span class="lbl">'+(sel.length===1?esc(sel[0].name):sel.length+' 項目を選択')+'<small>'+fmtSize(tot)+'</small></span>'+
+      '<button title="開く" data-act="open:'+sel[0].id+'">'+ic('external',16)+'</button><button title="コピー">'+ic('copy',16)+'</button><button title="共有">'+ic('share',16)+'</button><button title="名前の変更">'+ic('edit',16)+'</button><button title="削除">'+ic('trash',16)+'</button><span class="sep"></span><button title="選択解除 (Esc)" data-act="clear">'+ic('x',15)+'</button></div>'; }
+  if(S.toast) h+='<div class="toast">'+esc(S.toast)+'</div>';
+  const sc=$('sheet').querySelector('.listwrap'); const st=sc?sc.scrollTop:0;
+  $('sheet').innerHTML=h;
+  const nsc=$('sheet').querySelector('.listwrap'); if(nsc) nsc.scrollTop=st;
+  const sc2=$('sortchip'); if(sc2) sc2.onclick=()=>{ const ks=['name','mod','size','kind']; const i=ks.indexOf(S.sort.key); if(S.sort.dir>0 && S.sort.key!=='name'){} A.sortBy(ks[(i+1)%4]); };
+}
+function insp(){
+  const el=$('insp'); el.style.display=S.pane?'flex':'none'; if(!S.pane) return;
+  const sel=X.selectedNodes(); let h='';
+  if(sel.length===1){ const n=sel[0], k=kindOf(n);
+    h+='<div class="pvbox">'+preview(n,272,187)+'</div>';
+    h+='<div><h2>'+esc(n.name)+'</h2><div class="sub">'+k.label+' · '+fmtSize(sizeOf(n))+'</div>';
+    if(n.tags) h+='<div class="tags">'+n.tags.map(t=>{const x=TAGS.find(y=>y.id===t);return '<span class="tagc"><i style="background:'+x.color+'"></i>'+x.name+'</span>';}).join('')+'</div>';
+    h+='</div><div class="acts"><button class="btn primary" data-act="open:'+n.id+'">'+ic('external',14)+'開く</button><button class="btn">'+ic('share',14)+'共有</button><button class="btn icon" title="その他">'+ic('more',16)+'</button></div>';
+    h+='<div class="sect">情報</div><dl class="props"><dt>種類</dt><dd>'+k.label+'</dd><dt>サイズ</dt><dd>'+fmtSize(sizeOf(n))+(n.kind==='file'?'（'+Math.round(n.size).toLocaleString()+' バイト）':'')+'</dd><dt>更新日時</dt><dd>'+fmtFull(n.mod)+'</dd><dt>作成日時</dt><dd>'+fmtFull(n.created)+'</dd>'+(n.dim?'<dt>解像度</dt><dd>'+n.dim+'</dd>':'')+(n.pages?'<dt>ページ</dt><dd>'+n.pages+'</dd>':'')+(n.author?'<dt>作成者</dt><dd>'+esc(n.author)+'</dd>':'')+'<dt>場所</dt><dd>'+esc('C:\\Users\\aoi\\'+ancestors(S.path).slice(4).map(a=>a.name).join('\\'))+'</dd></dl>';
+  } else if(sel.length>1){ const tot=sel.reduce((a,c)=>a+sizeOf(c),0);
+    h+='<div class="pvbox"><div class="stack">'+sel.slice(0,3).map((n,i)=>'<div style="transform:translate('+(i-1)*26+'px,'+(i-1)*-6+'px) rotate('+(i-1)*7+'deg)">'+thumb(n,56)+'</div>').join('')+'</div></div>';
+    h+='<div><h2>'+sel.length+' 項目</h2><div class="sub">合計 '+fmtSize(tot)+'</div></div><div class="acts"><button class="btn">'+ic('copy',14)+'コピー</button><button class="btn">'+ic('share',14)+'共有</button><button class="btn icon">'+ic('more',16)+'</button></div>';
+    h+='<div class="sect">内訳</div><dl class="props">'+Object.entries(sel.reduce((m,n)=>{const l=kindOf(n).label;m[l]=(m[l]||0)+1;return m;},{})).map(([k,v])=>'<dt>'+k+'</dt><dd>'+v+'</dd>').join('')+'</dl>';
+  } else { const n=cur();
+    h+='<div class="pvbox">'+preview(n,272,187)+'</div><div><h2>'+esc(n.name)+'</h2><div class="sub">'+(n.children||[]).length+' 項目 · '+fmtSize(sizeOf(n))+'</div></div>';
+    h+='<div class="sect">最近の変更</div><div style="display:flex;flex-direction:column;gap:2px;margin:0 -6px">'+(n.children||[]).filter(c=>c.kind==='file').sort((a,b)=>b.mod-a.mod).slice(0,4).map(c=>'<div class="row" style="grid-template-columns:1fr auto;height:32px;padding:0 6px" data-pick="'+c.id+'"><div class="nm">'+thumb(c,18)+'<span>'+esc(c.name)+'</span></div><div class="c" style="font-size:11.5px">'+fmtRel(c.mod)+'</div></div>').join('')+'</div>';
+  }
+  el.innerHTML=h;
+}
+document.addEventListener('click',e=>{ const p=e.target.closest('[data-pick]'); if(p){ A.click(p.dataset.pick); } });
+X.setGridCols(()=>{ const g=$('grid'); if(!g) return 1; return getComputedStyle(g).gridTemplateColumns.split(' ').length; });
+X.setRender(()=>{ side(); top(); sheet(); insp(); });
+addEventListener('resize',()=>X.render());
+X.Review.mount('<p class="rv-note"><b>案1 Air（浮かぶ面）</b>— 色づいた地の上に、サイドバー・一覧・詳細が「浮いた面」として置かれる明るく軽い案。ツールバーは帯をやめ、ガラス調のカプセルが地の上に浮く。フォルダー名を大きな見出しにし、種類チップと浮かぶ選択バーで操作を手元に寄せた。</p><ul class="rv-note"><li>ガラス（背景ぼかし）はブラウザの <code>backdrop-filter</code>。GPUIでは半透明塗り＋縁ハイライトで代替する前提（DESIGN.md参照）。</li><li>地のグラデーションは静止画。ウィンドウ背景の透過（Mica/vibrancy）には依存しない。</li></ul>');
+X.start();
+})();
+</script>
+</body>
+</html>

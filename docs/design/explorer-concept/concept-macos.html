@@ -1,0 +1,1874 @@
+<!doctype html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explorer コンセプト macOS寄り</title>
+<script>
+  // テーマ・検証用切替はペイント前に確定させる
+  // mode: system | light | dark / icons: win | mac（仮素材の色セット）/ sel: solid | tint（選択の表現）
+  (function () {
+    var mode = 'system', icons = 'win', sel = 'solid';
+    try {
+      mode = localStorage.getItem('explorer-concept-macos-theme') || 'system';
+      icons = localStorage.getItem('explorer-concept-macos-icons') || 'win';
+      sel = localStorage.getItem('explorer-concept-macos-sel') || 'solid';
+    } catch (e) {}
+    var root = document.documentElement;
+    var dark = mode === 'dark' || (mode === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+    root.dataset.theme = dark ? 'dark' : 'light';
+    root.dataset.themeMode = mode;
+    root.dataset.icons = icons;
+    root.dataset.sel = sel;
+  })();
+</script>
+<style>
+/* ==========================================================================
+   トークン — 色・寸法はここに集約（GPUI側では Theme 構造体 / 定数に1対1で移す）
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  /* 文字 */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo UI",
+             -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, "BIZ UDGothic", monospace;
+  --fs-body: 13px;
+  --fs-small: 12px;
+  --fs-caption: 11.5px;
+  --fs-title: 15px;
+  --lh-body: 1.4;
+  --fw-strong: 600;
+
+  /* 面（明度差で層を作る）— 無彩色。青みも黄みも足さない */
+  --bg-chrome: #f0f0f0;
+  --bg-content: #ffffff;
+  --bg-pane: #fcfcfc;
+  --bg-field: #e4e4e4;
+  --bg-elevated: #ffffff;
+  --bg-track: #e2e2e2;
+  --bg-seg-on: #ffffff;
+  --bg-button: #ffffff;
+  --bg-button-hover: #f6f6f6;
+  --bg-button-pressed: #ebebeb;
+  --bg-well: #f2f2f2;
+
+  /* 状態（ホバー等は無彩色。青は「選択」と「メニューの現在項目」だけ） */
+  --bg-hover: rgba(0, 0, 0, 0.045);
+  --bg-pressed: rgba(0, 0, 0, 0.08);
+  --bg-nav-active: rgba(0, 0, 0, 0.085);
+  --bg-selected: #0a63d6;
+  --bg-selected-inactive: #e0e0e0;
+  --bg-menu-hover: #0a63d6;
+  --text-on-selected: #ffffff;
+  --text-muted-on-selected: #e6eefb;
+  --text-on-menu: #ffffff;
+  --text-muted-on-menu: #e6eefb;
+  --focus-on-selected: #ffffff;
+  --match-bg: rgba(255, 204, 0, 0.38);
+  --match-on-selected: rgba(0, 0, 0, 0.28);
+
+  /* 線（弱く。面の明度差を主、罫線は従） */
+  --border: #e6e6e6;
+  --border-strong: #d6d6d6;
+
+  /* 文字色（4段の階層） */
+  --text: #1d1d1f;
+  --text-muted: #626266;
+  --text-disabled: #b2b2b5;
+  --icon: #5a5a5e;
+  --accent: #0a63d6;
+  --focus: #0a63d6;
+  --focus-halo: rgba(10, 99, 214, 0.28);
+  --meter: #8a8a8e;
+  --meter-warn: #e07b10;
+
+  /* 影（1段・ぼかし控えめ。GPUI BoxShadow 1〜2個で再現できる範囲） */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.10), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --shadow-button: 0 1px 1.5px rgba(0, 0, 0, 0.06);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  --shadow-dialog: 0 18px 48px rgba(0, 0, 0, 0.20), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  --backdrop: rgba(0, 0, 0, 0.22);
+  --scroll-thumb: rgba(0, 0, 0, 0.22);
+
+  /* OSアイコンの代用色（実装ではOSから取得したビットマップに置き換わる）
+     既定 = 前回と同じ「Windows風仮素材」。data-icons="mac" で「macOS風仮素材」に切替（試作メモ） */
+  --obj-folder: #f0bd4f;
+  --obj-folder-back: #d9a032;
+  --obj-folder-glyph: #8a5d0c;
+  --obj-page: #fbfbfc;
+  --obj-page-fold: #e6e7ea;
+  --obj-page-edge: #b9bcc4;
+  --obj-text-line: #9aa0aa;
+  --obj-xls: #1e8449;
+  --obj-csv: #2e9a5c;
+  --obj-doc: #2a5fc4;
+  --obj-ppt: #cf5428;
+  --obj-pdf: #cc3333;
+  --obj-zip: #b07a1c;
+  --obj-exe: #586377;
+  --obj-vid: #7d4cc9;
+  --obj-code: #3d6f8f;
+  --obj-img-sky: #a9d3f0;
+  --obj-img-hill: #4f9d69;
+  --obj-img-sun: #f5b83d;
+  --obj-drive: #b3bac6;
+  --obj-drive-dark: #8a93a3;
+  --obj-drive-led: #3fb868;
+  --obj-drive-mark: #4f86e8;
+
+  /* サンプル画像の配色（コンテンツ扱い） */
+  --sample-sky: #bcdcf2;
+  --sample-sky-2: #f3d9b8;
+  --sample-hill: #5d9f73;
+  --sample-hill-2: #3f7d58;
+  --sample-sun: #f4b844;
+  --sample-water: #6aa7d8;
+  --sample-paper: #ffffff;
+  --sample-ui: #e9eaee;
+  --sample-ui-2: #f3f3f5;
+  --sample-line: #d9dbe1;
+  --obj-badge-text: #ffffff;
+
+  /* 寸法 */
+  --h-toolbar: 44px;
+  --h-status: 26px;
+  --h-header: 30px;
+  --h-row: 28px;
+  --h-nav: 30px;
+  --h-control: 30px;
+  --h-menu-item: 28px;
+  --w-sidebar: 208px;
+  --w-pane: 288px;
+  --w-search: 240px;
+  --w-tile: 104px;
+  --w-col-mod: 136px;
+  --w-col-kind: 140px;
+  --w-col-size: 88px;
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-obj: 16px;
+  --icon-obj-tile: 48px;
+  --icon-obj-hero: 64px;
+
+  /* 余白（4px基準） */
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 6px;
+  --sp-4: 8px;
+  --sp-5: 12px;
+  --sp-6: 16px;
+  --sp-7: 24px;
+
+  /* 角丸 */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-chrome: #2a2a2a;
+  --bg-content: #1e1e1e;
+  --bg-pane: #222222;
+  --bg-field: #363636;
+  --bg-elevated: #2c2c2c;
+  --bg-track: #3a3a3a;
+  --bg-seg-on: #5c5c5e;
+  --bg-button: #454547;
+  --bg-button-hover: #4d4d4f;
+  --bg-button-pressed: #58585a;
+  --bg-well: #282828;
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  --bg-pressed: rgba(255, 255, 255, 0.10);
+  --bg-nav-active: rgba(255, 255, 255, 0.10);
+  --bg-selected: #0a58c8;
+  --bg-selected-inactive: #3a3a3a;
+  --bg-menu-hover: #0a58c8;
+  --text-on-selected: #ffffff;
+  --text-muted-on-selected: #dde7f8;
+  --text-on-menu: #ffffff;
+  --text-muted-on-menu: #dde7f8;
+  --focus-on-selected: #ffffff;
+  --match-bg: rgba(255, 204, 0, 0.30);
+  --match-on-selected: rgba(0, 0, 0, 0.32);
+  --border: #333333;
+  --border-strong: #464646;
+  --text: #e6e6e8;
+  --text-muted: #a6a6ab;
+  --text-disabled: #5c5c60;
+  --icon: #b8b8bc;
+  --accent: #3f8cf2;
+  --focus: #3f8cf2;
+  --focus-halo: rgba(63, 140, 242, 0.32);
+  --meter: #8e8e93;
+  --meter-warn: #f0a030;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-button: 0 1px 1.5px rgba(0, 0, 0, 0.35);
+  --shadow-popover: 0 10px 28px rgba(0, 0, 0, 0.50), 0 0 0 0.5px rgba(255, 255, 255, 0.10);
+  --shadow-dialog: 0 20px 52px rgba(0, 0, 0, 0.60), 0 0 0 0.5px rgba(255, 255, 255, 0.10);
+  --backdrop: rgba(0, 0, 0, 0.45);
+  --scroll-thumb: rgba(255, 255, 255, 0.2);
+  --obj-page: #f1f2f4;
+  --obj-page-fold: #d6d8dd;
+  --obj-page-edge: #9ca1ab;
+  --obj-drive: #a3abb9;
+  --obj-drive-dark: #7b8496;
+}
+
+/* 選択の表現（検証用切替）：tint = 淡い青の面 + 通常の文字色 */
+:root[data-sel="tint"] {
+  --bg-selected: #dce7f9;
+  --text-on-selected: var(--text);
+  --text-muted-on-selected: var(--text-muted);
+  --focus-on-selected: var(--focus);
+  --match-on-selected: var(--match-bg);
+}
+:root[data-sel="tint"][data-theme="dark"] { --bg-selected: #203858; }
+
+/* macOS風仮素材（検証用）：淡い青のフォルダー、種別色はページ内に収めた帯、銀色のドライブ */
+:root[data-icons="mac"] {
+  --obj-folder: #78bdf4;
+  --obj-folder-back: #57a7ea;
+  --obj-folder-glyph: #2f7fc9;
+  --obj-page: #ffffff;
+  --obj-page-fold: #ececee;
+  --obj-page-edge: #c4c4c8;
+  --obj-text-line: #b4b4b9;
+  --obj-xls: #2f9e55;
+  --obj-csv: #3aa66a;
+  --obj-doc: #3a7fe0;
+  --obj-ppt: #e5732e;
+  --obj-pdf: #e2483d;
+  --obj-zip: #8e8e93;
+  --obj-exe: #636366;
+  --obj-vid: #8d5ad6;
+  --obj-code: #4d8db3;
+  --obj-drive: #d9d9dc;
+  --obj-drive-dark: #b4b4b9;
+  --obj-drive-led: #8e8e93;
+  --obj-drive-mark: #b4b4b9;
+}
+:root[data-icons="mac"][data-theme="dark"] {
+  --obj-folder: #6cb4ee;
+  --obj-folder-back: #4f9de2;
+  --obj-folder-glyph: #2a73b8;
+  --obj-page: #f2f2f4;
+  --obj-page-fold: #dcdce0;
+  --obj-page-edge: #a8a8ae;
+  --obj-drive: #c4c4c8;
+  --obj-drive-dark: #9e9ea4;
+}
+
+:root[data-density="compact"] {
+  --h-row: 24px;
+  --h-nav: 26px;
+}
+
+/* 900〜1040px 程度のウィンドウではサイドバーと詳細ペインを詰める */
+@media (max-width: 1040px) {
+  :root { --w-sidebar: 184px; --w-pane: 252px; --w-search: 200px; }
+}
+
+/* ==========================================================================
+   ベース
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  min-width: 860px;
+  min-height: 520px;
+  background: var(--bg-content);
+  color: var(--text);
+  font: var(--fs-body)/var(--lh-body) var(--font-ui);
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+button { font: inherit; color: inherit; cursor: default; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ico { width: var(--icon-md); height: var(--icon-md); flex: none; display: block; }
+.oi { width: var(--icon-obj); height: var(--icon-obj); flex: none; display: block; }
+.oi svg, .hero-icon svg { width: 100%; height: 100%; display: block; }
+.vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+
+.app { display: flex; flex-direction: column; height: 100vh; min-height: 520px; }
+
+/* ---------- アイコンボタン ---------- */
+.ibtn {
+  width: var(--h-control); height: var(--h-control);
+  display: inline-grid; place-items: center;
+  padding: 0; border: 0; border-radius: var(--r-md);
+  background: transparent; color: var(--icon);
+}
+.ibtn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.ibtn:active:not(:disabled) { background: var(--bg-pressed); }
+.ibtn:disabled { color: var(--text-disabled); }
+.ibtn[aria-pressed="true"], .ibtn[aria-expanded="true"] { background: var(--bg-pressed); color: var(--text); }
+.ibtn.sm { width: 22px; height: 22px; border-radius: var(--r-sm); }
+.ibtn.sm .ico { width: var(--icon-sm); height: var(--icon-sm); }
+
+/* ---------- ツールバー ---------- */
+.toolbar {
+  flex: none; height: var(--h-toolbar);
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: 0 var(--sp-4);
+  background: var(--bg-chrome);
+  border-bottom: 1px solid var(--border);
+}
+.group { display: flex; align-items: center; gap: var(--sp-1); flex: none; }
+
+.address {
+  flex: 1 1 0; min-width: 180px; height: var(--h-control);
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  background: var(--bg-field);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.address > .oi { margin-right: var(--sp-1); }
+.crumbs { display: flex; align-items: center; min-width: 0; flex: 1; margin: 0; padding: 0; list-style: none; overflow: hidden; }
+.crumbs li { display: flex; align-items: center; flex: none; min-width: 0; }
+.crumbs li[hidden] { display: none; }
+.crumbs li.shrink { flex: 0 1 auto; }
+.crumb {
+  height: 22px; padding: 0 var(--sp-3);
+  border: 0; border-radius: var(--r-sm); background: transparent;
+  color: var(--text-muted); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.crumb:hover { background: var(--bg-hover); color: var(--text); }
+.crumb[aria-current="page"] { color: var(--text); font-weight: var(--fw-strong); }
+.crumb-sep { color: var(--text-disabled); display: flex; }
+.crumb-sep .ico { width: 12px; height: 12px; }
+
+.search {
+  flex: 0 1 var(--w-search); min-width: 150px; height: var(--h-control);
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  background: var(--bg-field);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  color: var(--icon);
+}
+.search:focus-within { background: var(--bg-content); border-color: var(--focus); box-shadow: 0 0 0 3px var(--focus-halo); }
+.search input {
+  flex: 1; min-width: 0; height: 100%;
+  border: 0; outline: none; background: transparent;
+  color: var(--text); font: inherit;
+}
+.search input::placeholder { color: var(--text-muted); opacity: 1; }
+.search input::-webkit-search-cancel-button { display: none; }
+.search .ibtn[hidden] { display: none; }
+
+.seg { display: flex; gap: var(--sp-1); padding: var(--sp-1); background: var(--bg-track); border-radius: var(--r-md); flex: none; }
+.seg .ibtn { width: 26px; height: 26px; border-radius: var(--r-sm); }
+.seg .ibtn[aria-pressed="true"] { background: var(--bg-seg-on); color: var(--text); box-shadow: var(--shadow-xs); }
+.seg .ibtn:hover:not([aria-pressed="true"]) { background: var(--bg-hover); }
+
+/* ---------- 本体 ---------- */
+.body { flex: 1; min-height: 0; display: flex; }
+
+/* サイドバー */
+.sidebar {
+  flex: none; width: var(--w-sidebar);
+  overflow-y: auto;
+  padding: var(--sp-2) var(--sp-4) var(--sp-5);
+  background: var(--bg-chrome);
+  border-right: 1px solid var(--border);
+}
+.side-h {
+  margin: 0; padding: var(--sp-5) var(--sp-4) var(--sp-2);
+  font-size: var(--fs-caption); font-weight: var(--fw-strong);
+  color: var(--text-muted);
+}
+.side-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.place {
+  position: relative;
+  width: 100%; min-height: var(--h-nav);
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: 0 var(--sp-4);
+  border: 0; border-radius: var(--r-md);
+  background: transparent; color: var(--text);
+  text-align: left;
+}
+.place:hover { background: var(--bg-hover); }
+.place[aria-current="page"] { background: var(--bg-nav-active); font-weight: var(--fw-strong); }
+.place .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place.drive { align-items: flex-start; padding-top: 7px; padding-bottom: 7px; }
+.place.drive .oi { margin-top: 1px; }
+.drive-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.meter { height: 4px; border-radius: 2px; background: var(--bg-track); overflow: hidden; }
+.meter > span { display: block; height: 100%; border-radius: 2px; background: var(--meter); }
+.meter.warn > span { background: var(--meter-warn); }
+.drive-free { font-size: var(--fs-caption); color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+
+/* メイン（一覧） */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg-content); container-type: inline-size; container-name: main; }
+.scroller {
+  --cols: minmax(180px, 1fr) var(--w-col-mod) var(--w-col-kind) var(--w-col-size);
+  flex: 1; min-height: 0; overflow: auto; position: relative;
+}
+@container main (max-width: 590px) {
+  .scroller { --cols: minmax(160px, 1fr) var(--w-col-mod) var(--w-col-size); }
+  .c-kind { display: none !important; }
+}
+@container main (max-width: 430px) {
+  .scroller { --cols: minmax(140px, 1fr) var(--w-col-size); }
+  .c-mod { display: none !important; }
+}
+
+.lh {
+  position: sticky; top: 0; z-index: 1;
+  height: var(--h-header);
+  display: grid; grid-template-columns: var(--cols); align-items: stretch;
+  padding: 0 var(--sp-3);
+  background: var(--bg-content);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-small);
+}
+.lh[hidden] { display: none; }
+.hc { position: relative; display: flex; min-width: 0; }
+.hc + .hc::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 1px; background: var(--border); }
+.hbtn {
+  flex: 1; min-width: 0; margin: 3px 0;
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--text-muted);
+  white-space: nowrap;
+}
+.hbtn:hover { background: var(--bg-hover); color: var(--text); }
+.hbtn[data-active] { color: var(--text); }
+.hbtn .ico { width: 12px; height: 12px; color: var(--text-muted); }
+.hc.c-size .hbtn { justify-content: flex-end; }
+.hc.c-name .hbtn { padding-left: calc(var(--sp-4) + var(--icon-obj) + var(--sp-4)); }
+
+.rows { padding: var(--sp-1) var(--sp-3) var(--sp-4); outline: none; min-height: calc(100% - var(--h-header)); }
+.rows:focus-visible:not(:has(.row, .tile)) { outline: 2px solid var(--focus); outline-offset: -4px; }
+.row {
+  display: grid; grid-template-columns: var(--cols); align-items: center;
+  height: var(--h-row);
+  border-radius: var(--r-md);
+  color: var(--text);
+}
+.c { min-width: 0; padding: 0 var(--sp-4); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.c-name { display: flex; align-items: center; gap: var(--sp-4); }
+.nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.c-mod, .c-kind, .c-size { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.c-size { text-align: right; }
+.row:hover, .tile:hover { background: var(--bg-hover); }
+.row.sel, .tile.sel { background: var(--bg-selected-inactive); }
+.rows.focused .row.sel, .rows.focused .tile.sel { background: var(--bg-selected); color: var(--text-on-selected); }
+.rows.focused .row.sel .c-mod, .rows.focused .row.sel .c-kind, .rows.focused .row.sel .c-size,
+.rows.focused .sel.hid .nm { color: var(--text-muted-on-selected); }
+.rows.focused .sel mark { background: var(--match-on-selected); }
+.row.sel.sp { border-top-left-radius: 0; border-top-right-radius: 0; }
+.row.sel.sn { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.rows.kbd.focused .active { box-shadow: inset 0 0 0 2px var(--focus); }
+.rows.kbd.focused .active.sel { box-shadow: inset 0 0 0 2px var(--focus-on-selected); }
+.row.hid .nm, .tile.hid .nm { color: var(--text-muted); }
+.row.hid .oi, .tile.hid .oi { opacity: 0.5; }
+mark { background: var(--match-bg); color: inherit; border-radius: 2px; }
+
+/* アイコン表示 */
+.rows.grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--w-tile), 1fr));
+  align-content: start; gap: var(--sp-2);
+  padding: var(--sp-4);
+  min-height: 100%;
+}
+.tile {
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  text-align: center;
+}
+.tile .oi { width: var(--icon-obj-tile); height: var(--icon-obj-tile); }
+.tile .nm {
+  font-size: var(--fs-small); line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+  padding: 0 5px; border-radius: var(--r-sm);
+}
+:root[data-sel="solid"] .tile.sel,
+:root[data-sel="solid"] .rows.focused .tile.sel { background: transparent; color: var(--text); }
+:root[data-sel="solid"] .tile.sel .oi { border-radius: var(--r-md); background: var(--bg-selected-inactive); box-shadow: 0 0 0 5px var(--bg-selected-inactive); }
+:root[data-sel="solid"] .tile.sel .nm { background: var(--bg-selected-inactive); }
+:root[data-sel="solid"] .rows.focused .tile.sel .nm { background: var(--bg-selected); color: var(--text-on-selected); }
+:root[data-sel="solid"] .tile.sel:hover { background: var(--bg-hover); }
+:root[data-sel="solid"] .rows.kbd.focused .tile.active { box-shadow: inset 0 0 0 2px var(--focus); }
+
+.empty {
+  position: absolute; inset: var(--h-header) 0 0 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-5);
+  color: var(--text-muted); text-align: center; pointer-events: none;
+}
+.empty[hidden] { display: none; }
+.empty.no-header { inset: 0; }
+.empty .btn { pointer-events: auto; }
+
+/* 詳細ペイン */
+.pane {
+  flex: none; width: var(--w-pane);
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg-pane);
+  border-left: 1px solid var(--border);
+}
+.pane[hidden] { display: none; }
+.pane-head {
+  flex: none; height: var(--h-header);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--sp-2) 0 var(--sp-6);
+  font-size: var(--fs-small); font-weight: var(--fw-strong); color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.pane-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-6); user-select: text; -webkit-user-select: text; }
+.hero {
+  height: 156px; flex: none;
+  display: grid; place-items: center;
+  background: var(--bg-well);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.hero.image { background: var(--bg-track); }
+.hero.image svg { width: 100%; height: 100%; display: block; }
+.hero-icon { width: var(--icon-obj-hero); height: var(--icon-obj-hero); }
+.stack { position: relative; width: 84px; height: 72px; }
+.stack .hero-icon { position: absolute; width: 56px; height: 56px; }
+.p-name { margin: 0; font-size: var(--fs-title); font-weight: var(--fw-strong); line-height: 1.35; overflow-wrap: anywhere; }
+.p-kind { margin-top: var(--sp-1); color: var(--text-muted); }
+.props { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-3) var(--sp-5); margin: 0; font-size: var(--fs-small); }
+.props dt { color: var(--text-muted); white-space: nowrap; }
+.props dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.props .meter { margin-top: 5px; }
+.sec-h { margin: 0 0 var(--sp-3); font-size: var(--fs-caption); font-weight: var(--fw-strong); color: var(--text-muted); }
+.pre {
+  margin: 0; max-height: 220px; overflow: auto;
+  padding: var(--sp-4) var(--sp-5);
+  font: var(--fs-small)/1.55 var(--font-mono);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--bg-well);
+  border-radius: var(--r-md);
+}
+.actions { display: flex; gap: var(--sp-4); flex-wrap: wrap; }
+.btn {
+  height: 28px; padding: 0 var(--sp-5);
+  display: inline-flex; align-items: center; gap: var(--sp-3);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  background: var(--bg-button); color: var(--text);
+  box-shadow: var(--shadow-button);
+}
+.btn:hover { background: var(--bg-button-hover); }
+.btn:active { background: var(--bg-button-pressed); }
+.btn .ico { width: var(--icon-sm); height: var(--icon-sm); color: var(--icon); }
+
+/* ステータスバー */
+.status {
+  flex: none; height: var(--h-status);
+  display: flex; align-items: center; gap: var(--sp-5);
+  padding: 0 var(--sp-3) 0 var(--sp-5);
+  background: var(--bg-chrome);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-caption); color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.status .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status .notice { color: var(--text); }
+.sbtn {
+  height: 20px; padding: 0 var(--sp-3);
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.sbtn:hover { background: var(--bg-hover); color: var(--text); }
+.sbtn[aria-pressed="true"] { background: var(--bg-pressed); color: var(--text); }
+.sbtn .ico { width: 13px; height: 13px; }
+.sbtn.proto { border: 1px dashed var(--border-strong); }
+
+/* メニュー */
+.menu {
+  position: fixed; z-index: 50; min-width: 228px;
+  padding: var(--sp-2);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-popover);
+  outline: none;
+}
+.menu[hidden] { display: none; }
+.mi {
+  width: 100%; height: var(--h-menu-item);
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: 0 var(--sp-5) 0 var(--sp-3);
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text);
+  text-align: left; white-space: nowrap;
+}
+.mi .chk { width: var(--icon-sm); height: var(--icon-sm); visibility: hidden; color: var(--text); }
+.mi[aria-checked="true"] .chk { visibility: visible; }
+.mi .kbd { margin-left: auto; padding-left: var(--sp-7); color: var(--text-muted); font-size: var(--fs-small); }
+.mi:focus { background: var(--bg-menu-hover); color: var(--text-on-menu); outline: none; }
+.mi:focus .chk { color: var(--text-on-menu); }
+.mi:focus .kbd { color: var(--text-muted-on-menu); }
+.msep { height: 1px; margin: var(--sp-2) var(--sp-3); background: var(--border); }
+.mh { padding: var(--sp-3) var(--sp-5) var(--sp-1) calc(var(--sp-3) + var(--icon-sm) + var(--sp-4)); font-size: var(--fs-caption); font-weight: var(--fw-strong); color: var(--text-muted); }
+
+/* 試作メモ（アプリ本体とは別の層） */
+dialog.spec {
+  width: min(780px, calc(100vw - 48px)); max-height: calc(100vh - 48px);
+  padding: 0; border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--bg-elevated); color: var(--text);
+  box-shadow: var(--shadow-dialog);
+  user-select: text; -webkit-user-select: text;
+}
+dialog.spec::backdrop { background: var(--backdrop); }
+dialog.spec[open] { display: flex; flex-direction: column; }
+.spec-head {
+  flex: none; display: flex; align-items: center; gap: var(--sp-4);
+  height: 44px; padding: 0 var(--sp-3) 0 var(--sp-6);
+  border-bottom: 1px solid var(--border);
+}
+.spec-head h2 { margin: 0; font-size: 14px; font-weight: var(--fw-strong); flex: 1; }
+.spec-body { overflow: auto; padding: var(--sp-6); display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6) var(--sp-7); font-size: var(--fs-small); }
+.spec-body section.wide { grid-column: 1 / -1; }
+.spec-body h3 { margin: 0 0 var(--sp-4); font-size: var(--fs-caption); font-weight: var(--fw-strong); color: var(--text-muted); }
+.spec-body p, .spec-body ul { margin: 0 0 var(--sp-3); line-height: 1.6; }
+.spec-body ul { padding-left: 18px; }
+.tok { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: var(--sp-4); padding: 3px 0; }
+.sw { width: 18px; height: 18px; border-radius: var(--r-sm); border: 1px solid var(--border-strong); }
+.tok code, .kv code { font: 11.5px var(--font-mono); }
+.tok .v { color: var(--text-muted); font: 11.5px var(--font-mono); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px var(--sp-5); }
+.kv dd { margin: 0; color: var(--text-muted); }
+.seg.text .opt { height: 26px; padding: 0 var(--sp-5); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-muted); }
+.seg.text .opt[aria-pressed="true"] { background: var(--bg-seg-on); color: var(--text); box-shadow: var(--shadow-xs); }
+.seg.text { display: inline-flex; }
+.kv.toggles { align-items: center; gap: var(--sp-4) var(--sp-6); }
+.kv.toggles dd { color: inherit; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ツールバー -->
+  <header class="toolbar">
+    <div class="group" role="group" aria-label="移動">
+      <button class="ibtn" id="btn-back" data-icon="back" aria-label="戻る" title="戻る (Alt+←)"></button>
+      <button class="ibtn" id="btn-fwd" data-icon="forward" aria-label="進む" title="進む (Alt+→)"></button>
+      <button class="ibtn" id="btn-up" data-icon="up" aria-label="上の階層へ" title="上の階層へ (Alt+↑)"></button>
+      <button class="ibtn" id="btn-refresh" data-icon="refresh" aria-label="最新の情報に更新" title="最新の情報に更新 (F5)"></button>
+    </div>
+
+    <nav class="address" aria-label="現在の場所">
+      <span class="oi" id="addr-icon" aria-hidden="true"></span>
+      <ol class="crumbs" id="crumbs"></ol>
+    </nav>
+
+    <div class="search" role="search">
+      <span data-icon="search" aria-hidden="true"></span>
+      <input type="search" id="search" autocomplete="off" spellcheck="false" aria-label="現在のフォルダー内を検索" aria-keyshortcuts="Control+F">
+      <button class="ibtn sm" id="search-clear" data-icon="x" aria-label="検索をクリア" title="検索をクリア (Esc)" hidden></button>
+    </div>
+
+    <div class="seg" role="group" aria-label="表示方法">
+      <button class="ibtn" id="view-details" data-icon="list" aria-label="詳細" title="詳細" aria-pressed="true"></button>
+      <button class="ibtn" id="view-icons" data-icon="grid" aria-label="アイコン" title="アイコン" aria-pressed="false"></button>
+    </div>
+    <div class="group">
+      <button class="ibtn" id="btn-pane" data-icon="panel" aria-label="詳細ペイン" title="詳細ペイン (Alt+P)" aria-pressed="true" aria-controls="pane" aria-keyshortcuts="Alt+P"></button>
+      <button class="ibtn" id="btn-settings" data-icon="settings" aria-label="表示と設定" title="表示と設定" aria-haspopup="menu" aria-expanded="false"></button>
+    </div>
+  </header>
+
+  <div class="body">
+    <!-- サイドバー -->
+    <aside class="sidebar" aria-label="ナビゲーション">
+      <nav id="sidenav" aria-label="場所">
+        <h2 class="side-h" id="h-places">よく使う場所</h2>
+        <ul class="side-list" id="places" aria-labelledby="h-places"></ul>
+        <h2 class="side-h" id="h-drives">ドライブ</h2>
+        <ul class="side-list" id="drives" aria-labelledby="h-drives"></ul>
+      </nav>
+    </aside>
+
+    <!-- 一覧 -->
+    <main class="main">
+      <div class="scroller" id="scroller">
+        <div class="lh" id="lh">
+          <div class="hc c-name"><button class="hbtn" data-key="name">名前</button></div>
+          <div class="hc c-mod"><button class="hbtn" data-key="mtime">更新日時</button></div>
+          <div class="hc c-kind"><button class="hbtn" data-key="kind">種類</button></div>
+          <div class="hc c-size"><button class="hbtn" data-key="size">サイズ</button></div>
+        </div>
+        <div class="rows focused" id="rows" role="listbox" tabindex="0" aria-multiselectable="true"></div>
+        <div class="empty" id="empty" hidden></div>
+      </div>
+    </main>
+
+    <!-- 詳細ペイン -->
+    <aside class="pane" id="pane" aria-label="詳細">
+      <div class="pane-head">
+        <span>詳細</span>
+        <button class="ibtn sm" id="pane-close" data-icon="x" aria-label="詳細ペインを閉じる" title="詳細ペインを閉じる (Alt+P)"></button>
+      </div>
+      <div class="pane-body" id="pane-body"></div>
+    </aside>
+  </div>
+
+  <!-- ステータスバー -->
+  <footer class="status">
+    <span id="st-count"></span>
+    <span id="st-sel"></span>
+    <span class="grow"><span class="notice" id="st-notice" role="status" aria-live="polite"></span></span>
+    <button class="sbtn" id="btn-hidden" aria-pressed="false" title="隠しファイルを表示 (Ctrl+H)" aria-keyshortcuts="Control+H"><span data-icon="eye"></span>隠しファイル</button>
+    <button class="sbtn proto" id="btn-spec" aria-haspopup="dialog" title="このモックの設計メモ（試作専用）"><span data-icon="info"></span>試作メモ</button>
+  </footer>
+</div>
+
+<div class="menu" id="menu" role="menu" hidden tabindex="-1"></div>
+
+<!-- 試作メモ（アプリ本体の外側にある検討用パネル） -->
+<dialog class="spec" id="spec" aria-labelledby="spec-title">
+  <div class="spec-head">
+    <h2 id="spec-title">試作メモ（macOS寄り配色案）</h2>
+    <div class="seg text" role="group" aria-label="テーマ">
+      <button class="opt" data-theme-opt="system">システム</button>
+      <button class="opt" data-theme-opt="light">ライト</button>
+      <button class="opt" data-theme-opt="dark">ダーク</button>
+    </div>
+    <button class="ibtn" id="spec-close" data-icon="x" aria-label="試作メモを閉じる"></button>
+  </div>
+  <div class="spec-body" id="spec-body">
+    <section class="wide">
+      <h3>検証用の切替（OSアイコンの色に依存せず成立する配色かを見る）</h3>
+      <dl class="kv toggles">
+        <dt>ファイルアイコンの仮素材</dt>
+        <dd><div class="seg text" role="group" aria-label="ファイルアイコンの仮素材">
+          <button class="opt" data-icons-opt="win">Windows風（前回の仮素材）</button>
+          <button class="opt" data-icons-opt="mac">macOS風（今回の仮素材）</button>
+        </div></dd>
+        <dt>選択の表現</dt>
+        <dd><div class="seg text" role="group" aria-label="選択の表現">
+          <button class="opt" data-sel-opt="solid">塗り（アクセント + 白文字）</button>
+          <button class="opt" data-sel-opt="tint">淡色（前回に近い）</button>
+        </div></dd>
+      </dl>
+      <p style="margin-top:8px">どちらの仮素材も実装では使いません。本番はOSのアイコンをそのまま表示し、減色・単色化はしません。この切替は「UI側の配色がアイコンの色を選ばないか」を確かめるためのものです。</p>
+    </section>
+    <section class="wide">
+      <h3>このモックについて</h3>
+      <p>設計検討用の単一HTMLモックです。表示しているファイル・フォルダー・ドライブはすべてサンプルデータで、OSのAPIは呼んでいません。
+         ファイル・フォルダー・ドライブのカラーアイコンは、実装時にOSから取得するアイコンの<strong>代用として描いた仮の絵</strong>です。
+         操作アイコンはLucideの作法（24pxグリッド・線画・丸端）に合わせて自作した簡易パスで、Lucide本体のコードは含みません。</p>
+      <p>検索・プレビュー・アイコン表示・右クリックメニューは将来UIの検討を含みます（PoCに実装済みという意味ではありません）。
+         名前の変更・コピー・削除などの操作は、メニューの見た目のみで動作しません。詳細は同じフォルダーの DESIGN.md（共通）と DESIGN-macos.md（この配色案の変更点）を参照してください。</p>
+    </section>
+    <section>
+      <h3>色（現在のテーマ）</h3>
+      <div id="spec-colors"></div>
+    </section>
+    <section>
+      <h3>OSアイコン代用色</h3>
+      <div id="spec-objs"></div>
+      <h3 style="margin-top:16px">寸法</h3>
+      <dl class="kv" id="spec-sizes"></dl>
+    </section>
+    <section class="wide">
+      <h3>キーボード</h3>
+      <dl class="kv">
+        <dt>↑ ↓ / Home End / PageUp PageDown</dt><dd>選択移動（Shiftで範囲、Ctrlでフォーカスのみ移動、Spaceで切替）</dd>
+        <dt>Enter / ダブルクリック</dt><dd>フォルダーを開く</dd>
+        <dt>Backspace / Alt+← / Alt+→ / Alt+↑</dt><dd>戻る / 進む / 上の階層へ</dd>
+        <dt>Ctrl+F</dt><dd>検索（Enterで一覧へ、Escでクリア）</dd>
+        <dt>Ctrl+A / Esc</dt><dd>すべて選択 / 選択解除</dd>
+        <dt>Alt+P / Ctrl+H / F5</dt><dd>詳細ペイン / 隠しファイル / 更新</dd>
+        <dt>Shift+F10 / アプリケーションキー</dt><dd>コンテキストメニュー</dd>
+      </dl>
+    </section>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+/* ==========================================================================
+   アイコン
+   ========================================================================== */
+// 操作アイコン：単色線画（currentColor）。Lucideの作法に合わせた自作パス。
+const OP = {
+  back: '<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>',
+  forward: '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+  up: '<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>',
+  x: '<path d="M17 7L7 17"/><path d="M7 7l10 10"/>',
+  list: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4.5 6h.01"/><path d="M4.5 12h.01"/><path d="M4.5 18h.01"/>',
+  grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+  panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>',
+  settings: '<path d="M4 7h9"/><path d="M19 7h1"/><circle cx="16" cy="7" r="2.5"/><path d="M4 17h1"/><path d="M11 17h9"/><circle cx="8" cy="17" r="2.5"/>',
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  sortUp: '<path d="M6 15l6-6 6 6"/>',
+  sortDown: '<path d="M6 9l6 6 6-6"/>',
+  eye: '<path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z"/><circle cx="12" cy="12" r="2.8"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H7a2 2 0 0 0-2 2v8"/>',
+  open: '<path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+};
+const op = (name) =>
+  `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${OP[name]}</svg>`;
+
+// オブジェクトアイコン：OSアイコンの代用（カラー）。実装ではOSから取得する。
+const GLYPH = {
+  home: '<path d="M11 19.5l5-4.5 5 4.5"/><path d="M12.6 18.4v5.6h6.8v-5.6"/>',
+  desk: '<rect x="10.5" y="14.2" width="11" height="7.4" rx="1"/><path d="M14 24.6h4"/>',
+  docs: '<path d="M11.5 16h9"/><path d="M11.5 19.5h9"/><path d="M11.5 23h5.5"/>',
+  down: '<path d="M16 14v8.5"/><path d="M12.4 19.4L16 23l3.6-3.6"/>',
+  pics: '<path d="M10.5 24l4.2-4.6 3 3 2-2 2 3.6"/><circle cx="19.4" cy="15.6" r="1.2"/>',
+};
+const SVG32 = (inner) => `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">${inner}</svg>`;
+function folderSvg(glyph) {
+  return SVG32(
+    '<path style="fill:var(--obj-folder-back)" d="M3 8.5A2.5 2.5 0 0 1 5.5 6h6.2a2 2 0 0 1 1.45.62L15 8.5h11.5A2.5 2.5 0 0 1 29 11v13.5a2.5 2.5 0 0 1-2.5 2.5h-21A2.5 2.5 0 0 1 3 24.5z"/>' +
+    '<path style="fill:var(--obj-folder)" d="M3 13a2.5 2.5 0 0 1 2.5-2.5h21A2.5 2.5 0 0 1 29 13v11.5a2.5 2.5 0 0 1-2.5 2.5h-21A2.5 2.5 0 0 1 3 24.5z"/>' +
+    (glyph ? `<g fill="none" style="stroke:var(--obj-folder-glyph)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[glyph]}</g>` : '')
+  );
+}
+const FT = {
+  xlsx: { c: '--obj-xls', l: 'XLS' }, csv: { c: '--obj-csv', l: 'CSV' },
+  docx: { c: '--obj-doc', l: 'DOC' }, pptx: { c: '--obj-ppt', l: 'PPT' },
+  pdf: { c: '--obj-pdf', l: 'PDF' }, zip: { c: '--obj-zip', l: 'ZIP' },
+  exe: { c: '--obj-exe', l: 'EXE' }, msi: { c: '--obj-exe', l: 'MSI' },
+  mp4: { c: '--obj-vid', l: 'MP4' }, ps1: { c: '--obj-code', l: 'PS1' },
+  png: { img: true }, jpg: { img: true },
+  txt: { text: true }, md: { text: true }, ini: { text: true }, dat: {}, gitconfig: { text: true },
+};
+const iconSet = () => document.documentElement.dataset.icons || 'win';
+function fileSvg(ext, big) {
+  const t = FT[ext] || {};
+  let inner =
+    '<path style="fill:var(--obj-page);stroke:var(--obj-page-edge)" d="M8 3.5h10.8l6.7 6.7V27a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 27V5A1.5 1.5 0 0 1 8 3.5z"/>' +
+    '<path style="fill:var(--obj-page-fold);stroke:var(--obj-page-edge)" stroke-linejoin="round" d="M18.8 3.5v5.2a1.5 1.5 0 0 0 1.5 1.5h5.2"/>';
+  if (t.img) {
+    inner += '<rect x="9.5" y="13" width="13" height="11" rx="1" style="fill:var(--obj-img-sky)"/>' +
+             '<path d="M9.5 22.6l4-4.4 3 3 2-2 4 4V24h-13z" style="fill:var(--obj-img-hill)"/>' +
+             '<circle cx="18.8" cy="16.2" r="1.5" style="fill:var(--obj-img-sun)"/>';
+  } else if (t.c && iconSet() === 'mac') {
+    // macOS風仮素材：種別色はページ内の帯に収める（ページの外にはみ出さない）
+    inner += `<rect x="9" y="18.5" width="14" height="7" rx="1.4" style="fill:var(${t.c})"/>`;
+    if (big) inner += `<text x="16" y="23.6" font-size="4.6" font-weight="700" text-anchor="middle" style="fill:var(--obj-badge-text)" font-family="Segoe UI, Arial, sans-serif">${t.l}</text>`;
+  } else if (t.c) {
+    inner += `<rect x="3" y="15" width="18" height="9.5" rx="1.6" style="fill:var(${t.c})"/>`;
+    if (big) inner += `<text x="12" y="21.9" font-size="6.2" font-weight="700" text-anchor="middle" style="fill:var(--obj-badge-text)" font-family="Segoe UI, Arial, sans-serif">${t.l}</text>`;
+  } else if (t.text) {
+    inner += '<g style="stroke:var(--obj-text-line)" stroke-width="1.4" stroke-linecap="round"><path d="M10 14.5h12"/><path d="M10 18h12"/><path d="M10 21.5h12"/><path d="M10 25h7"/></g>';
+  }
+  return SVG32(inner);
+}
+function driveSvg(sys) {
+  return SVG32(
+    '<rect x="3" y="10" width="26" height="13" rx="3" style="fill:var(--obj-drive)"/>' +
+    '<path d="M3 17.5h26V20a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" style="fill:var(--obj-drive-dark)"/>' +
+    '<circle cx="24.6" cy="20.2" r="1.2" style="fill:var(--obj-drive-led)"/>' +
+    (sys ? '<rect x="6.5" y="12.6" width="5" height="3" rx=".8" style="fill:var(--obj-drive-mark)"/>' : '')
+  );
+}
+function objSvg(n, big) {
+  if (n.drive) return driveSvg(n.sys);
+  if (n.type === 'dir') return folderSvg(n.glyph);
+  return fileSvg(n.ext, big);
+}
+
+/* ==========================================================================
+   サンプルデータ（OSから取得する想定の一覧を模したもの）
+   ========================================================================== */
+const T = (y, m, d, h, mi) => new Date(y, m - 1, d, h, mi).getTime();
+const KB = 1024, MB = KB * 1024, GB = MB * 1024;
+function dir(name, mtime, children = [], extra = {}) { return { name, type: 'dir', mtime, children, ...extra }; }
+function file(name, size, mtime, extra = {}) {
+  const dot = name.lastIndexOf('.');
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+  return { name, type: 'file', ext, size: Math.round(size), mtime, ...extra };
+}
+
+const README = `# 共有ドキュメント
+
+チームの共有資料はこのフォルダーにまとめます。
+
+- 会議メモ … 週次定例の議事録
+- 請求書 … 月ごとにPDFで保存
+- プロジェクト … 進行中の案件ごと
+
+古い資料は「アーカイブ」へ移動してください。`;
+const MEMO = `買い出し
+・付箋（黄）
+・単三電池 ×4
+・宅配用の箱
+
+来週の確認事項
+・請求書の送付先変更
+・キックオフ資料の最終版`;
+const PS1 = String.raw`# ドキュメントを D: へ同期する
+$src = "$env:USERPROFILE\Documents"
+$dst = "D:\バックアップ\Documents"
+robocopy $src $dst /MIR /R:1 /W:1 /NP`;
+const MTG = (d) => `# ${d} 定例
+
+## 決定事項
+- リリース判定は来週水曜
+- 素材は「素材一式.zip」を正とする
+
+## 宿題
+- 見積の再確認`;
+
+const docs = dir('ドキュメント', T(2026, 11, 14, 9, 41), [
+  dir('プロジェクト', T(2026, 11, 13, 18, 2), [
+    dir('サイト改修', T(2026, 11, 10, 15, 20), [
+      file('要件定義.docx', 284 * KB, T(2026, 11, 6, 11, 3)),
+      file('ワイヤーフレーム.pdf', 3.4 * MB, T(2026, 11, 9, 17, 48)),
+      file('スケジュール.xlsx', 61.2 * KB, T(2026, 11, 10, 15, 20)),
+    ]),
+    dir('年次レポート 2026', T(2026, 10, 28, 10, 15), [
+      file('原稿.docx', 512 * KB, T(2026, 10, 28, 10, 15)),
+      file('グラフ素材.zip', 22.8 * MB, T(2026, 10, 27, 19, 40)),
+    ]),
+    file('進捗まとめ.md', 4.2 * KB, T(2026, 11, 13, 18, 2), { content: '# 進捗まとめ\n\n- サイト改修: 設計レビュー済み\n- 年次レポート: 原稿 80%\n- ロードマップ: 来週更新' }),
+    file('タスク一覧.csv', 18.6 * KB, T(2026, 11, 12, 9, 30)),
+    file('ロードマップ.pptx', 2.9 * MB, T(2026, 11, 4, 16, 12)),
+  ], { ctime: T(2026, 4, 1, 9, 0) }),
+  dir('会議メモ', T(2026, 11, 12, 16, 30), [
+    file('2026-10-29 定例.md', 2.1 * KB, T(2026, 10, 29, 16, 40), { content: MTG('2026-10-29') }),
+    file('2026-11-05 定例.md', 2.4 * KB, T(2026, 11, 5, 16, 35), { content: MTG('2026-11-05') }),
+    file('2026-11-12 定例.md', 2.6 * KB, T(2026, 11, 12, 16, 30), { content: MTG('2026-11-12') }),
+    file('テンプレート.md', 0.6 * KB, T(2026, 6, 2, 10, 0), { content: '# YYYY-MM-DD 定例\n\n## 決定事項\n- \n\n## 宿題\n- ' }),
+  ]),
+  dir('請求書', T(2026, 11, 1, 10, 5), [
+    file('請求書_2026-09.pdf', 188 * KB, T(2026, 9, 30, 17, 0)),
+    file('請求書_2026-10.pdf', 192 * KB, T(2026, 10, 31, 17, 2)),
+    file('請求書_2026-11.pdf', 190 * KB, T(2026, 11, 1, 10, 5)),
+  ]),
+  dir('設計資料', T(2026, 11, 2, 13, 0), []),
+  dir('アーカイブ', T(2026, 4, 3, 9, 20), [
+    file('2024年度.zip', 1.2 * GB, T(2025, 4, 2, 18, 30)),
+    file('2025年度.zip', 1.6 * GB, T(2026, 4, 3, 9, 20)),
+  ]),
+  file('2026年度_予算案.xlsx', 48.2 * KB, T(2026, 11, 14, 9, 41)),
+  file('企画書_v3.docx', 1.24 * MB, T(2026, 11, 13, 21, 7), { ctime: T(2026, 10, 20, 14, 2) }),
+  file('キックオフ資料.pptx', 6.8 * MB, T(2026, 11, 11, 19, 25)),
+  file('契約書_署名済み.pdf', 842 * KB, T(2026, 11, 8, 12, 14)),
+  file('議事録_2026-11-12.docx', 36.4 * KB, T(2026, 11, 12, 17, 3)),
+  file('売上データ_10月.csv', 214 * KB, T(2026, 11, 2, 8, 55)),
+  file('README.md', 3.1 * KB, T(2026, 9, 18, 11, 22), { content: README }),
+  file('メモ.txt', 1.4 * KB, T(2026, 11, 14, 8, 12), { content: MEMO }),
+  file('ロゴ_最終版.png', 286 * KB, T(2026, 10, 24, 15, 9), { pv: 0 }),
+  file('集合写真_秋合宿.jpg', 4.6 * MB, T(2026, 10, 19, 13, 47), { pv: 1 }),
+  file('素材一式.zip', 128 * MB, T(2026, 11, 6, 20, 33)),
+  file('デモ動画.mp4', 312 * MB, T(2026, 11, 10, 22, 15)),
+  file('setup-tool.exe', 18.4 * MB, T(2026, 10, 30, 9, 8)),
+  file('backup.ps1', 2.2 * KB, T(2026, 9, 2, 23, 40), { content: PS1 }),
+  file('desktop.ini', 0.4 * KB, T(2026, 4, 1, 9, 0), { hidden: true, content: '[.ShellClassInfo]\nLocalizedResourceName=@%SystemRoot%\\system32\\shell32.dll,-21770' }),
+], { fs: 'Documents', glyph: 'docs', ctime: T(2025, 3, 30, 10, 0) });
+
+const desk = dir('デスクトップ', T(2026, 11, 14, 9, 30), [
+  dir('一時フォルダー', T(2026, 11, 13, 12, 0), []),
+  file('ショートカット一覧.txt', 2.8 * KB, T(2026, 11, 1, 10, 0), { content: 'Ctrl+F … 検索\nAlt+P … 詳細ペイン\nAlt+↑ … 上の階層へ' }),
+  file('スクリーンショット 2026-11-14 093012.png', 512 * KB, T(2026, 11, 14, 9, 30), { pv: 2 }),
+  file('見積書_ドラフト.xlsx', 33.9 * KB, T(2026, 11, 12, 18, 44)),
+], { fs: 'Desktop', glyph: 'desk' });
+
+const dl = dir('ダウンロード', T(2026, 11, 14, 8, 50), [
+  dir('解凍済み', T(2026, 11, 7, 21, 0), []),
+  file('setup-installer.msi', 64.3 * MB, T(2026, 11, 14, 8, 50)),
+  file('manual_ja.pdf', 9.7 * MB, T(2026, 11, 13, 20, 11)),
+  file('font-pack.zip', 41.5 * MB, T(2026, 11, 7, 20, 58)),
+  file('wallpaper_4k.jpg', 7.9 * MB, T(2026, 11, 5, 22, 3), { pv: 3 }),
+  file('invoice_2611.pdf', 101 * KB, T(2026, 11, 4, 9, 12)),
+  file('sample-data.csv', 1.1 * MB, T(2026, 10, 31, 15, 40)),
+  file('presentation-template.pptx', 4.4 * MB, T(2026, 10, 22, 11, 5)),
+  file('driver_update.exe', 212 * MB, T(2026, 10, 18, 7, 30)),
+], { fs: 'Downloads', glyph: 'down' });
+
+const pics = dir('ピクチャ', T(2026, 11, 14, 9, 30), [
+  dir('スクリーンショット', T(2026, 11, 14, 9, 30), [
+    file('スクリーンショット 2026-11-12 141502.png', 384 * KB, T(2026, 11, 12, 14, 15), { pv: 2 }),
+    file('スクリーンショット 2026-11-13 101144.png', 455 * KB, T(2026, 11, 13, 10, 11), { pv: 0 }),
+    file('スクリーンショット 2026-11-14 093012.png', 512 * KB, T(2026, 11, 14, 9, 30), { pv: 2 }),
+  ]),
+  dir('2026 秋', T(2026, 10, 20, 8, 0), [
+    file('IMG_2101.jpg', 5.2 * MB, T(2026, 10, 19, 13, 40), { pv: 1 }),
+    file('IMG_2102.jpg', 4.9 * MB, T(2026, 10, 19, 13, 47), { pv: 3 }),
+  ]),
+  file('プロフィール.jpg', 1.3 * MB, T(2026, 9, 1, 12, 0), { pv: 0 }),
+  file('banner.png', 702 * KB, T(2026, 10, 2, 17, 31), { pv: 3 }),
+  file('IMG_2041.jpg', 3.8 * MB, T(2026, 8, 14, 18, 22), { pv: 1 }),
+  file('IMG_2042.jpg', 4.1 * MB, T(2026, 8, 14, 18, 25), { pv: 3 }),
+  file('スキャン_領収書.pdf', 640 * KB, T(2026, 11, 3, 10, 2)),
+], { fs: 'Pictures', glyph: 'pics' });
+
+const aoi = dir('aoi', T(2026, 11, 14, 9, 12), [
+  desk, docs, dl, pics,
+  dir('ミュージック', T(2026, 3, 30, 10, 0), [], { fs: 'Music' }),
+  dir('ビデオ', T(2026, 11, 10, 22, 20), [file('デモ録画.mp4', 486 * MB, T(2026, 11, 10, 22, 20))], { fs: 'Videos' }),
+  file('.gitconfig', 312, T(2026, 7, 9, 22, 1), { hidden: true, content: '[user]\n\tname = aoi\n[core]\n\tautocrlf = true' }),
+  file('NTUSER.DAT', 3.1 * MB, T(2026, 11, 14, 9, 12), { hidden: true }),
+], { glyph: 'home' });
+
+const ROOT = dir('PC', 0, [
+  dir('ローカル ディスク (C:)', T(2026, 11, 14, 9, 0), [
+    dir('Program Files', T(2026, 11, 2, 9, 0), []),
+    dir('ユーザー', T(2026, 3, 30, 10, 0), [aoi, dir('パブリック', T(2026, 3, 30, 10, 0), [], { fs: 'Public' })], { fs: 'Users' }),
+    dir('Windows', T(2026, 11, 12, 3, 0), []),
+  ], { drive: 'C:', sys: true, total: 476 * GB, free: 182 * GB, label: 'ローカル ディスク' }),
+  dir('データ (D:)', T(2026, 11, 13, 22, 0), [
+    dir('バックアップ', T(2026, 11, 13, 22, 0), [dir('Documents', T(2026, 11, 13, 22, 0), [])]),
+    dir('写真ライブラリ', T(2026, 9, 9, 20, 0), []),
+    dir('作業用', T(2026, 11, 1, 9, 0), []),
+    file('メモ_ドライブ移行.txt', 1.9 * KB, T(2026, 6, 20, 21, 30), { content: 'C: の空き容量対策として写真を D: へ移動済み。' }),
+  ], { drive: 'D:', total: 932 * GB, free: 74 * GB, label: 'データ' }),
+]);
+
+const P_HOME = ['ローカル ディスク (C:)', 'ユーザー', 'aoi'];
+const PLACES = [
+  { label: 'ホーム', path: P_HOME },
+  { label: 'デスクトップ', path: [...P_HOME, 'デスクトップ'] },
+  { label: 'ドキュメント', path: [...P_HOME, 'ドキュメント'] },
+  { label: 'ダウンロード', path: [...P_HOME, 'ダウンロード'] },
+  { label: 'ピクチャ', path: [...P_HOME, 'ピクチャ'] },
+];
+
+/* ==========================================================================
+   書式
+   ========================================================================== */
+function fmtSize(b) {
+  if (b < 1024) return `${b} バイト`;
+  const u = ['KB', 'MB', 'GB', 'TB'];
+  let v = b / 1024, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${u[i]}`;
+}
+const pad = (n) => String(n).padStart(2, '0');
+function fmtDate(t) {
+  const d = new Date(t);
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${d.getHours()}:${pad(d.getMinutes())}`;
+}
+function kindLabel(n) {
+  if (n.drive) return 'ドライブ';
+  if (n.type === 'dir') return 'ファイル フォルダー';
+  if (n.ext === 'txt') return 'テキスト ドキュメント';
+  if (!n.ext || n.name.startsWith('.') && n.name.indexOf('.', 1) < 0) return 'ファイル';
+  return `${n.ext.toUpperCase()} ファイル`;
+}
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const norm = (s) => s.normalize('NFKC').toLowerCase();
+
+/* ==========================================================================
+   状態
+   ========================================================================== */
+const S = {
+  path: [...P_HOME, 'ドキュメント'],
+  back: [], fwd: [],
+  sel: new Set(['企画書_v3.docx']),
+  active: '企画書_v3.docx',
+  anchor: '企画書_v3.docx',
+  sort: { key: 'name', dir: 1 },
+  query: '',
+  view: 'details',
+  pane: true,
+  showHidden: false,
+  themeMode: document.documentElement.dataset.themeMode || 'system',
+  density: 'normal',
+  list: [],
+};
+let noticeTimer = 0;
+
+function nodeAt(path) {
+  let n = ROOT;
+  for (const name of path) {
+    n = (n.children || []).find((c) => c.name === name);
+    if (!n) return null;
+  }
+  return n;
+}
+const cur = () => nodeAt(S.path);
+function realPath(path) {
+  if (!path.length) return 'PC';
+  const parts = [];
+  let n = ROOT;
+  for (const name of path) {
+    n = n.children.find((c) => c.name === name);
+    parts.push(n.drive || n.fs || n.name);
+  }
+  return parts.length === 1 ? parts[0] + '\\' : parts.join('\\');
+}
+const sameP = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+function cmp(a, b) {
+  if ((a.type === 'dir') !== (b.type === 'dir')) return a.type === 'dir' ? -1 : 1; // フォルダーは常に先頭
+  const byName = a.name.localeCompare(b.name, 'ja', { numeric: true, sensitivity: 'base' });
+  let r = 0;
+  switch (S.sort.key) {
+    case 'mtime': r = a.mtime - b.mtime; break;
+    case 'kind': r = kindLabel(a).localeCompare(kindLabel(b), 'ja'); break;
+    case 'size': r = (a.size || 0) - (b.size || 0); break;
+  }
+  return (r || byName) * S.sort.dir;
+}
+function visibleChildren(n = cur()) { return (n.children || []).filter((c) => S.showHidden || !c.hidden); }
+function computeList() {
+  let arr = visibleChildren();
+  const q = norm(S.query.trim());
+  if (q) arr = arr.filter((c) => norm(c.name).includes(q));
+  return arr.sort(cmp);
+}
+const idxOf = (name) => S.list.findIndex((n) => n.name === name);
+const selected = () => S.list.filter((n) => S.sel.has(n.name));
+
+/* ==========================================================================
+   描画
+   ========================================================================== */
+const $ = (id) => document.getElementById(id);
+const els = {
+  rows: $('rows'), scroller: $('scroller'), lh: $('lh'), empty: $('empty'),
+  crumbs: $('crumbs'), addrIcon: $('addr-icon'), search: $('search'), searchClear: $('search-clear'),
+  pane: $('pane'), paneBody: $('pane-body'), menu: $('menu'), spec: $('spec'),
+};
+
+function hl(name) {
+  const q = S.query.trim();
+  if (!q) return esc(name);
+  const nq = norm(q);
+  const i = name.toLowerCase().indexOf(nq);
+  if (i < 0 || norm(name).length !== name.length) return esc(name);
+  return esc(name.slice(0, i)) + '<mark>' + esc(name.slice(i, i + nq.length)) + '</mark>' + esc(name.slice(i + nq.length));
+}
+
+function renderAll() {
+  renderToolbar();
+  renderSidebar();
+  renderList();
+}
+
+function renderToolbar() {
+  const n = cur();
+  $('btn-back').disabled = !S.back.length;
+  $('btn-fwd').disabled = !S.fwd.length;
+  $('btn-up').disabled = S.path.length === 0;
+  els.addrIcon.innerHTML = n === ROOT ? driveSvg(false) : objSvg(n);
+  const items = [{ label: 'PC', path: [] }, ...S.path.map((name, i) => ({ label: name, path: S.path.slice(0, i + 1) }))];
+  els.crumbs.innerHTML =
+    '<li class="ell" hidden><button class="crumb" data-ell aria-label="上位の階層">…</button><span class="crumb-sep">' + op('chevron') + '</span></li>' +
+    items.map((it, i) => {
+      const last = i === items.length - 1;
+      return `<li data-i="${i}"><button class="crumb" data-path="${esc(JSON.stringify(it.path))}"${last ? ' aria-current="page"' : ''}>${esc(it.label)}</button>${last ? '' : '<span class="crumb-sep">' + op('chevron') + '</span>'}</li>`;
+    }).join('');
+  fitCrumbs();
+  const label = n === ROOT ? 'PC' : n.name;
+  els.search.placeholder = `${label}内を検索`;
+  els.searchClear.hidden = !S.query;
+  els.rows.setAttribute('aria-label', `${label} の項目`);
+  document.title = `${label} — Explorer コンセプト macOS寄り`;
+}
+
+function fitCrumbs() {
+  const ol = els.crumbs;
+  const lis = [...ol.querySelectorAll('li[data-i]')];
+  const ell = ol.querySelector('li.ell');
+  lis.forEach((li) => { li.hidden = false; li.classList.remove('shrink'); });
+  ell.hidden = true;
+  let k = 0;
+  while (ol.scrollWidth > ol.clientWidth + 1 && k < lis.length - 1) {
+    lis[k].hidden = true;
+    ell.hidden = false;
+    ell.dataset.target = lis[k].querySelector('.crumb').dataset.path;
+    k++;
+  }
+  // 最後の1つでも収まらなければ省略記号で切る
+  if (ol.scrollWidth > ol.clientWidth + 1) lis[lis.length - 1].classList.add('shrink');
+}
+
+function renderSidebar() {
+  const mk = (n, path, label, extra = '') => {
+    const active = sameP(path, S.path);
+    return `<li><button class="place${n.drive ? ' drive' : ''}" data-path="${esc(JSON.stringify(path))}" tabindex="-1"${active ? ' aria-current="page"' : ''}>` +
+      `<span class="oi">${objSvg(n)}</span>${extra || `<span class="lbl">${esc(label)}</span>`}</button></li>`;
+  };
+  $('places').innerHTML = PLACES.map((p) => mk(nodeAt(p.path), p.path, p.label)).join('');
+  $('drives').innerHTML = ROOT.children.map((d) => {
+    const used = 1 - d.free / d.total;
+    const info = `<span class="drive-info"><span class="lbl">${esc(d.name)}</span>` +
+      `<span class="meter${used > 0.9 ? ' warn' : ''}" aria-hidden="true"><span style="width:${(used * 100).toFixed(1)}%"></span></span>` +
+      `<span class="drive-free">空き ${fmtSize(d.free)} / ${fmtSize(d.total)}</span></span>`;
+    return mk(d, [d.name], d.name, info);
+  }).join('');
+  // ロービングタブインデックス：現在地（なければ先頭）だけTabで止まる
+  const btns = [...document.querySelectorAll('#sidenav .place')];
+  (btns.find((b) => b.hasAttribute('aria-current')) || btns[0]).tabIndex = 0;
+}
+
+function renderList() {
+  S.list = computeList();
+  const names = new Set(S.list.map((n) => n.name));
+  for (const s of [...S.sel]) if (!names.has(s)) S.sel.delete(s);
+  if (S.active && !names.has(S.active)) S.active = null;
+  if (S.anchor && !names.has(S.anchor)) S.anchor = null;
+
+  const grid = S.view === 'icons';
+  els.rows.classList.toggle('grid', grid);
+  els.lh.hidden = grid;
+  els.rows.innerHTML = S.list.map((n, i) => {
+    const cls = (n.hidden ? ' hid' : '');
+    if (grid) {
+      return `<div class="tile${cls}" role="option" id="it-${i}" data-i="${i}" aria-selected="false" title="${esc(n.name)}"><span class="oi">${objSvg(n, true)}</span><span class="nm">${hl(n.name)}</span></div>`;
+    }
+    return `<div class="row${cls}" role="option" id="it-${i}" data-i="${i}" aria-selected="false">` +
+      `<div class="c c-name"><span class="oi">${objSvg(n)}</span><span class="nm">${hl(n.name)}</span></div>` +
+      `<div class="c c-mod">${fmtDate(n.mtime)}</div>` +
+      `<div class="c c-kind">${esc(kindLabel(n))}</div>` +
+      `<div class="c c-size">${n.type === 'file' ? fmtSize(n.size) : ''}</div></div>`;
+  }).join('');
+
+  // 空表示
+  const total = visibleChildren().length;
+  let empty = '';
+  if (!S.list.length) {
+    if (S.query.trim()) empty = `<div>「${esc(S.query.trim())}」に一致する項目はありません</div><button class="btn" data-clear-search>検索をクリア</button>`;
+    else if ((cur().children || []).length && !total) empty = '<div>隠しファイルのみがあります（Ctrl+H で表示）</div>';
+    else empty = '<div>このフォルダーは空です</div>';
+  }
+  els.empty.innerHTML = empty;
+  els.empty.hidden = !empty;
+  els.empty.classList.toggle('no-header', grid);
+
+  renderHeader();
+  refreshSel();
+}
+
+function renderHeader() {
+  const labels = { name: '名前', mtime: '更新日時', kind: '種類', size: 'サイズ' };
+  els.lh.querySelectorAll('.hbtn').forEach((b) => {
+    const k = b.dataset.key;
+    const active = S.sort.key === k;
+    b.toggleAttribute('data-active', active);
+    b.innerHTML = esc(labels[k]) + (active ? op(S.sort.dir > 0 ? 'sortUp' : 'sortDown') : '');
+    b.setAttribute('aria-label', active
+      ? `${labels[k]}（${S.sort.dir > 0 ? '昇順' : '降順'}で並べ替え中。押すと${S.sort.dir > 0 ? '降順' : '昇順'}）`
+      : `${labels[k]}で並べ替え`);
+  });
+}
+
+// 選択状態だけを反映（一覧は作り直さない）
+function refreshSel() {
+  const kids = els.rows.children;
+  for (let i = 0; i < kids.length; i++) {
+    const n = S.list[i];
+    const s = S.sel.has(n.name);
+    const el = kids[i];
+    el.classList.toggle('sel', s);
+    el.setAttribute('aria-selected', s ? 'true' : 'false');
+    el.classList.toggle('sp', s && i > 0 && S.sel.has(S.list[i - 1].name));
+    el.classList.toggle('sn', s && i < kids.length - 1 && S.sel.has(S.list[i + 1].name));
+    el.classList.toggle('active', n.name === S.active);
+  }
+  const ai = idxOf(S.active);
+  if (ai >= 0) els.rows.setAttribute('aria-activedescendant', `it-${ai}`);
+  else els.rows.removeAttribute('aria-activedescendant');
+  renderPane();
+  renderStatus();
+}
+
+function renderStatus() {
+  const total = visibleChildren().length;
+  $('st-count').textContent = S.query.trim() ? `${total} 項目中 ${S.list.length} 項目が一致` : `${S.list.length} 項目`;
+  const sel = selected();
+  const bytes = sel.filter((n) => n.type === 'file').reduce((a, n) => a + n.size, 0);
+  $('st-sel').textContent = sel.length ? `${sel.length} 項目を選択${bytes ? ' · ' + fmtSize(bytes) : ''}` : '';
+  const hb = $('btn-hidden');
+  hb.setAttribute('aria-pressed', S.showHidden ? 'true' : 'false');
+}
+
+function samplePreview(n) {
+  // サンプル画像（コンテンツ扱いの簡易イラスト）
+  const v = n.pv || 0;
+  const sky = v % 2 ? 'var(--sample-sky-2)' : 'var(--sample-sky)';
+  if (v === 2) {
+    // スクリーンショット風
+    return `<svg viewBox="0 0 160 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="160" height="120" style="fill:var(--sample-sky)"/><rect x="14" y="14" width="132" height="92" rx="4" style="fill:var(--sample-paper)"/><rect x="14" y="14" width="132" height="12" rx="4" style="fill:var(--sample-ui)"/><rect x="14" y="26" width="34" height="80" style="fill:var(--sample-ui-2)"/><g style="fill:var(--sample-line)"><rect x="56" y="34" width="70" height="5" rx="2"/><rect x="56" y="45" width="82" height="5" rx="2"/><rect x="56" y="56" width="60" height="5" rx="2"/><rect x="56" y="67" width="76" height="5" rx="2"/></g><rect x="56" y="80" width="28" height="9" rx="3" style="fill:var(--meter)"/></svg>`;
+  }
+  if (v === 0) {
+    // ロゴ風
+    return `<svg viewBox="0 0 160 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="160" height="120" style="fill:var(--sample-paper)"/><circle cx="62" cy="60" r="22" style="fill:var(--sample-water)"/><rect x="74" y="44" width="34" height="34" rx="8" style="fill:var(--sample-sun)" opacity=".9"/></svg>`;
+  }
+  return `<svg viewBox="0 0 160 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="160" height="120" style="fill:${sky}"/><circle cx="${v === 3 ? 44 : 118}" cy="34" r="12" style="fill:var(--sample-sun)"/><path d="M0 86 L38 52 L70 80 L104 44 L160 92 V120 H0z" style="fill:var(--sample-hill)"/><path d="M0 98 L52 74 L96 96 L132 80 L160 92 V120 H0z" style="fill:var(--sample-hill-2)"/>${v === 3 ? '<rect x="0" y="104" width="160" height="16" style="fill:var(--sample-water)" opacity=".85"/>' : ''}</svg>`;
+}
+
+function renderPane() {
+  els.pane.hidden = !S.pane;
+  $('btn-pane').setAttribute('aria-pressed', S.pane ? 'true' : 'false');
+  if (!S.pane) return;
+  const sel = selected();
+  const n0 = cur();
+  let h = '';
+  const prop = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+  if (sel.length === 0) {
+    const kids = visibleChildren(n0);
+    const nd = kids.filter((c) => c.type === 'dir').length;
+    const nf = kids.length - nd;
+    const bytes = kids.filter((c) => c.type === 'file').reduce((a, c) => a + c.size, 0);
+    h += `<div class="hero"><span class="hero-icon">${n0 === ROOT ? driveSvg(false) : objSvg(n0, true)}</span></div>`;
+    h += `<div><h2 class="p-name">${esc(n0 === ROOT ? 'PC' : n0.name)}</h2><div class="p-kind">${n0.drive ? 'ドライブ' : '現在のフォルダー'}</div></div>`;
+    h += '<dl class="props">';
+    h += prop('内容', n0 === ROOT ? `${nd} ドライブ` : `${nf} ファイル、${nd} フォルダー`);
+    if (bytes) h += prop('ファイル合計', fmtSize(bytes));
+    if (n0.drive) {
+      const used = 1 - n0.free / n0.total;
+      h += prop('空き領域', `${fmtSize(n0.free)} / ${fmtSize(n0.total)}<div class="meter${used > 0.9 ? ' warn' : ''}"><span style="width:${(used * 100).toFixed(1)}%"></span></div>`);
+    }
+    if (n0.mtime) h += prop('更新日時', fmtDate(n0.mtime));
+    h += prop('場所', esc(realPath(S.path)));
+    h += '</dl>';
+  } else if (sel.length === 1) {
+    const n = sel[0];
+    const path = [...S.path, n.name];
+    const isImg = n.type === 'file' && FT[n.ext] && FT[n.ext].img;
+    h += isImg ? `<div class="hero image">${samplePreview(n)}</div>` : `<div class="hero"><span class="hero-icon">${objSvg(n, true)}</span></div>`;
+    h += `<div><h2 class="p-name">${esc(n.name)}</h2><div class="p-kind">${esc(kindLabel(n))}</div></div>`;
+    h += '<dl class="props">';
+    if (n.type === 'file') h += prop('サイズ', `${fmtSize(n.size)}${n.size >= 1024 ? `（${n.size.toLocaleString('ja-JP')} バイト）` : ''}`);
+    else {
+      const kids = visibleChildren(n);
+      h += prop('内容', kids.length ? `${kids.length} 項目` : '空');
+    }
+    h += prop('更新日時', fmtDate(n.mtime));
+    h += prop('作成日時', fmtDate(n.ctime || n.mtime - 86400000 * 3));
+    if (n.drive) h += prop('空き領域', `${fmtSize(n.free)} / ${fmtSize(n.total)}`);
+    h += prop('場所', esc(realPath(S.path)));
+    h += '</dl>';
+    if (n.content) h += `<section><h3 class="sec-h">プレビュー</h3><pre class="pre">${esc(n.content)}</pre></section>`;
+    h += `<div class="actions"><button class="btn" data-act="open">${op('open')}開く</button><button class="btn" data-act="copy" data-path="${esc(realPath(path))}">${op('copy')}パスをコピー</button></div>`;
+  } else {
+    const nd = sel.filter((c) => c.type === 'dir').length;
+    const files = sel.filter((c) => c.type === 'file');
+    const bytes = files.reduce((a, c) => a + c.size, 0);
+    const top = sel.slice(0, 3);
+    h += `<div class="hero"><div class="stack">${top.map((n, i) => `<span class="hero-icon" style="left:${i * 12}px;top:${i * 7}px">${objSvg(n, true)}</span>`).join('')}</div></div>`;
+    h += `<div><h2 class="p-name">${sel.length} 項目を選択</h2><div class="p-kind">${files.length} ファイル、${nd} フォルダー</div></div>`;
+    h += '<dl class="props">';
+    if (bytes) h += prop('ファイル合計', `${fmtSize(bytes)}（${bytes.toLocaleString('ja-JP')} バイト）`);
+    const ts = sel.map((c) => c.mtime);
+    h += prop('更新日時', `${fmtDate(Math.min(...ts))} 〜<br>${fmtDate(Math.max(...ts))}`);
+    h += prop('場所', esc(realPath(S.path)));
+    h += '</dl>';
+  }
+  els.paneBody.innerHTML = h;
+}
+
+/* ==========================================================================
+   操作
+   ========================================================================== */
+function notice(msg) {
+  const el = $('st-notice');
+  el.textContent = msg;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (el.textContent = ''), 4000);
+}
+
+function navigate(path, { push = true, select = null } = {}) {
+  if (!nodeAt(path)) return;
+  if (push) {
+    if (sameP(path, S.path)) return;
+    S.back.push({ path: S.path, sel: S.active });
+    S.fwd = [];
+  }
+  S.path = path;
+  S.query = '';
+  els.search.value = '';
+  S.sel = new Set(select ? [select] : []);
+  S.active = select;
+  S.anchor = select;
+  renderAll();
+  els.scroller.scrollTop = 0;
+  scrollActive();
+}
+function goBack() {
+  const e = S.back.pop(); if (!e) return;
+  S.fwd.push({ path: S.path, sel: S.active });
+  navigate(e.path, { push: false, select: e.sel });
+}
+function goForward() {
+  const e = S.fwd.pop(); if (!e) return;
+  S.back.push({ path: S.path, sel: S.active });
+  navigate(e.path, { push: false, select: e.sel });
+}
+function goUp() {
+  if (!S.path.length) return;
+  const from = S.path[S.path.length - 1];
+  S.back.push({ path: S.path, sel: S.active });
+  S.fwd = [];
+  navigate(S.path.slice(0, -1), { push: false, select: from });
+}
+function openItem(n) {
+  if (!n) return;
+  if (n.type === 'dir') navigate([...S.path, n.name]);
+  else notice(`「${n.name}」は既定のアプリで開く想定です（モックのため開きません）`);
+}
+function refresh() {
+  renderAll();
+  notice('最新の情報に更新しました');
+}
+function setSort(key) {
+  S.sort = S.sort.key === key ? { key, dir: -S.sort.dir } : { key, dir: 1 };
+  renderList();
+  scrollActive();
+}
+function toggleHidden() { S.showHidden = !S.showHidden; renderList(); }
+function togglePane() { S.pane = !S.pane; renderPane(); }
+function setView(v) {
+  S.view = v;
+  $('view-details').setAttribute('aria-pressed', v === 'details');
+  $('view-icons').setAttribute('aria-pressed', v === 'icons');
+  renderList();
+  scrollActive();
+}
+function setTheme(mode) {
+  S.themeMode = mode;
+  try { localStorage.setItem('explorer-concept-macos-theme', mode); } catch (e) {}
+  applyTheme();
+}
+function applyTheme() {
+  const dark = S.themeMode === 'dark' || (S.themeMode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.documentElement.dataset.themeMode = S.themeMode;
+  document.querySelectorAll('[data-theme-opt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.themeOpt === S.themeMode));
+  if (els.spec.open) renderSpec();
+}
+// 検証用切替（試作メモ内）：仮素材の色セット / 選択の表現
+function setIcons(v) {
+  document.documentElement.dataset.icons = v;
+  try { localStorage.setItem('explorer-concept-macos-icons', v); } catch (e) {}
+  renderAll();
+  syncSpecToggles();
+  if (els.spec.open) renderSpec();
+}
+function setSelStyle(v) {
+  document.documentElement.dataset.sel = v;
+  try { localStorage.setItem('explorer-concept-macos-sel', v); } catch (e) {}
+  syncSpecToggles();
+  if (els.spec.open) renderSpec();
+}
+function syncSpecToggles() {
+  const d = document.documentElement.dataset;
+  document.querySelectorAll('[data-icons-opt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.iconsOpt === d.icons));
+  document.querySelectorAll('[data-sel-opt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.selOpt === d.sel));
+}
+function setDensity(d) {
+  S.density = d;
+  if (d === 'compact') document.documentElement.dataset.density = 'compact';
+  else delete document.documentElement.dataset.density;
+}
+function copyPath(p) {
+  const ok = () => notice(`パスをコピーしました: ${p}`);
+  const ng = () => notice('クリップボードにアクセスできませんでした');
+  try { navigator.clipboard.writeText(p).then(ok, ng); } catch (e) { ng(); }
+}
+const notImpl = (label) => () => notice(`「${label}」はこのモックでは動作しません`);
+
+function scrollActive() {
+  const i = idxOf(S.active);
+  if (i < 0) return;
+  const el = els.rows.children[i];
+  if (!el) return;
+  // 固定ヘッダーの下に隠れないように
+  const sc = els.scroller;
+  const head = S.view === 'details' ? els.lh.offsetHeight : 0;
+  const top = el.offsetTop, bottom = top + el.offsetHeight;
+  if (top - head < sc.scrollTop) sc.scrollTop = top - head - 4;
+  else if (bottom > sc.scrollTop + sc.clientHeight) sc.scrollTop = bottom - sc.clientHeight + 6;
+}
+
+function selectRange(a, b) {
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  S.sel = new Set(S.list.slice(lo, hi + 1).map((n) => n.name));
+}
+function moveTo(i, e) {
+  if (!S.list.length) return;
+  i = Math.max(0, Math.min(S.list.length - 1, i));
+  const name = S.list[i].name;
+  if (e.shiftKey) {
+    const ai = idxOf(S.anchor);
+    selectRange(ai >= 0 ? ai : i, i);
+    if (ai < 0) S.anchor = name;
+  } else if (!(e.ctrlKey || e.metaKey)) {
+    S.sel = new Set([name]);
+    S.anchor = name;
+  }
+  S.active = name;
+  refreshSel();
+  scrollActive();
+}
+function gridCols() {
+  if (S.view !== 'icons') return 1;
+  return getComputedStyle(els.rows).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+}
+function pageSize() {
+  const first = els.rows.children[0];
+  const h = first ? first.offsetHeight : 28;
+  return Math.max(1, Math.floor((els.scroller.clientHeight - els.lh.offsetHeight) / h) - 1) * gridCols();
+}
+
+/* ---------- 一覧のキーボード ---------- */
+els.rows.addEventListener('keydown', (e) => {
+  const len = S.list.length;
+  const ai = idxOf(S.active);
+  const cols = gridCols();
+  const at = ai < 0 ? -1 : ai;
+  els.rows.classList.add('kbd');
+  const k = e.key;
+  const ctrl = e.ctrlKey || e.metaKey;
+  let handled = true;
+  if (k === 'ArrowDown') moveTo(at < 0 ? 0 : at + cols, e);
+  else if (k === 'ArrowUp') moveTo(at < 0 ? 0 : at - cols, e);
+  else if (k === 'ArrowRight' && S.view === 'icons' && !e.altKey) moveTo(at + 1, e);
+  else if (k === 'ArrowLeft' && S.view === 'icons' && !e.altKey) moveTo(at < 0 ? 0 : at - 1, e);
+  else if (k === 'Home') moveTo(0, e);
+  else if (k === 'End') moveTo(len - 1, e);
+  else if (k === 'PageDown') moveTo(at + pageSize(), e);
+  else if (k === 'PageUp') moveTo(at - pageSize(), e);
+  else if (k === 'Enter') { if (S.sel.size === 1 || ai >= 0) openItem(S.list[ai >= 0 ? ai : idxOf([...S.sel][0])]); }
+  else if (k === ' ' && ai >= 0) {
+    const n = S.list[ai].name;
+    if (ctrl && S.sel.has(n)) S.sel.delete(n); else S.sel.add(n);
+    S.anchor = n; refreshSel();
+  }
+  else if (k === 'a' && ctrl) { S.sel = new Set(S.list.map((n) => n.name)); refreshSel(); }
+  else if (k === 'Escape') { if (S.sel.size) { S.sel.clear(); refreshSel(); } else handled = false; }
+  else if (k === 'Backspace') goBack();
+  else if (k === 'ContextMenu' || (k === 'F10' && e.shiftKey)) {
+    const el = els.rows.children[ai >= 0 ? ai : 0];
+    const r = (el || els.rows).getBoundingClientRect();
+    if (ai >= 0 && !S.sel.has(S.list[ai].name)) { S.sel = new Set([S.list[ai].name]); refreshSel(); }
+    openContextMenu(r.left + 40, r.top + r.height / 2);
+  }
+  else if (k === 'F2') notImpl('名前の変更')();
+  else if (k === 'Delete') notImpl('削除')();
+  else handled = false;
+  if (handled) e.preventDefault();
+});
+
+/* ---------- 一覧のマウス ---------- */
+els.rows.addEventListener('pointerdown', () => els.rows.classList.remove('kbd'));
+els.rows.addEventListener('mousedown', (e) => {
+  const it = e.target.closest('[data-i]');
+  if (e.button === 2) {
+    if (!it) { S.sel.clear(); refreshSel(); return; }
+    if (!S.sel.has(S.list[+it.dataset.i].name)) {
+      const n = S.list[+it.dataset.i].name;
+      S.sel = new Set([n]); S.active = n; S.anchor = n; refreshSel();
+    }
+    return;
+  }
+  if (e.button !== 0) return;
+  if (!it) { if (!e.ctrlKey && !e.shiftKey) { S.sel.clear(); refreshSel(); } return; }
+  const i = +it.dataset.i;
+  const name = S.list[i].name;
+  if (e.shiftKey) { const a = idxOf(S.anchor); selectRange(a >= 0 ? a : i, i); }
+  else if (e.ctrlKey || e.metaKey) { if (S.sel.has(name)) S.sel.delete(name); else S.sel.add(name); S.anchor = name; }
+  else { S.sel = new Set([name]); S.anchor = name; }
+  S.active = name;
+  refreshSel();
+});
+els.scroller.addEventListener('mousedown', (e) => {
+  // 一覧の下の余白クリック：選択解除してフォーカス
+  if (e.button === 0 && (e.target === els.scroller || e.target === els.empty)) {
+    S.sel.clear(); refreshSel(); els.rows.focus();
+  }
+});
+els.rows.addEventListener('dblclick', (e) => {
+  const it = e.target.closest('[data-i]');
+  if (it) openItem(S.list[+it.dataset.i]);
+});
+els.rows.addEventListener('contextmenu', (e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, true); });
+els.rows.addEventListener('focus', () => {
+  els.rows.classList.add('focused');
+  if (els.rows.matches(':focus-visible')) els.rows.classList.add('kbd');
+});
+els.rows.addEventListener('blur', (e) => {
+  if (e.relatedTarget && els.menu.contains(e.relatedTarget)) return; // メニュー表示中は選択色を保つ
+  els.rows.classList.remove('focused');
+});
+els.empty.addEventListener('click', (e) => { if (e.target.closest('[data-clear-search]')) clearSearch(true); });
+
+/* ---------- ヘッダー・ツールバー ---------- */
+els.lh.addEventListener('click', (e) => { const b = e.target.closest('.hbtn'); if (b) setSort(b.dataset.key); });
+$('btn-back').addEventListener('click', goBack);
+$('btn-fwd').addEventListener('click', goForward);
+$('btn-up').addEventListener('click', goUp);
+$('btn-refresh').addEventListener('click', refresh);
+$('view-details').addEventListener('click', () => setView('details'));
+$('view-icons').addEventListener('click', () => setView('icons'));
+$('btn-pane').addEventListener('click', togglePane);
+$('pane-close').addEventListener('click', () => { togglePane(); $('btn-pane').focus(); });
+$('btn-hidden').addEventListener('click', toggleHidden);
+els.crumbs.addEventListener('click', (e) => {
+  const b = e.target.closest('.crumb'); if (!b) return;
+  const p = b.hasAttribute('data-ell') ? b.closest('li').dataset.target : b.dataset.path;
+  if (p) navigate(JSON.parse(p));
+});
+new ResizeObserver(() => fitCrumbs()).observe(document.querySelector('.address'));
+
+els.paneBody.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'open') openItem(selected()[0]);
+  if (b.dataset.act === 'copy') copyPath(b.dataset.path);
+});
+
+/* ---------- サイドバー ---------- */
+const sidenav = $('sidenav');
+sidenav.addEventListener('click', (e) => {
+  const b = e.target.closest('.place'); if (!b) return;
+  navigate(JSON.parse(b.dataset.path));
+  els.rows.focus();
+});
+sidenav.addEventListener('keydown', (e) => {
+  const btns = [...sidenav.querySelectorAll('.place')];
+  const i = btns.indexOf(document.activeElement);
+  if (i < 0) return;
+  let j = -1;
+  if (e.key === 'ArrowDown') j = Math.min(btns.length - 1, i + 1);
+  else if (e.key === 'ArrowUp') j = Math.max(0, i - 1);
+  else if (e.key === 'Home') j = 0;
+  else if (e.key === 'End') j = btns.length - 1;
+  if (j < 0) return;
+  e.preventDefault();
+  btns.forEach((b) => (b.tabIndex = -1));
+  btns[j].tabIndex = 0;
+  btns[j].focus();
+});
+
+/* ---------- 検索 ---------- */
+function clearSearch(focusList) {
+  S.query = '';
+  els.search.value = '';
+  renderToolbar();
+  renderList();
+  if (focusList) els.rows.focus();
+}
+els.search.addEventListener('input', () => {
+  S.query = els.search.value;
+  els.searchClear.hidden = !S.query;
+  renderList();
+  els.scroller.scrollTop = 0;
+});
+els.search.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (S.query) clearSearch(false); else els.rows.focus();
+  } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (S.list.length && (!S.active || e.key === 'Enter')) {
+      S.sel = new Set([S.list[0].name]); S.active = S.anchor = S.list[0].name; refreshSel();
+    }
+    els.rows.focus();
+    els.rows.classList.add('kbd');
+    scrollActive();
+  }
+});
+els.searchClear.addEventListener('click', () => { clearSearch(false); els.search.focus(); });
+
+/* ---------- グローバルショートカット ---------- */
+document.addEventListener('keydown', (e) => {
+  if (!els.menu.hidden || els.spec.open) return;
+  const ctrl = e.ctrlKey || e.metaKey;
+  const k = e.key.toLowerCase();
+  const inField = e.target.matches('input, textarea');
+  if (ctrl && (k === 'f' || k === 'e')) { e.preventDefault(); els.search.focus(); els.search.select(); }
+  else if (e.altKey && k === 'p') { e.preventDefault(); togglePane(); }
+  else if (ctrl && k === 'h') { e.preventDefault(); toggleHidden(); }
+  else if (e.key === 'F5') { e.preventDefault(); refresh(); }
+  else if (e.altKey && e.key === 'ArrowLeft' && !inField) { e.preventDefault(); goBack(); }
+  else if (e.altKey && e.key === 'ArrowRight' && !inField) { e.preventDefault(); goForward(); }
+  else if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); goUp(); }
+});
+// マウスの戻る/進むボタン
+document.addEventListener('mouseup', (e) => {
+  if (e.button === 3) { e.preventDefault(); goBack(); }
+  if (e.button === 4) { e.preventDefault(); goForward(); }
+});
+
+/* ==========================================================================
+   メニュー
+   ========================================================================== */
+let menuOpener = null;
+function openMenu(items, pos, opener) {
+  const m = els.menu;
+  menuOpener = opener;
+  m.innerHTML = items.map((it, i) => {
+    if (it.sep) return '<div class="msep" role="separator"></div>';
+    if (it.heading) return `<div class="mh" role="presentation">${esc(it.heading)}</div>`;
+    const role = it.radio ? 'menuitemradio' : it.check ? 'menuitemcheckbox' : 'menuitem';
+    const checked = it.radio || it.check ? ` aria-checked="${!!it.checked}"` : '';
+    return `<button class="mi" role="${role}" data-i="${i}" tabindex="-1"${checked}>` +
+      `<span class="chk">${op('check')}</span><span>${esc(it.label)}</span>${it.kbd ? `<span class="kbd">${esc(it.kbd)}</span>` : ''}</button>`;
+  }).join('');
+  m._items = items;
+  m.hidden = false;
+  const r = m.getBoundingClientRect();
+  let x = pos.x, y = pos.y;
+  if (pos.alignRight) x = pos.x - r.width;
+  x = Math.max(4, Math.min(x, innerWidth - r.width - 4));
+  if (y + r.height > innerHeight - 4) y = Math.max(4, (pos.flipY ?? y) - r.height);
+  m.style.left = x + 'px';
+  m.style.top = y + 'px';
+  const btns = [...m.querySelectorAll('.mi')];
+  if (pos.pointer) m.focus(); // マウスで開いたときは現在項目なし（ホバーで青くなる）
+  else (btns.find((b) => b.getAttribute('aria-checked') === 'true' && pos.focusChecked) || btns[0]).focus();
+  if (opener && opener.hasAttribute('aria-expanded')) opener.setAttribute('aria-expanded', 'true');
+}
+function closeMenu(restore = true) {
+  const m = els.menu;
+  if (m.hidden) return;
+  m.hidden = true;
+  if (menuOpener && menuOpener.hasAttribute('aria-expanded')) menuOpener.setAttribute('aria-expanded', 'false');
+  if (restore && menuOpener) menuOpener.focus();
+  else if (!els.rows.contains(document.activeElement)) els.rows.classList.remove('focused');
+  menuOpener = null;
+}
+els.menu.addEventListener('click', (e) => {
+  const b = e.target.closest('.mi'); if (!b) return;
+  const it = els.menu._items[+b.dataset.i];
+  closeMenu(true);
+  it.action && it.action();
+});
+els.menu.addEventListener('mousemove', (e) => {
+  const b = e.target.closest('.mi');
+  if (b && document.activeElement !== b) b.focus({ preventScroll: true });
+});
+els.menu.addEventListener('mouseleave', () => { if (els.menu.contains(document.activeElement)) els.menu.focus({ preventScroll: true }); });
+els.menu.addEventListener('keydown', (e) => {
+  const btns = [...els.menu.querySelectorAll('.mi')];
+  const i = btns.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') btns[(i + 1) % btns.length].focus();
+  else if (e.key === 'ArrowUp') btns[i < 0 ? btns.length - 1 : (i - 1 + btns.length) % btns.length].focus();
+  else if (e.key === 'Home') btns[0].focus();
+  else if (e.key === 'End') btns[btns.length - 1].focus();
+  else if (e.key === 'Escape') closeMenu(true);
+  else if (e.key === 'Tab') { closeMenu(true); }
+  else return;
+  e.preventDefault();
+  e.stopPropagation();
+});
+document.addEventListener('mousedown', (e) => {
+  if (!els.menu.hidden && !els.menu.contains(e.target)) closeMenu(false);
+}, true);
+window.addEventListener('resize', () => closeMenu(false));
+els.scroller.addEventListener('scroll', () => closeMenu(false));
+
+function openContextMenu(x, y, pointer = false) {
+  const sel = selected();
+  const sortItems = [['name', '名前'], ['mtime', '更新日時'], ['kind', '種類'], ['size', 'サイズ']].map(([k, l]) => ({
+    label: l, radio: true, checked: S.sort.key === k, action: () => { S.sort = { key: k, dir: S.sort.key === k ? S.sort.dir : 1 }; renderList(); },
+  }));
+  let items;
+  if (sel.length) {
+    const one = sel.length === 1 ? sel[0] : null;
+    items = [
+      { label: one && one.type === 'dir' ? '開く' : '既定のアプリで開く', kbd: 'Enter', action: () => openItem(one || sel[0]) },
+      { label: S.pane ? '詳細ペインを閉じる' : '詳細ペインで表示', kbd: 'Alt+P', action: togglePane },
+      { sep: true },
+      { label: '切り取り', kbd: 'Ctrl+X', action: notImpl('切り取り') },
+      { label: 'コピー', kbd: 'Ctrl+C', action: notImpl('コピー') },
+      { label: 'パスをコピー', kbd: 'Ctrl+Shift+C', action: () => copyPath(sel.map((n) => realPath([...S.path, n.name])).join('\n')) },
+      { sep: true },
+      { label: '名前の変更', kbd: 'F2', action: notImpl('名前の変更') },
+      { label: '削除', kbd: 'Delete', action: notImpl('削除') },
+    ];
+  } else {
+    items = [
+      { heading: '並べ替え' }, ...sortItems,
+      { sep: true },
+      { label: '隠しファイルを表示', check: true, checked: S.showHidden, kbd: 'Ctrl+H', action: toggleHidden },
+      { label: '最新の情報に更新', kbd: 'F5', action: refresh },
+      { sep: true },
+      { label: '新しいフォルダー', kbd: 'Ctrl+Shift+N', action: notImpl('新しいフォルダー') },
+    ];
+  }
+  openMenu(items, { x, y, pointer }, els.rows);
+}
+
+$('btn-settings').addEventListener('click', (e) => {
+  const b = e.currentTarget;
+  if (!els.menu.hidden && menuOpener === b) { closeMenu(true); return; }
+  const r = b.getBoundingClientRect();
+  openMenu([
+    { heading: 'テーマ' },
+    { label: 'システムに合わせる', radio: true, checked: S.themeMode === 'system', action: () => setTheme('system') },
+    { label: 'ライト', radio: true, checked: S.themeMode === 'light', action: () => setTheme('light') },
+    { label: 'ダーク', radio: true, checked: S.themeMode === 'dark', action: () => setTheme('dark') },
+    { sep: true },
+    { heading: '行の高さ' },
+    { label: '標準', radio: true, checked: S.density === 'normal', action: () => setDensity('normal') },
+    { label: 'コンパクト', radio: true, checked: S.density === 'compact', action: () => setDensity('compact') },
+    { sep: true },
+    { label: '隠しファイルを表示', check: true, checked: S.showHidden, kbd: 'Ctrl+H', action: toggleHidden },
+    { label: '詳細ペイン', check: true, checked: S.pane, kbd: 'Alt+P', action: togglePane },
+  ], { x: r.right, y: r.bottom + 4, alignRight: true, pointer: e.detail > 0 }, b);
+});
+// メニューを開いたまま設定ボタンを再クリックしたとき閉じるため、mousedownの外側判定から除外
+$('btn-settings').addEventListener('mousedown', (e) => { if (!els.menu.hidden && menuOpener === e.currentTarget) e.stopPropagation(); }, true);
+
+/* ==========================================================================
+   試作メモ
+   ========================================================================== */
+const SPEC_COLORS = [
+  ['--bg-chrome', 'クローム（ツールバー/サイドバー/ステータス）'], ['--bg-content', '一覧面'], ['--bg-pane', '詳細ペイン'],
+  ['--bg-field', 'パンくず・検索欄（塗り、枠なし）'], ['--bg-elevated', 'メニュー/ダイアログ'], ['--bg-well', 'プレビュー枠'],
+  ['--border', '罫線'], ['--border-strong', 'ボタンの枠'],
+  ['--bg-hover', 'ホバー'], ['--bg-nav-active', '現在地（サイドバー）'],
+  ['--bg-selected', '選択（フォーカスあり）/ メニュー現在項目'], ['--text-on-selected', '選択上の文字'], ['--bg-selected-inactive', '選択（フォーカスなし）'],
+  ['--text', '本文'], ['--text-muted', '補助文字'], ['--text-disabled', '無効'], ['--icon', '操作アイコン'],
+  ['--accent', 'アクセント = フォーカスリング'], ['--meter', 'ドライブ使用量'], ['--meter-warn', '使用量 90%超'],
+];
+const SPEC_OBJS = [
+  ['--obj-folder', 'フォルダー'], ['--obj-doc', '文書'], ['--obj-xls', '表計算'], ['--obj-ppt', 'スライド'],
+  ['--obj-pdf', 'PDF'], ['--obj-zip', '圧縮'], ['--obj-vid', '動画'], ['--obj-drive', 'ドライブ'],
+];
+const SPEC_SIZES = [
+  ['--h-toolbar', 'ツールバー'], ['--h-row', '行'], ['--h-header', '列見出し'], ['--h-status', 'ステータス'],
+  ['--h-control', 'ボタン/入力'], ['--w-sidebar', 'サイドバー'], ['--w-pane', '詳細ペイン'],
+  ['--fs-body', '本文'], ['--fs-small', '小'], ['--r-md', '角丸（標準）'], ['--r-lg', '角丸（浮遊面）'],
+];
+function renderSpec() {
+  const cs = getComputedStyle(document.documentElement);
+  const tok = ([v, l]) => `<div class="tok"><span class="sw" style="background:var(${v})"></span><span>${esc(l)}<br><code>${v}</code></span><span class="v">${esc(cs.getPropertyValue(v).trim())}</span></div>`;
+  $('spec-colors').innerHTML = SPEC_COLORS.map(tok).join('');
+  $('spec-objs').innerHTML = SPEC_OBJS.map(tok).join('');
+  $('spec-sizes').innerHTML = SPEC_SIZES.map(([v, l]) => `<dt>${esc(l)} <code>${v}</code></dt><dd>${esc(cs.getPropertyValue(v).trim())}</dd>`).join('');
+}
+$('btn-spec').addEventListener('click', () => { renderSpec(); applyTheme(); syncSpecToggles(); els.spec.showModal(); });
+$('spec-close').addEventListener('click', () => els.spec.close());
+els.spec.addEventListener('click', (e) => {
+  if (e.target === els.spec) els.spec.close(); // 背景クリックで閉じる
+  const t = e.target.closest('[data-theme-opt]');
+  if (t) setTheme(t.dataset.themeOpt);
+  const ic = e.target.closest('[data-icons-opt]');
+  if (ic) setIcons(ic.dataset.iconsOpt);
+  const so = e.target.closest('[data-sel-opt]');
+  if (so) setSelStyle(so.dataset.selOpt);
+});
+
+/* ==========================================================================
+   起動
+   ========================================================================== */
+document.querySelectorAll('[data-icon]').forEach((el) => el.insertAdjacentHTML('afterbegin', op(el.dataset.icon)));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.themeMode === 'system') applyTheme(); });
+applyTheme();
+// 起動時の履歴：ホーム → ドキュメント の順に開いた状態
+S.back = [{ path: P_HOME, sel: 'ドキュメント' }];
+renderAll();
+els.rows.focus({ preventScroll: true });
+els.rows.classList.remove('kbd'); // 起動直後はフォーカスリングを出さない（キー操作で表示）
+</script>
+</body>
+</html>

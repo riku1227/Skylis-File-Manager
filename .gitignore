@@ -1,0 +1,16 @@
+# Rust build output
+/target/
+**/target/
+
+# Local dependencies and configuration
+node_modules/
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.log
+
+# Local research downloads and pre-Git backup
+/research/*-README.md
+/docs/implementation/poc-source-backup/

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Explorer — Design Gallery</title>
+<style>
+:root{color-scheme:light;--bg:#f7f7f5;--ink:#202321;--muted:#69716c;--line:#dfe4df;--accent:#245c47;--soft:#e8f0eb;font-family:"Segoe UI Variable","Yu Gothic UI",system-ui,sans-serif;font-size:14px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}button,input,select{font:inherit}button,a,input,select{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:disabled{cursor:default;opacity:.45}button,a{touch-action:manipulation}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #47886b;outline-offset:3px}
+button{border:1px solid var(--line);background:white;color:var(--ink);border-radius:9px;padding:9px 13px}button:hover:not(:disabled){background:var(--soft)}a{color:var(--accent)}.wrap{max-width:1600px;margin:auto;padding:0 40px}.mast{padding-top:36px;padding-bottom:26px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.eyebrow{font-size:11px;letter-spacing:.15em;color:var(--muted);margin:0 0 10px}h1{font-size:32px;font-weight:600;letter-spacing:-.045em;margin:0 0 10px}.intro{color:var(--muted);margin:0;line-height:1.7}.dslink{margin:8px 0 0;font-size:13px}.count{font-variant-numeric:tabular-nums;font-size:42px;letter-spacing:-.06em}.count small{font-size:12px;color:var(--muted);letter-spacing:0;margin-left:10px}.controls{position:sticky;top:0;z-index:3;background:#f7f7f5f5;backdrop-filter:blur(16px);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding-top:14px;padding-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.filters{display:flex;gap:5px;flex-wrap:wrap}.filters button{background:transparent;border-color:transparent;padding:8px 12px}.filters button[aria-pressed=true]{background:var(--ink);color:white}.search{margin-left:auto;border:1px solid var(--line);border-radius:9px;padding:9px 12px;background:white;min-width:200px;width:220px}.savefilter[aria-pressed=true]{color:var(--accent);background:var(--soft);border-color:#9dbca9}select{padding:8px;border:1px solid var(--line);border-radius:9px;background:white;color:var(--ink)}.resultline{display:flex;justify-content:space-between;padding-top:22px;padding-bottom:16px;color:var(--muted);font-size:12px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px 22px;padding-bottom:130px}.card{min-width:0}.thumb{padding:0;display:block;width:100%;border-radius:12px;overflow:hidden;border:1px solid #dce1dc;background:#e8eae8;box-shadow:0 3px 10px #1a2e2110}.thumb img{display:block;width:100%;height:auto;aspect-ratio:1.6;object-fit:contain}.cardtop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:13px}.identity{font-size:11px;letter-spacing:.04em;color:var(--muted)}.bookmark{font-size:17px;background:transparent;padding:3px 7px;border-color:transparent;line-height:1.4}.bookmark[aria-pressed=true]{color:var(--accent);background:var(--soft)}.card h2{font-size:18px;font-weight:600;letter-spacing:-.02em;margin:4px 0 7px}.card p{font-size:12px;line-height:1.7;color:var(--muted);margin:0;min-height:41px}.cardfoot{display:flex;align-items:center;justify-content:space-between;margin-top:12px;border-top:1px solid var(--line);padding-top:11px;font-size:12px}.cardfoot a{text-decoration:none}.compare-label{display:flex;align-items:center;gap:6px;cursor:pointer}input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}.empty{padding:70px 0;text-align:center;color:var(--muted);grid-column:1/-1}.tray{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:4;display:flex;gap:18px;align-items:center;background:#202a24;color:white;border:1px solid #ffffff30;border-radius:14px;padding:12px 16px;box-shadow:0 8px 30px #14271b35;max-width:calc(100% - 24px);width:650px}.tray span{flex:1;font-size:12px;line-height:1.6}.tray button{white-space:nowrap}.tray .clear{color:#d2ddd5;border-color:#ffffff35;background:transparent}.primary{background:var(--accent);color:white;border-color:var(--accent)}.primary:hover:not(:disabled){background:#194a37}.notice{min-height:18px;color:var(--accent);font-size:12px}dialog{padding:0;border:1px solid var(--line);border-radius:16px;width:calc(100vw - 40px);max-width:1700px;height:calc(100vh - 40px);max-height:1100px;background:var(--bg);color:var(--ink);overflow:hidden}dialog::backdrop{background:#101c16b8;backdrop-filter:blur(5px)}.modal-shell{display:flex;flex-direction:column;height:100%}.modal-head{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);background:white;flex-wrap:wrap}.modal-head h2{font-size:17px;margin:0;flex:1;min-width:180px}.modal-head .mode{display:flex;gap:4px}.mode button[aria-pressed=true]{background:var(--soft);color:var(--accent)}.close{font-size:20px;line-height:1;padding:8px 12px}.modal-body{flex:1;min-height:0;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px}.shot{display:block;width:100%;height:auto;object-fit:contain;margin:auto}.frame{width:100%;height:100%;min-height:600px;border:1px solid var(--line);border-radius:10px;background:white}.viewer-note{font-size:12px;color:var(--muted);margin:0}.pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}.pair h3{margin:0 0 12px;font-size:16px}.pair img{display:block;width:100%;border-radius:9px;border:1px solid var(--line)}.pair p{color:var(--muted);font-size:12px;line-height:1.8}.pair a{font-size:12px}.modal-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 20px;border-top:1px solid var(--line)}.modal-footer p{margin:0;font-size:12px;color:var(--muted)}
+@media(min-width:1850px){.wrap{max-width:1850px}.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:1100px){.wrap{padding-left:24px;padding-right:24px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.search{margin-left:0;flex:1}.count{font-size:32px}}
+@media(max-width:650px){.wrap{padding-left:16px;padding-right:16px}.mast{padding-top:24px}.count{display:none}h1{font-size:27px}.grid{grid-template-columns:1fr;gap:25px}.controls{position:static}.filters{width:100%}.filters button{padding:7px 9px}.search{width:100%;min-width:150px}.resultline{gap:15px;line-height:1.6}.pair{grid-template-columns:1fr}.tray{gap:8px;padding:10px}.tray span{max-width:160px}.tray button{padding:8px}.modal-head{padding:12px}.modal-body{padding:10px}dialog{width:calc(100vw - 12px);height:calc(100vh - 12px)}.modal-head h2{min-width:130px}.frame{min-width:1100px}.modal-footer p{max-width:180px}.modal-head a{font-size:12px}}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header class="wrap mast"><div><p class="eyebrow">EXPLORER / DESIGN STUDIES</p><h1>毎日使いたくなる、ファイルの居場所。</h1><p class="intro">4つのモデル、12の方向性。好きな質感と、使いやすい構成を見つける。</p><p class="dslink"><a href="../explorer-design-system/index.html">採用案（Prism Canopy）のデザインシステム — 色と部品のリファレンス →</a></p></div><div class="count">12<small>CONCEPTS</small></div></header>
+<div class="wrap controls"><nav class="filters" aria-label="モデルで絞り込む"></nav><input class="search" type="search" aria-label="案を検索" placeholder="名前・特徴で探す"><button class="savefilter" aria-pressed="false">☆ 気になる案</button><select id="theme" aria-label="スクリーンショットのテーマ"><option value="light">ライトで見る</option><option value="dark">ダークで見る</option></select></div>
+<main class="wrap"><div class="resultline"><span id="result" aria-live="polite"></span><span>画像をクリックで拡大・試用。2案を選ぶと並べて比較できます。</span></div><p class="notice" id="notice" role="status"></p><div class="grid" id="grid"></div></main>
+<div class="tray" hidden><span id="selection"></span><button class="clear" id="clear">解除</button><button id="compare">2案を比較</button></div>
+<dialog id="viewer" aria-labelledby="viewer-title"><div class="modal-shell"><header class="modal-head"><h2 id="viewer-title"></h2><div class="mode" id="modes"><button data-mode="image" aria-pressed="true">画面を見る</button><button data-mode="live" aria-pressed="false">操作してみる</button></div><a id="external" target="_blank" rel="noopener">別タブで開く ↗</a><button class="close" aria-label="閉じる">×</button></header><div class="modal-body" id="viewer-body"></div><footer class="modal-footer"><button id="prev">← 前の案</button><p>試作のため、実ファイルの操作は行いません。</p><button id="next">次の案 →</button></footer></div></dialog>
+<script>
+const models={opus:{name:'Opus',effort:'High'},argon:{name:'Argon',effort:'Medium'},hydrogen:{name:'Hydrogen',effort:'High'},astra:{name:'Astra',effort:'High'}};
+const rows=[
+['opus',1,'Air','淡い光と浮かぶ面。軽やかな3ペインと、選択に応じた操作バー。','浮遊 ガラス 青 紫'],
+['opus',2,'Trail','フォルダー階層を重なった面として表現。下部に操作を集約。','階層 重なり ミント 大胆'],
+['opus',3,'Spaces','場所ごとの色とタブ。フォルダー棚と日付ごとのファイル一覧。','タブ 暖色 フォルダー棚'],
+['argon',1,'Prism Canopy','採用ベース。Prismの質感とコンパクトな一覧、下端の固定情報バー。','ガラス 青 カテゴリ'],
+['argon',2,'Kinetic Horizon','上に場所、下に操作。横幅を活かした一覧とフォルダー棚。','下部 ドック 横ナビ サイズバー'],
+['argon',3,'Atelier Folio','暖かな紙色と朱色。階層ナビと下部の詳細で文脈を保つ。','暖色 紙 階層 カラム'],
+['hydrogen',1,'Airy Canvas','淡い青の下地に、白い一覧と詳細。柔らかな余白の定番構成。','青 浮遊 白 右プレビュー'],
+['hydrogen',2,'Tactile Studio','細い左レールと広い一覧。選択した情報は下部デッキへ。','暖色 ティール 下部 カラム'],
+['hydrogen',3,'Translucent Horizon','横並びの場所ナビと半透明の面。ファイルに広い横幅を。','透明 紫 グラス 横ナビ'],
+['astra',1,'透庭','ミントと杏色の柔らかな光。明るい一覧と右プレビュー。','緑 ミント 浮遊 明るい'],
+['astra',2,'紙面','左サイドバーを省き、横ナビと下部詳細で一覧を広く。','紙 アイボリー 横ナビ 下部'],
+['astra',3,'対座','作業元と書き出し先を同時に見る、落ち着いた二面構成。','紫 プラム 二面 デュアル']
+];
+const data=rows.map(([model,n,name,desc,tags])=>({id:model+'-'+n,model,n,name,desc,tags}));
+const $=s=>document.querySelector(s);
+let filter='all',onlySaved=false,query='',theme='light',selected=[],saved=[],current=null,mode='image',pairMode=false;
+try{saved=JSON.parse(localStorage.getItem('explorer-gallery-saved')||'[]');if(!Array.isArray(saved))saved=[]}catch{}
+function path(d){return d.model+'/concept-'+d.n+(d.model==='argon'&&d.n===1&&theme==='dark'?'-dark':'')+'.html'}
+function shot(d){
+ let suffix=theme==='dark'?'-dark':'';
+ if((d.model==='opus'&&d.n===2)||(d.model==='astra'&&d.n===3))suffix=theme==='light'?'-light':'';
+ if(d.model==='argon')suffix='-'+theme;
+ return d.model+'/screenshots/concept-'+d.n+suffix+'.png';
+}
+function visible(){const q=query.normalize('NFKC').toLowerCase();return data.filter(d=>(filter==='all'||filter===d.model)&&(!onlySaved||saved.includes(d.id))&&(!q||[d.name,d.model,d.desc,d.tags].join(' ').normalize('NFKC').toLowerCase().includes(q)))}
+function render(){
+ $('.filters').innerHTML=[['all','すべて'],...Object.entries(models).map(([id,m])=>[id,m.name])].map(([id,name])=>'<button data-filter="'+id+'" aria-pressed="'+(filter===id)+'">'+name+'</button>').join('');
+ const list=visible();$('#result').textContent=list.length+' / 12 案 · 気になる案 '+saved.length+' 件';
+ $('.savefilter').setAttribute('aria-pressed',onlySaved);
+ $('#grid').innerHTML=list.length?list.map(d=>'<article class="card"><button class="thumb" data-open="'+d.id+'" aria-label="'+d.name+'を拡大"><img loading="lazy" src="'+shot(d)+'" alt="'+models[d.model].name+' '+d.name+' '+theme+'テーマ"></button><div class="cardtop"><span class="identity">'+models[d.model].name+' / '+models[d.model].effort+' · 0'+d.n+'</span><button class="bookmark" data-save="'+d.id+'" aria-label="'+d.name+'を気になる案に保存" aria-pressed="'+saved.includes(d.id)+'">'+(saved.includes(d.id)?'★':'☆')+'</button></div><h2>'+d.name+'</h2><p>'+d.desc+'</p><div class="cardfoot"><a href="'+path(d)+'" target="_blank" rel="noopener">モックを開く ↗</a><label class="compare-label"><input type="checkbox" data-compare="'+d.id+'" '+(selected.includes(d.id)?'checked':'')+'>比較する</label></div></article>').join(''):'<div class="empty">該当する案がありません。絞り込みを変えてみてください。</div>';
+ $('.tray').hidden=selected.length===0;$('#selection').textContent=selected.map(id=>{const d=data.find(x=>x.id===id);return models[d.model].name+' '+d.name}).join(' ／ ')||(selected.length+'案');
+ $('#compare').disabled=selected.length!==2;
+}
+function save(id){saved=saved.includes(id)?saved.filter(x=>x!==id):[...saved,id];try{localStorage.setItem('explorer-gallery-saved',JSON.stringify(saved))}catch{$('#notice').textContent='このブラウザーでは保存できないため、気になる案は今回の閲覧中のみ保持します。'}render()}
+function showViewer(id){current=id;pairMode=false;mode='image';renderViewer();if(!$('#viewer').open)$('#viewer').showModal()}
+function renderViewer(){
+ const d=data.find(x=>x.id===current);if(!d)return;
+ $('#viewer-title').textContent=models[d.model].name+' / '+d.name;
+ $('#modes').hidden=false;$('#external').hidden=false;$('#external').href=path(d);
+ $('#prev').hidden=false;$('#next').hidden=false;
+ document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===mode));
+ $('#viewer-body').innerHTML=mode==='image'?'<img class="shot" src="'+shot(d)+'" alt="'+d.name+'"><p class="viewer-note">'+d.desc+'</p>':'<p class="viewer-note">デスクトップ向けモックです。狭い画面では横へスクロールできます。テーマ切替はモック内の設定を使います。</p><iframe class="frame" title="'+d.name+'の操作モック" src="'+path(d)+'"></iframe>';
+}
+function compare(){
+ if(selected.length!==2)return;pairMode=true;
+ $('#viewer-title').textContent='2つの方向性を比較';$('#modes').hidden=true;$('#external').hidden=true;$('#prev').hidden=true;$('#next').hidden=true;
+ $('#viewer-body').innerHTML='<div class="pair">'+selected.map(id=>{const d=data.find(x=>x.id===id);return '<section><h3>'+models[d.model].name+' / '+d.name+'</h3><img src="'+shot(d)+'" alt="'+d.name+'"><p>'+d.desc+'</p><a href="'+path(d)+'" target="_blank" rel="noopener">操作モックを別タブで開く ↗</a></section>'}).join('')+'</div><p class="viewer-note">画面の密度・配色・操作の位置を比較できます。ファイルアイコンは各案の仮素材です。</p>';
+ $('#viewer').showModal();
+}
+function move(delta){const list=visible();if(!list.length)return;let i=list.findIndex(x=>x.id===current);current=list[(i+delta+list.length)%list.length].id;renderViewer()}
+$('.filters').addEventListener('click',e=>{const b=e.target.closest('[data-filter]');if(b){filter=b.dataset.filter;render()}});
+$('.search').addEventListener('input',e=>{query=e.target.value;render()});
+$('.savefilter').addEventListener('click',()=>{onlySaved=!onlySaved;render()});
+$('#theme').addEventListener('change',e=>{theme=e.target.value;render()});
+$('#grid').addEventListener('click',e=>{const o=e.target.closest('[data-open]'),s=e.target.closest('[data-save]');if(o)showViewer(o.dataset.open);if(s)save(s.dataset.save)});
+$('#grid').addEventListener('change',e=>{const id=e.target.dataset.compare;if(!id)return;if(e.target.checked&&selected.length===2){e.target.checked=false;$('#notice').textContent='比較できるのは2案です。選択中の案を解除してください。';return}selected=e.target.checked?[...selected,id]:selected.filter(x=>x!==id);$('#notice').textContent='';render()});
+$('#clear').onclick=()=>{selected=[];$('#notice').textContent='';render()};
+$('#compare').onclick=compare;
+$('.close').onclick=()=>$('#viewer').close();
+$('#viewer').addEventListener('close',()=>{$('#viewer-body').innerHTML=''});
+$('#modes').addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(b){mode=b.dataset.mode;renderViewer()}});
+$('#prev').onclick=()=>move(-1);$('#next').onclick=()=>move(1);
+document.addEventListener('keydown',e=>{if($('#viewer').open&&!pairMode&&mode==='image'){if(e.key==='ArrowLeft')move(-1);if(e.key==='ArrowRight')move(1)}});
+render();
+</script>
+</body></html>

@@ -1,0 +1,1620 @@
+{
+  "date": "2026-11-14T18:34:18.126Z",
+  "checks": [
+    {
+      "name": "tokens.css / index.html 埋め込みが tokens.json と一致（build-tokens --check）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "埋め込み CSS が tokens.css とバイト一致",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "index.html に外部リソース参照なし（http/https の src/href なし）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "モック concept-1.html の実描画とトークン値が一致（69 項目）",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "モック concept-1-dark.html の実描画とトークン値が一致（69 項目）",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "1280px light: 横はみ出しなし",
+      "ok": true,
+      "detail": {
+        "over": 0,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px light: 地の色が light の surface.canvas",
+      "ok": true,
+      "detail": "rgb(245, 247, 250)"
+    },
+    {
+      "name": "1280px dark: 横はみ出しなし",
+      "ok": true,
+      "detail": {
+        "over": 0,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px dark: 地の色が dark の surface.canvas",
+      "ok": true,
+      "detail": "rgb(25, 25, 25)"
+    },
+    {
+      "name": "1100px light: 横はみ出しなし",
+      "ok": true,
+      "detail": {
+        "over": 0,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1100px light: 地の色が light の surface.canvas",
+      "ok": true,
+      "detail": "rgb(245, 247, 250)"
+    },
+    {
+      "name": "1100px dark: 横はみ出しなし",
+      "ok": true,
+      "detail": {
+        "over": 0,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1100px dark: 地の色が dark の surface.canvas",
+      "ok": true,
+      "detail": "rgb(25, 25, 25)"
+    },
+    {
+      "name": "390px light: 横はみ出しなし",
+      "ok": true,
+      "detail": {
+        "over": 0,
+        "offenders": []
+      }
+    },
+    {
+      "name": "390px light: 地の色が light の surface.canvas",
+      "ok": true,
+      "detail": "rgb(245, 247, 250)"
+    },
+    {
+      "name": "390px dark: 横はみ出しなし",
+      "ok": true,
+      "detail": {
+        "over": 0,
+        "offenders": []
+      }
+    },
+    {
+      "name": "390px dark: 地の色が dark の surface.canvas",
+      "ok": true,
+      "detail": "rgb(25, 25, 25)"
+    },
+    {
+      "name": "light: CSS 変数の計算値が tokens.json と一致（185 項目）",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "HTML の色カード表示値が tokens.json と一致（72 枚）",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "dark: CSS 変数の計算値が tokens.json と一致（185 項目）",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "light: 実描画のコントラスト比が計算値と一致（20 組、許容差 0.06）",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "dark: 実描画のコントラスト比が計算値と一致（20 組、許容差 0.06）",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "目次の絞り込み「選択」で関連項目のみ表示",
+      "ok": true,
+      "detail": [
+        "状態と優先順位",
+        "ファイル行",
+        "下端情報バー"
+      ]
+    },
+    {
+      "name": "目次の絞り込み 0 件で「該当なし」表示",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "絞り込み解除で全項目に戻る",
+      "ok": true,
+      "detail": 29
+    },
+    {
+      "name": "目次リンクで該当節へ移動し現在位置を強調",
+      "ok": true,
+      "detail": {
+        "top": 63.65625,
+        "cur": "true"
+      }
+    },
+    {
+      "name": "テーマ: ダークに切替",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "テーマ: システム（OS ダーク）で data-theme を外しダーク表示・保存",
+      "ok": true,
+      "detail": [
+        false,
+        "rgb(25, 25, 25)",
+        "system"
+      ]
+    },
+    {
+      "name": "テーマ: システム（OS ライト）でライト表示",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "明暗並列: 状態見本がライト/ダークで並び、ダーク列はダークのトークンで描画（複製は操作不可・ID重複なし）",
+      "ok": true,
+      "detail": {
+        "count": 18,
+        "visible": true,
+        "selBg": "rgb(37, 52, 76)",
+        "inert": true,
+        "dupIds": false
+      }
+    },
+    {
+      "name": "コピー: 通常経路で成功しトースト表示",
+      "ok": true,
+      "detail": "clipboard"
+    },
+    {
+      "name": "タブ: 追加で 4 枚・新タブが現在",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "タブ: Home で先頭へ",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "タブ: → で次へ",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "タブ: Delete で閉じて隣へ",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "タブ: 多数で横スクロールし現在タブが見える位置へ",
+      "ok": true,
+      "detail": [
+        true,
+        true
+      ]
+    },
+    {
+      "name": "検索: 入力で絞り込み・一致マーカー・クリア表示",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "検索: 0 件表示（採用済み文言）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "検索: 「フィルターを解除」で復帰しクリア非表示",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "検索: Esc でクリア",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "一覧: クリック＋Ctrl+クリックで 2 件選択・フォーカス中の塗り",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "一覧: Shift+クリックで範囲選択",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "一覧: キー移動で現在行に 2px のフォーカスリング",
+      "ok": true,
+      "detail": "rgb(37, 99, 235) 0px 0px 0px 2px"
+    },
+    {
+      "name": "一覧: フォーカスが外れると非アクティブ選択の塗り",
+      "ok": true,
+      "detail": "rgba(148, 163, 184, 0.14)"
+    },
+    {
+      "name": "一覧: コンパクトで行高 24px",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "一覧: 標準で行高 28px",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "一覧: 列見出しでソートし再押下で降順",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "一覧: グリッド表示へ切替（ヘッダー非表示・タイル）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "メニュー: 開くと aria-expanded=true で先頭項目にフォーカス",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "メニュー: ↓ で移動し無効項目を飛ばして先頭へ戻る",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "メニュー: Enter で選択して閉じフォーカスをボタンへ戻す",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "メニュー: Esc で閉じる",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ダイアログ: 開く",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ダイアログ: Esc で閉じフォーカスを戻す",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab 操作でフォーカスリング（2px solid）が見える",
+      "ok": true,
+      "detail": [
+        "",
+        "solid",
+        "2px"
+      ]
+    },
+    {
+      "name": "コピー失敗時: 手動コピー用ダイアログに全文を選択状態で表示",
+      "ok": true,
+      "detail": {
+        "open": true,
+        "value": "node docs/design/explorer-design-system/tools/build-tokens.cjs\nnode docs/design/explorer-design-system/tools/build-tokens.cjs --check\nnode docs/design/explorer-design-system/tools/verify.cjs",
+        "selected": true
+      }
+    },
+    {
+      "name": "コピー失敗時: Esc でダイアログを閉じる",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "390px: 目次は初期非表示（ドロワー）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "390px: 目次ボタンでドロワーが画面内に開き検索欄へフォーカス",
+      "ok": true,
+      "detail": {
+        "x": 6,
+        "y": 56,
+        "width": 300,
+        "height": 782
+      }
+    },
+    {
+      "name": "390px: 絞り込み＋Enter で節へ移動しドロワーを閉じる",
+      "ok": true,
+      "detail": 64.3125
+    },
+    {
+      "name": "390px: 節移動後も横はみ出しなし",
+      "ok": true,
+      "detail": {
+        "over": 0,
+        "offenders": []
+      }
+    },
+    {
+      "name": "390px: 幅の広いサンプルは枠内で横スクロール（ページは崩れない）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "全ページでコンソールエラー・例外なし",
+      "ok": true,
+      "detail": []
+    }
+  ],
+  "mockDrift": [
+    {
+      "theme": "light",
+      "id": "surface.canvas",
+      "expected": "#f5f7fa",
+      "actual": "#f5f7fa",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.content",
+      "expected": "#ffffff",
+      "actual": "rgb(255, 255, 255)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.chrome",
+      "expected": "#fafbfd",
+      "actual": "rgb(250, 251, 253)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.statusbar",
+      "expected": "#fafbfd",
+      "actual": "rgb(250, 251, 253)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.field",
+      "expected": "#f1f4f9",
+      "actual": "rgb(241, 244, 249)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.field-focus",
+      "expected": "#ffffff",
+      "actual": "#ffffff",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.card",
+      "expected": "#ffffff",
+      "actual": "rgb(255, 255, 255)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.chip-selected",
+      "expected": "#ffffff",
+      "actual": "rgb(255, 255, 255)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.raised",
+      "expected": "#ffffff",
+      "actual": "#ffffff",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.dialog",
+      "expected": "#ffffff",
+      "actual": "rgb(255, 255, 255)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "surface.backdrop",
+      "expected": "rgba(15, 23, 42, 0.24)",
+      "actual": "rgba(15, 23, 42, 0.24)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "text.primary",
+      "expected": "#0f172a",
+      "actual": "#0f172a",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "text.secondary",
+      "expected": "#475569",
+      "actual": "#475569",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "text.muted",
+      "expected": "#64748b",
+      "actual": "#64748b",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "text.disabled",
+      "expected": "#cbd5e1",
+      "actual": "#cbd5e1",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "text.emphasis",
+      "expected": "#0f172a",
+      "actual": "rgb(15, 23, 42)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "text.on-accent",
+      "expected": "#ffffff",
+      "actual": "#ffffff",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "icon.default",
+      "expected": "#475569",
+      "actual": "#475569",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "accent.fg",
+      "expected": "#2563eb",
+      "actual": "#2563eb",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "accent.soft",
+      "expected": "rgba(37, 99, 235, 0.12)",
+      "actual": "rgba(37, 99, 235, 0.12)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "focus.ring",
+      "expected": "#2563eb",
+      "actual": "#2563eb",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "focus.halo",
+      "expected": "rgba(37, 99, 235, 0.25)",
+      "actual": "rgba(37, 99, 235, 0.25)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "state.hover",
+      "expected": "rgba(37, 99, 235, 0.055)",
+      "actual": "rgba(37, 99, 235, 0.055)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "state.pressed",
+      "expected": "rgba(37, 99, 235, 0.1)",
+      "actual": "rgba(37, 99, 235, 0.10)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "nav.current.bg",
+      "expected": "#2864e8",
+      "actual": "rgb(40, 100, 232)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "nav.current.fg",
+      "expected": "#ffffff",
+      "actual": "rgb(255, 255, 255)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "selection.bg",
+      "expected": "#e8effc",
+      "actual": "rgb(232, 239, 252)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "selection.border",
+      "expected": "rgba(37, 99, 235, 0.32)",
+      "actual": "rgba(37, 99, 235, 0.32)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "selection.fg",
+      "expected": "#2563eb",
+      "actual": "rgb(37, 99, 235)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "selection.fg-secondary",
+      "expected": "#64748b",
+      "actual": "rgb(100, 116, 139)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "selection.inactive.bg",
+      "expected": "rgba(148, 163, 184, 0.14)",
+      "actual": "rgba(148, 163, 184, 0.14)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "tab.bg",
+      "expected": "transparent",
+      "actual": "rgba(0, 0, 0, 0)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "tab.border",
+      "expected": "transparent",
+      "actual": "rgba(0, 0, 0, 0)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "tab.fg",
+      "expected": "#475569",
+      "actual": "rgb(71, 85, 105)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "tab.active.bg",
+      "expected": "#ffffff",
+      "actual": "rgb(255, 255, 255)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "tab.active.border",
+      "expected": "rgba(15, 23, 42, 0.075)",
+      "actual": "rgba(15, 23, 42, 0.075)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "button.bg",
+      "expected": "#ffffff",
+      "actual": "rgb(255, 255, 255)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "button.border",
+      "expected": "rgba(15, 23, 42, 0.075)",
+      "actual": "rgba(15, 23, 42, 0.075)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "button.fg",
+      "expected": "#0f172a",
+      "actual": "rgb(15, 23, 42)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "button.primary.bg",
+      "expected": "#2563eb",
+      "actual": "rgb(37, 99, 235)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "button.primary.border",
+      "expected": "transparent",
+      "actual": "rgba(0, 0, 0, 0)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "menu.highlight.bg",
+      "expected": "#2563eb",
+      "actual": "#2563eb",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "menu.highlight.fg",
+      "expected": "#ffffff",
+      "actual": "#ffffff",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "badge.bg",
+      "expected": "rgba(37, 99, 235, 0.12)",
+      "actual": "rgba(37, 99, 235, 0.12)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "badge.fg",
+      "expected": "#2563eb",
+      "actual": "rgb(37, 99, 235)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "border.subtle",
+      "expected": "rgba(15, 23, 42, 0.06)",
+      "actual": "rgba(15, 23, 42, 0.06)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "border.default",
+      "expected": "rgba(15, 23, 42, 0.075)",
+      "actual": "rgba(15, 23, 42, 0.075)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "border.content",
+      "expected": "rgba(15, 23, 42, 0.075)",
+      "actual": "rgba(15, 23, 42, 0.075)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "border.card",
+      "expected": "rgba(15, 23, 42, 0.06)",
+      "actual": "rgba(15, 23, 42, 0.06)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "border.statusbar",
+      "expected": "rgba(15, 23, 42, 0.06)",
+      "actual": "rgba(15, 23, 42, 0.06)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "border.dialog",
+      "expected": "rgba(15, 23, 42, 0.075)",
+      "actual": "rgba(15, 23, 42, 0.075)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "match.bg",
+      "expected": "rgba(251, 191, 36, 0.38)",
+      "actual": "rgba(251, 191, 36, 0.38)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "meter.fill",
+      "expected": "#3b82f6",
+      "actual": "#3b82f6",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "meter.warn",
+      "expected": "#f59e0b",
+      "actual": "#f59e0b",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "meter.track",
+      "expected": "rgba(148, 163, 184, 0.22)",
+      "actual": "rgba(148, 163, 184, 0.22)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "scrollbar.thumb",
+      "expected": "rgba(100, 116, 139, 0.26)",
+      "actual": "rgba(100, 116, 139, 0.26)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "shadow.popover",
+      "expected": "0 6px 20px rgba(0, 0, 0, 0.14)",
+      "actual": "0 6px 20px rgba(0, 0, 0, 0.14)",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.tabbar",
+      "expected": "32px",
+      "actual": "32px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.tab",
+      "expected": "30px",
+      "actual": "30px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.toolbar",
+      "expected": "44px",
+      "actual": "44px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.field",
+      "expected": "36px",
+      "actual": "36px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.icon-button",
+      "expected": "32px",
+      "actual": "32px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.list-header",
+      "expected": "28px",
+      "actual": "28px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.row",
+      "expected": "28px",
+      "actual": "28px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.statusbar",
+      "expected": "28px",
+      "actual": "28px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.button",
+      "expected": "32px",
+      "actual": "32px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.sidebar",
+      "expected": "200px",
+      "actual": "200px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "size.inspector",
+      "expected": "268px",
+      "actual": "268px",
+      "ok": true
+    },
+    {
+      "theme": "light",
+      "id": "radius.island",
+      "expected": "10px",
+      "actual": "10px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.canvas",
+      "expected": "#191919",
+      "actual": "#191919",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.content",
+      "expected": "#191919",
+      "actual": "rgb(25, 25, 25)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.chrome",
+      "expected": "#242424",
+      "actual": "rgb(36, 36, 36)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.statusbar",
+      "expected": "#202020",
+      "actual": "rgb(32, 32, 32)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.field",
+      "expected": "#1c1c1c",
+      "actual": "rgb(28, 28, 28)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.field-focus",
+      "expected": "#292929",
+      "actual": "#292929",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.card",
+      "expected": "#1c1c1c",
+      "actual": "rgb(28, 28, 28)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.chip-selected",
+      "expected": "#353535",
+      "actual": "rgb(53, 53, 53)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.raised",
+      "expected": "#2c2c2c",
+      "actual": "#2c2c2c",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.dialog",
+      "expected": "#262626",
+      "actual": "rgb(38, 38, 38)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "surface.backdrop",
+      "expected": "rgba(0, 0, 0, 0.62)",
+      "actual": "rgba(0, 0, 0, 0.62)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "text.primary",
+      "expected": "#f2f2f2",
+      "actual": "#f2f2f2",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "text.secondary",
+      "expected": "#cecece",
+      "actual": "#cecece",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "text.muted",
+      "expected": "#adadad",
+      "actual": "#adadad",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "text.disabled",
+      "expected": "#626262",
+      "actual": "#626262",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "text.emphasis",
+      "expected": "#fafafa",
+      "actual": "rgb(250, 250, 250)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "text.on-accent",
+      "expected": "#ffffff",
+      "actual": "#ffffff",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "icon.default",
+      "expected": "#bdbdbd",
+      "actual": "#bdbdbd",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "accent.fg",
+      "expected": "#76b8ff",
+      "actual": "#76b8ff",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "accent.soft",
+      "expected": "rgba(59, 130, 246, 0.2)",
+      "actual": "rgba(59, 130, 246, 0.20)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "focus.ring",
+      "expected": "#60a5fa",
+      "actual": "#60a5fa",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "focus.halo",
+      "expected": "rgba(96, 165, 250, 0.32)",
+      "actual": "rgba(96, 165, 250, 0.32)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "state.hover",
+      "expected": "rgba(255, 255, 255, 0.06)",
+      "actual": "rgba(255, 255, 255, 0.06)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "state.pressed",
+      "expected": "rgba(255, 255, 255, 0.11)",
+      "actual": "rgba(255, 255, 255, 0.11)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "nav.current.bg",
+      "expected": "#245cce",
+      "actual": "rgb(36, 92, 206)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "nav.current.fg",
+      "expected": "#ffffff",
+      "actual": "rgb(255, 255, 255)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "selection.bg",
+      "expected": "#25344c",
+      "actual": "rgb(37, 52, 76)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "selection.border",
+      "expected": "rgba(96, 165, 250, 0.56)",
+      "actual": "rgba(96, 165, 250, 0.56)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "selection.fg",
+      "expected": "#fafafa",
+      "actual": "rgb(250, 250, 250)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "selection.fg-secondary",
+      "expected": "#cecece",
+      "actual": "rgb(206, 206, 206)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "selection.inactive.bg",
+      "expected": "rgba(180, 180, 180, 0.14)",
+      "actual": "rgba(180, 180, 180, 0.14)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "tab.bg",
+      "expected": "rgba(29, 29, 29, 0.54)",
+      "actual": "rgba(29, 29, 29, 0.54)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "tab.border",
+      "expected": "rgba(180, 180, 180, 0.1)",
+      "actual": "rgba(180, 180, 180, 0.1)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "tab.fg",
+      "expected": "#cecece",
+      "actual": "rgb(206, 206, 206)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "tab.active.bg",
+      "expected": "#343434",
+      "actual": "rgb(52, 52, 52)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "tab.active.border",
+      "expected": "rgba(255, 255, 255, 0.28)",
+      "actual": "rgba(255, 255, 255, 0.28)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "button.bg",
+      "expected": "#333333",
+      "actual": "rgb(51, 51, 51)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "button.border",
+      "expected": "rgba(180, 180, 180, 0.24)",
+      "actual": "rgba(180, 180, 180, 0.24)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "button.fg",
+      "expected": "#f2f2f2",
+      "actual": "rgb(242, 242, 242)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "button.primary.bg",
+      "expected": "#2563eb",
+      "actual": "rgb(37, 99, 235)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "button.primary.border",
+      "expected": "rgba(147, 197, 253, 0.36)",
+      "actual": "rgba(147, 197, 253, 0.36)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "menu.highlight.bg",
+      "expected": "#2563eb",
+      "actual": "#2563eb",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "menu.highlight.fg",
+      "expected": "#ffffff",
+      "actual": "#ffffff",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "badge.bg",
+      "expected": "rgba(255, 255, 255, 0.06)",
+      "actual": "rgba(255, 255, 255, 0.06)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "badge.fg",
+      "expected": "#cecece",
+      "actual": "rgb(206, 206, 206)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "border.subtle",
+      "expected": "rgba(180, 180, 180, 0.12)",
+      "actual": "rgba(180, 180, 180, 0.12)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "border.default",
+      "expected": "rgba(180, 180, 180, 0.16)",
+      "actual": "rgba(180, 180, 180, 0.16)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "border.content",
+      "expected": "rgba(180, 180, 180, 0.18)",
+      "actual": "rgba(180, 180, 180, 0.18)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "border.card",
+      "expected": "rgba(180, 180, 180, 0.14)",
+      "actual": "rgba(180, 180, 180, 0.14)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "border.statusbar",
+      "expected": "rgba(180, 180, 180, 0.15)",
+      "actual": "rgba(180, 180, 180, 0.15)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "border.dialog",
+      "expected": "rgba(180, 180, 180, 0.22)",
+      "actual": "rgba(180, 180, 180, 0.22)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "match.bg",
+      "expected": "rgba(245, 158, 11, 0.34)",
+      "actual": "rgba(245, 158, 11, 0.34)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "meter.fill",
+      "expected": "#3b82f6",
+      "actual": "#3b82f6",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "meter.warn",
+      "expected": "#f59e0b",
+      "actual": "#f59e0b",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "meter.track",
+      "expected": "rgba(148, 163, 184, 0.22)",
+      "actual": "rgba(148, 163, 184, 0.22)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "scrollbar.thumb",
+      "expected": "rgba(180, 180, 180, 0.28)",
+      "actual": "rgba(180, 180, 180, 0.28)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "shadow.popover",
+      "expected": "0 6px 20px rgba(0, 0, 0, 0.35)",
+      "actual": "0 6px 20px rgba(0, 0, 0, 0.35)",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.tabbar",
+      "expected": "32px",
+      "actual": "32px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.tab",
+      "expected": "30px",
+      "actual": "30px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.toolbar",
+      "expected": "44px",
+      "actual": "44px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.field",
+      "expected": "36px",
+      "actual": "36px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.icon-button",
+      "expected": "32px",
+      "actual": "32px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.list-header",
+      "expected": "28px",
+      "actual": "28px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.row",
+      "expected": "28px",
+      "actual": "28px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.statusbar",
+      "expected": "28px",
+      "actual": "28px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.button",
+      "expected": "32px",
+      "actual": "32px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.sidebar",
+      "expected": "200px",
+      "actual": "200px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "size.inspector",
+      "expected": "268px",
+      "actual": "268px",
+      "ok": true
+    },
+    {
+      "theme": "dark",
+      "id": "radius.island",
+      "expected": "10px",
+      "actual": "10px",
+      "ok": true
+    }
+  ],
+  "contrastRendered": [
+    {
+      "theme": "light",
+      "id": "row-name",
+      "ratio": 17.85,
+      "computed": 17.85
+    },
+    {
+      "theme": "light",
+      "id": "row-meta",
+      "ratio": 4.76,
+      "computed": 4.76
+    },
+    {
+      "theme": "light",
+      "id": "sel-name",
+      "ratio": 4.48,
+      "computed": 4.48
+    },
+    {
+      "theme": "light",
+      "id": "sel-meta",
+      "ratio": 4.12,
+      "computed": 4.12
+    },
+    {
+      "theme": "light",
+      "id": "sel-inactive-name",
+      "ratio": 15.93,
+      "computed": 15.93
+    },
+    {
+      "theme": "light",
+      "id": "header",
+      "ratio": 4.6,
+      "computed": 4.6
+    },
+    {
+      "theme": "light",
+      "id": "header-sorted",
+      "ratio": 4.99,
+      "computed": 4.99
+    },
+    {
+      "theme": "light",
+      "id": "nav-current",
+      "ratio": 5.15,
+      "computed": 5.15
+    },
+    {
+      "theme": "light",
+      "id": "side-heading",
+      "ratio": 4.6,
+      "computed": 4.6
+    },
+    {
+      "theme": "light",
+      "id": "drive-caption",
+      "ratio": 4.32,
+      "computed": 4.32
+    },
+    {
+      "theme": "light",
+      "id": "tab-active",
+      "ratio": 17.85,
+      "computed": 17.85
+    },
+    {
+      "theme": "light",
+      "id": "tab-inactive",
+      "ratio": 7.06,
+      "computed": 7.06
+    },
+    {
+      "theme": "light",
+      "id": "crumb-current",
+      "ratio": 17.85,
+      "computed": 17.85
+    },
+    {
+      "theme": "light",
+      "id": "button",
+      "ratio": 17.85,
+      "computed": 17.85
+    },
+    {
+      "theme": "light",
+      "id": "button-primary",
+      "ratio": 5.17,
+      "computed": 5.17
+    },
+    {
+      "theme": "light",
+      "id": "badge",
+      "ratio": 4.23,
+      "computed": 4.23
+    },
+    {
+      "theme": "light",
+      "id": "inspector-label",
+      "ratio": 4.76,
+      "computed": 4.76
+    },
+    {
+      "theme": "light",
+      "id": "status-selected",
+      "ratio": 4.99,
+      "computed": 4.99
+    },
+    {
+      "theme": "light",
+      "id": "menu-current",
+      "ratio": 5.17,
+      "computed": 5.17
+    },
+    {
+      "theme": "light",
+      "id": "menu-kbd",
+      "ratio": 4.76,
+      "computed": 4.76
+    },
+    {
+      "theme": "dark",
+      "id": "row-name",
+      "ratio": 15.71,
+      "computed": 15.71
+    },
+    {
+      "theme": "dark",
+      "id": "row-meta",
+      "ratio": 7.83,
+      "computed": 7.83
+    },
+    {
+      "theme": "dark",
+      "id": "sel-name",
+      "ratio": 12.02,
+      "computed": 12.02
+    },
+    {
+      "theme": "dark",
+      "id": "sel-meta",
+      "ratio": 7.97,
+      "computed": 7.97
+    },
+    {
+      "theme": "dark",
+      "id": "sel-inactive-name",
+      "ratio": 12.01,
+      "computed": 12.01
+    },
+    {
+      "theme": "dark",
+      "id": "header",
+      "ratio": 6.92,
+      "computed": 6.92
+    },
+    {
+      "theme": "dark",
+      "id": "header-sorted",
+      "ratio": 7.44,
+      "computed": 7.44
+    },
+    {
+      "theme": "dark",
+      "id": "nav-current",
+      "ratio": 6,
+      "computed": 6
+    },
+    {
+      "theme": "dark",
+      "id": "side-heading",
+      "ratio": 6.92,
+      "computed": 6.92
+    },
+    {
+      "theme": "dark",
+      "id": "drive-caption",
+      "ratio": 7.59,
+      "computed": 7.59
+    },
+    {
+      "theme": "dark",
+      "id": "tab-active",
+      "ratio": 11.93,
+      "computed": 11.93
+    },
+    {
+      "theme": "dark",
+      "id": "tab-inactive",
+      "ratio": 10.93,
+      "computed": 10.93
+    },
+    {
+      "theme": "dark",
+      "id": "crumb-current",
+      "ratio": 11.75,
+      "computed": 11.75
+    },
+    {
+      "theme": "dark",
+      "id": "button",
+      "ratio": 11.29,
+      "computed": 11.29
+    },
+    {
+      "theme": "dark",
+      "id": "button-primary",
+      "ratio": 5.17,
+      "computed": 5.17
+    },
+    {
+      "theme": "dark",
+      "id": "badge",
+      "ratio": 8.25,
+      "computed": 8.25
+    },
+    {
+      "theme": "dark",
+      "id": "inspector-label",
+      "ratio": 7.59,
+      "computed": 7.59
+    },
+    {
+      "theme": "dark",
+      "id": "status-selected",
+      "ratio": 7.81,
+      "computed": 7.81
+    },
+    {
+      "theme": "dark",
+      "id": "menu-current",
+      "ratio": 5.17,
+      "computed": 5.17
+    },
+    {
+      "theme": "dark",
+      "id": "menu-kbd",
+      "ratio": 6.22,
+      "computed": 6.22
+    }
+  ],
+  "screenshots": [
+    "reference-1280-light.png",
+    "reference-1280-light-colors.png",
+    "reference-1280-light-contrast.png",
+    "reference-1280-light-c-row.png",
+    "reference-1280-light-p-compose.png",
+    "compose-light.png",
+    "states-rows-light.png",
+    "tabs-light.png",
+    "sidebar-light.png",
+    "menu-light.png",
+    "reference-1280-dark.png",
+    "reference-1280-dark-colors.png",
+    "reference-1280-dark-contrast.png",
+    "reference-1280-dark-c-row.png",
+    "reference-1280-dark-p-compose.png",
+    "compose-dark.png",
+    "states-rows-dark.png",
+    "tabs-dark.png",
+    "sidebar-dark.png",
+    "menu-dark.png",
+    "reference-1100-light.png",
+    "reference-1100-dark.png",
+    "reference-390-light.png",
+    "reference-390-dark.png",
+    "reference-1280-pair-view.png",
+    "reference-copy-fallback.png",
+    "reference-390-light-toc.png",
+    "reference-390-light-c-row.png",
+    "reference-390-light-contrast.png",
+    "reference-390-light-c-tabs.png"
+  ],
+  "summary": {
+    "total": 63,
+    "failed": 0
+  }
+}

@@ -1,0 +1,92 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod assets;
+mod explorer;
+mod folder;
+mod search;
+mod shell_icons;
+mod theme;
+mod theme_tokens;
+mod actions {
+    gpui::actions!(
+        explorer,
+        [
+            SelectPrev,
+            SelectNext,
+            SelectFirst,
+            SelectLast,
+            PageUp,
+            PageDown,
+            OpenSelected,
+            GoBack,
+            GoForward,
+            GoUp,
+            Refresh,
+            ToggleHidden,
+            Quit,
+            NewTab,
+            CloseTab,
+            NextTab,
+            PrevTab,
+            CycleTheme,
+            ToggleDensity,
+            FocusSearch,
+            ClearSearch
+        ]
+    );
+}
+use actions::*;
+use gpui::{
+    App, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
+};
+fn main() {
+    gpui_platform::application()
+        .with_assets(assets::Assets)
+        .run(|cx: &mut App| {
+            let ctx = Some("Explorer");
+            cx.bind_keys([
+                KeyBinding::new("up", SelectPrev, ctx),
+                KeyBinding::new("down", SelectNext, ctx),
+                KeyBinding::new("home", SelectFirst, ctx),
+                KeyBinding::new("end", SelectLast, ctx),
+                KeyBinding::new("pageup", PageUp, ctx),
+                KeyBinding::new("pagedown", PageDown, ctx),
+                KeyBinding::new("enter", OpenSelected, ctx),
+                KeyBinding::new("backspace", GoBack, ctx),
+                KeyBinding::new("alt-left", GoBack, ctx),
+                KeyBinding::new("alt-right", GoForward, ctx),
+                KeyBinding::new("alt-up", GoUp, ctx),
+                KeyBinding::new("f5", Refresh, ctx),
+                KeyBinding::new("ctrl-r", Refresh, ctx),
+                KeyBinding::new("ctrl-h", ToggleHidden, ctx),
+                KeyBinding::new("ctrl-f", FocusSearch, ctx),
+                KeyBinding::new("escape", ClearSearch, ctx),
+                KeyBinding::new("ctrl-t", NewTab, Some("ExplorerTabs")),
+                KeyBinding::new("ctrl-w", CloseTab, Some("ExplorerTabs")),
+                KeyBinding::new("ctrl-tab", NextTab, Some("ExplorerTabs")),
+                KeyBinding::new("ctrl-shift-tab", PrevTab, Some("ExplorerTabs")),
+                KeyBinding::new("ctrl-shift-l", CycleTheme, Some("ExplorerTabs")),
+                KeyBinding::new("cmd-t", NewTab, Some("ExplorerTabs")),
+                KeyBinding::new("cmd-w", CloseTab, Some("ExplorerTabs")),
+                KeyBinding::new("cmd-f", FocusSearch, ctx),
+                KeyBinding::new("cmd-q", Quit, None),
+            ]);
+            search::bind_keys(cx);
+            cx.on_action(|_: &Quit, cx| cx.quit());
+            let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    window_min_size: Some(size(px(900.), px(600.))),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("Explorer".into()),
+                        appears_transparent: cfg!(any(target_os = "windows", target_os = "macos")),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                |w, cx| cx.new(|cx| explorer::Explorer::new(w, cx)),
+            )
+            .expect("failed to open window");
+            cx.activate(true);
+        });
+}

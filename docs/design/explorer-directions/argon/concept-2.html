@@ -1,0 +1,1621 @@
+<!doctype html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ドキュメント — 案2: Kinetic Horizon</title>
+<script>
+  (function () {
+    var mode = 'light', icons = 'win';
+    try {
+      mode = localStorage.getItem('argon-c2-theme') || 'light';
+      icons = localStorage.getItem('argon-c2-icons') || 'win';
+    } catch (e) {}
+    var root = document.documentElement;
+    var dark = mode === 'dark' || (mode === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+    root.dataset.theme = dark ? 'dark' : 'light';
+    root.dataset.themeMode = mode;
+    root.dataset.icons = icons;
+  })();
+</script>
+<style>
+/* ==========================================================================
+   案2: Kinetic Horizon（キネティック・ホライゾン）— 大胆な構造変革案
+   従来の「左サイドバー＋上部ツールバー」を廃止。
+   1. 上部に「ホライゾン・プレイスリボン（場所＋ドライブピル）」を統合配置
+   2. ステージ内に「サブフォルダー・ファセットレーン（水平チップ）」を展開し、
+      メインテーブルは純粋なファイル比較・選択に集中できる構造
+   3. 下部に「フローティング・コマンドドック（検索・表示切替・履歴）」を集約
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  --font-ui: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI",
+             -apple-system, BlinkMacSystemFont, "Hiragino Sans", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+
+  /* 空間・サーフェス（サイドバーのグレー壁をなくし、開放的なクールミント＆クリスタルホワイト） */
+  --bg-canvas: linear-gradient(160deg, #f3f7fa 0%, #f8fafc 50%, #f4f6fb 100%);
+  --bg-stage: #ffffff;
+  --bg-horizon: rgba(255, 255, 255, 0.85);
+  --bg-dock: rgba(15, 23, 42, 0.88);
+  --text-dock: #f8fafc;
+  --text-dock-muted: #94a3b8;
+  --bg-dock-field: rgba(255, 255, 255, 0.12);
+
+  --bg-facet: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f0fdfa;
+  --bg-hover: rgba(13, 148, 136, 0.055);
+  --bg-pressed: rgba(13, 148, 136, 0.11);
+
+  /* 選択（鮮やかなティール・インディゴアクセント） */
+  --accent: #0d9488;
+  --accent-strong: #0f766e;
+  --accent-soft: rgba(13, 148, 136, 0.11);
+  --bg-selected: #f0fdfa;
+  --border-selected: #14b8a6;
+  --bg-selected-inactive: #f1f5f9;
+  --focus: #0d9488;
+  --match-bg: rgba(250, 204, 21, 0.42);
+
+  /* テキスト・境界 */
+  --text: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-disabled: #cbd5e1;
+  --border: #e2e8f0;
+  --border-subtle: #f1f5f9;
+
+  --shadow-stage: 0 8px 30px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.03);
+  --shadow-dock: 0 20px 44px -6px rgba(15, 23, 42, 0.28), 0 4px 12px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --shadow-card: 0 2px 6px rgba(15, 23, 42, 0.04);
+
+  /* OSアイコン代用色 */
+  --obj-folder: #fbbf24;
+  --obj-folder-back: #d97706;
+  --obj-folder-glyph: #78350f;
+  --obj-page: #ffffff;
+  --obj-page-fold: #e2e8f0;
+  --obj-page-edge: #94a3b8;
+  --obj-text-line: #94a3b8;
+  --obj-xls: #10b981;
+  --obj-csv: #059669;
+  --obj-doc: #2563eb;
+  --obj-ppt: #ea580c;
+  --obj-pdf: #dc2626;
+  --obj-zip: #d97706;
+  --obj-exe: #475569;
+  --obj-vid: #7c3aed;
+  --obj-code: #0284c7;
+  --obj-img-sky: #bae6fd;
+  --obj-img-hill: #34d399;
+  --obj-img-sun: #fbbf24;
+  --obj-drive: #cbd5e1;
+  --obj-drive-dark: #64748b;
+  --obj-drive-led: #22c55e;
+  --obj-drive-mark: #0d9488;
+  --obj-badge-text: #ffffff;
+
+  --sample-sky: #ccfbf1;
+  --sample-sky-2: #fef3c7;
+  --sample-hill: #14b8a6;
+  --sample-hill-2: #0f766e;
+  --sample-sun: #f59e0b;
+  --sample-water: #06b6d4;
+  --sample-paper: #ffffff;
+  --sample-ui: #f1f5f9;
+  --sample-ui-2: #e2e8f0;
+
+  --w-drawer: 320px;
+  --h-row: 38px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-canvas: linear-gradient(160deg, #0b111e 0%, #0f172a 55%, #0d1520 100%);
+  --bg-stage: #131c2e;
+  --bg-horizon: rgba(19, 28, 46, 0.85);
+  --bg-dock: rgba(30, 41, 59, 0.92);
+  --text-dock: #f8fafc;
+  --text-dock-muted: #94a3b8;
+  --bg-dock-field: rgba(15, 23, 42, 0.65);
+
+  --bg-facet: #0f172a;
+  --bg-card: #192438;
+  --bg-card-hover: #132f38;
+  --bg-hover: rgba(45, 212, 191, 0.08);
+  --bg-pressed: rgba(45, 212, 191, 0.14);
+
+  --accent: #2dd4bf;
+  --accent-strong: #14b8a6;
+  --accent-soft: rgba(45, 212, 191, 0.15);
+  --bg-selected: rgba(20, 184, 166, 0.14);
+  --border-selected: #2dd4bf;
+  --bg-selected-inactive: rgba(148, 163, 184, 0.12);
+  --focus: #2dd4bf;
+  --match-bg: rgba(250, 204, 21, 0.30);
+
+  --text: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-disabled: #475569;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+
+  --shadow-stage: 0 12px 36px rgba(0, 0, 0, 0.45);
+  --shadow-dock: 0 24px 48px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --obj-page: #f1f5f9;
+  --obj-page-fold: #cbd5e1;
+  --obj-page-edge: #64748b;
+}
+
+:root[data-icons="mac"] {
+  --obj-folder: #38bdf8;
+  --obj-folder-back: #0284c7;
+  --obj-folder-glyph: #0369a1;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  min-width: 960px;
+  min-height: 600px;
+  background: var(--bg-canvas);
+  color: var(--text);
+  font: 13.5px/1.45 var(--font-ui);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ico { width: 16px; height: 16px; flex: none; display: block; }
+.oi { width: 18px; height: 18px; flex: none; display: block; }
+.oi svg, .hero-icon svg { width: 100%; height: 100%; display: block; }
+* { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.3) transparent; }
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 12px 16px 16px;
+  gap: 10px;
+  position: relative;
+}
+
+/* ---------- 1. ホライゾン・プレイスリボン（左サイドバーを置換する上部水平バー） ---------- */
+.horizon-bar {
+  flex: none;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  background: var(--bg-horizon);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-stage);
+}
+.place-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+.ptab {
+  height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+}
+.ptab:hover { background: var(--bg-hover); color: var(--text); }
+.ptab[aria-current="page"] {
+  background: var(--accent-soft);
+  border-color: rgba(13, 148, 136, 0.28);
+  color: var(--accent);
+  font-weight: 600;
+}
+.ptab .oi { width: 16px; height: 16px; }
+
+.drive-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.dpill {
+  height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-stage);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.dpill:hover { border-color: var(--accent); }
+.dpill[aria-current="page"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.dpill-meter {
+  width: 44px;
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+.dpill-meter > span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.dpill-meter.warn > span { background: #ef4444; }
+.dpill-free { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* ---------- 2. メインワークステージ（フル幅・サイドバーレス） ---------- */
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  position: relative;
+}
+
+.stage {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-stage);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-stage);
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: stage;
+}
+
+/* ヒーロー・パンくず＆統計ヘッダー */
+.hero-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 22px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.crumb-trail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.crumb-trail li { display: flex; align-items: center; min-width: 0; flex: none; }
+.crumb-trail li[hidden] { display: none; }
+.crumb-btn {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.crumb-btn:hover { background: var(--bg-hover); color: var(--text); }
+.crumb-btn[aria-current="page"] {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  padding: 2px 6px;
+}
+.crumb-sep { color: var(--text-disabled); display: flex; }
+
+.hero-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.stat-badge {
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: var(--bg-facet);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.stat-badge.sel {
+  background: var(--accent-soft);
+  border-color: rgba(13, 148, 136, 0.3);
+  color: var(--accent);
+}
+
+/* サブフォルダー・ファセットシェルフ（フォルダーとファイルを空間分離する帯） */
+.folder-shelf {
+  flex: none;
+  padding: 10px 22px 12px;
+  background: var(--bg-facet);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.folder-shelf[hidden] { display: none; }
+.shelf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.shelf-cards {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.fcard {
+  flex: 0 0 auto;
+  min-width: 164px;
+  max-width: 210px;
+  height: 48px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  transition: all 0.12s ease;
+}
+.fcard:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-selected);
+  transform: translateY(-1px);
+}
+.fcard.sel {
+  background: var(--bg-selected);
+  border-color: var(--border-selected);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.fcard .oi { width: 24px; height: 24px; }
+.fcard-meta { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.fcard-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fcard-sub { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* メイン詳細リスト（リッチな列構成：名前・拡張子バッジ・サイズバー付き容量・更新日時） */
+.scroller {
+  --cols: minmax(220px, 1fr) 116px 156px 148px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+@container stage (max-width: 680px) {
+  .scroller { --cols: minmax(180px, 1fr) 136px 136px; }
+  .c-kind { display: none !important; }
+}
+@container stage (max-width: 480px) {
+  .scroller { --cols: minmax(150px, 1fr) 110px; }
+  .c-mod { display: none !important; }
+}
+
+.lh {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 34px;
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  padding: 0 22px;
+  background: var(--bg-stage);
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+}
+.lh[hidden] { display: none; }
+.hc { display: flex; min-width: 0; }
+.hbtn {
+  flex: 1;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.hbtn:hover { background: var(--bg-hover); color: var(--text); }
+.hbtn[data-active] { color: var(--accent); }
+.hbtn .ico { width: 12px; height: 12px; }
+.hc.c-size .hbtn { justify-content: flex-end; }
+.hc.c-name .hbtn { padding-left: 34px; }
+
+.rows {
+  padding: 6px 22px 84px;
+  outline: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.row {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  height: var(--h-row);
+  border-radius: 9px;
+  border-left: 3px solid transparent;
+  padding-left: 4px;
+  color: var(--text);
+  transition: background 0.08s ease;
+}
+.c {
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.c-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+}
+.nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ext-pill {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--bg-facet);
+  border: 1px solid var(--border);
+  font: 600 10.5px/1.2 var(--font-mono);
+  color: var(--text-secondary);
+}
+.c-mod { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.c-size {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.size-bar {
+  width: 42px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--border-subtle);
+  overflow: hidden;
+  flex: none;
+}
+.size-bar > span { display: block; height: 100%; background: var(--accent); opacity: 0.65; border-radius: 99px; }
+
+.row:hover, .tile:hover { background: var(--bg-hover); }
+.row.sel, .tile.sel { background: var(--bg-selected-inactive); }
+.rows.focused .row.sel, .rows.focused .tile.sel {
+  background: var(--bg-selected);
+  border-left-color: var(--border-selected);
+}
+.rows.focused .row.sel .c-name { color: var(--accent-strong); font-weight: 600; }
+:root[data-theme="dark"] .rows.focused .row.sel .c-name { color: var(--accent); }
+.rows.kbd.focused .active { box-shadow: inset 0 0 0 1.5px var(--focus); }
+.row.hid .nm, .tile.hid .nm { color: var(--text-muted); }
+.row.hid .oi, .tile.hid .oi { opacity: 0.48; }
+mark { background: var(--match-bg); color: inherit; border-radius: 2px; padding: 0 2px; }
+
+/* グリッド表示 */
+.rows.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  align-content: start;
+  gap: 10px;
+  padding: 16px 22px 88px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+}
+.tile .oi { width: 48px; height: 48px; }
+.tile .nm {
+  font-size: 12px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  position: absolute;
+  inset: 40px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.empty[hidden] { display: none; }
+.empty .btn { pointer-events: auto; }
+
+/* 右ドロワー：スライドインスペクタ */
+.pane {
+  flex: none;
+  width: var(--w-drawer);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-stage);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-stage);
+  overflow: hidden;
+}
+.pane[hidden] { display: none; }
+.pane-head {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.pane-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  user-select: text;
+}
+.hero {
+  height: 148px;
+  display: grid;
+  place-items: center;
+  background: var(--bg-facet);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.hero.image svg { width: 100%; height: 100%; display: block; }
+.hero-icon { width: 64px; height: 64px; }
+.stack { position: relative; width: 84px; height: 72px; }
+.stack .hero-icon { position: absolute; width: 54px; height: 54px; }
+.p-name { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.p-kind { margin-top: 4px; font-size: 12px; color: var(--accent); font-weight: 600; }
+.props {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 14px;
+  margin: 0;
+  font-size: 12px;
+  padding: 12px;
+  background: var(--bg-facet);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+}
+.props dt { color: var(--text-muted); }
+.props dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.sec-h { margin: 0 0 6px; font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.pre {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px 12px;
+  font: 11.5px/1.55 var(--font-mono);
+  white-space: pre-wrap;
+  background: var(--bg-facet);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn {
+  height: 32px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-stage);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.btn.primary { background: var(--accent); border-color: transparent; color: #ffffff; }
+.btn .ico { width: 14px; height: 14px; }
+
+/* ---------- 3. 下部：フローティング・コマンドドック（コントラストの高いモダン操作ハブ） ---------- */
+.dock-wrap {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 50px;
+  padding: 0 12px;
+  background: var(--bg-dock);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  color: var(--text-dock);
+  border-radius: 999px;
+  box-shadow: var(--shadow-dock);
+  max-width: calc(100vw - 48px);
+}
+.dock-group { display: flex; align-items: center; gap: 2px; }
+.dock-sep { width: 1px; height: 22px; background: rgba(255, 255, 255, 0.14); margin: 0 4px; }
+
+.dbtn {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dock-muted);
+  transition: all 0.12s ease;
+}
+.dbtn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
+.dbtn:disabled { opacity: 0.32; cursor: default; }
+.dbtn[aria-pressed="true"] {
+  background: var(--accent);
+  color: #ffffff;
+}
+.dbtn.pill {
+  width: auto;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dock);
+}
+.dbtn.proto {
+  border: 1px dashed rgba(45, 212, 191, 0.6);
+  color: #2dd4bf;
+}
+
+.dock-search {
+  width: 240px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 12px;
+  background: var(--bg-dock-field);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: var(--text-dock-muted);
+}
+.dock-search:focus-within {
+  border-color: #2dd4bf;
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.3);
+}
+.dock-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #ffffff;
+  font: 13px var(--font-ui);
+}
+.dock-search input::placeholder { color: var(--text-dock-muted); }
+.dock-search input::-webkit-search-cancel-button { display: none; }
+
+/* 試作メモダイアログ */
+dialog.spec {
+  width: min(760px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-stage);
+  color: var(--text);
+  box-shadow: var(--shadow-dock);
+  user-select: text;
+}
+dialog.spec::backdrop { background: rgba(15, 23, 42, 0.35); backdrop-filter: blur(4px); }
+dialog.spec[open] { display: flex; flex-direction: column; }
+.spec-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 50px;
+  padding: 0 14px 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+.spec-head h2 { margin: 0; font-size: 15px; font-weight: 700; flex: 1; }
+.spec-body {
+  overflow: auto;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+  font-size: 12px;
+}
+.spec-body section.wide { grid-column: 1 / -1; }
+.spec-body h3 { margin: 0 0 8px; font-size: 12px; font-weight: 700; color: var(--accent); }
+.spec-body p { margin: 0 0 8px; line-height: 1.6; color: var(--text-secondary); }
+.seg-inline {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg-facet);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.seg-inline button {
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.seg-inline button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- 1. ホライゾン・プレイスリボン（左サイドバー廃止） -->
+  <header class="horizon-bar" aria-label="場所とストレージ">
+    <ul class="place-tabs" id="places" role="list"></ul>
+    <div class="drive-pills" id="drives" role="group" aria-label="ドライブ"></div>
+  </header>
+
+  <!-- 2. フル幅ステージ＆スライドドロワー -->
+  <div class="workspace">
+    <main class="stage">
+      <!-- ヒーローパンくず＋統計バッジ -->
+      <div class="hero-bar">
+        <ol class="crumb-trail" id="crumbs"></ol>
+        <div class="hero-stats">
+          <span class="stat-badge" id="st-count"></span>
+          <span class="stat-badge sel" id="st-sel" hidden></span>
+          <span id="st-notice" role="status" aria-live="polite" style="color:var(--accent);font-weight:600"></span>
+        </div>
+      </div>
+
+      <!-- サブフォルダー・ファセットシェルフ -->
+      <section class="folder-shelf" id="folder-shelf" aria-label="サブフォルダー">
+        <div class="shelf-head">
+          <span id="shelf-title">フォルダー (5)</span>
+          <button class="crumb-btn" id="btn-toggle-shelf" style="font-size:11px;padding:2px 6px">一覧に統合 / 分離切替</button>
+        </div>
+        <div class="shelf-cards" id="shelf-cards"></div>
+      </section>
+
+      <!-- ファイル詳細リスト -->
+      <div class="scroller" id="scroller">
+        <div class="lh" id="lh">
+          <div class="hc c-name"><button class="hbtn" data-key="name">名前</button></div>
+          <div class="hc c-kind"><button class="hbtn" data-key="kind">形式</button></div>
+          <div class="hc c-size"><button class="hbtn" data-key="size">サイズ比率</button></div>
+          <div class="hc c-mod"><button class="hbtn" data-key="mtime">更新日時</button></div>
+        </div>
+        <div class="rows focused" id="rows" role="listbox" tabindex="0" aria-multiselectable="true"></div>
+        <div class="empty" id="empty" hidden></div>
+      </div>
+    </main>
+
+    <!-- 右インスペクタドロワー -->
+    <aside class="pane" id="pane" aria-label="詳細ドロワー">
+      <div class="pane-head">
+        <span>オブジェクト詳細</span>
+        <button class="crumb-btn" id="pane-close" data-icon="x" aria-label="閉じる" title="閉じる (Alt+P)"></button>
+      </div>
+      <div class="pane-body" id="pane-body"></div>
+    </aside>
+  </div>
+
+  <!-- 3. 下部：フローティング・コマンドドック -->
+  <nav class="dock-wrap" aria-label="コマンドドック">
+    <div class="dock-group">
+      <button class="dbtn" id="btn-back" data-icon="back" aria-label="戻る" title="戻る (Alt+←)"></button>
+      <button class="dbtn" id="btn-fwd" data-icon="forward" aria-label="進む" title="進む (Alt+→)"></button>
+      <button class="dbtn" id="btn-up" data-icon="up" aria-label="上の階層へ" title="上の階層へ (Alt+↑)"></button>
+      <button class="dbtn" id="btn-refresh" data-icon="refresh" aria-label="更新" title="更新 (F5)"></button>
+    </div>
+
+    <div class="dock-sep"></div>
+
+    <div class="dock-search" role="search">
+      <span data-icon="search" aria-hidden="true"></span>
+      <input type="search" id="search" autocomplete="off" spellcheck="false" placeholder="フィルター検索 (Ctrl+F)">
+      <button class="dbtn" id="search-clear" data-icon="x" style="width:22px;height:22px" aria-label="クリア" hidden></button>
+    </div>
+
+    <div class="dock-sep"></div>
+
+    <div class="dock-group" role="group" aria-label="表示切替">
+      <button class="dbtn" id="view-details" data-icon="list" aria-label="詳細リスト" title="詳細リスト" aria-pressed="true"></button>
+      <button class="dbtn" id="view-icons" data-icon="grid" aria-label="グリッド" title="グリッド" aria-pressed="false"></button>
+      <button class="dbtn" id="btn-hidden" data-icon="eye" aria-label="隠しファイル" title="隠しファイルを表示 (Ctrl+H)" aria-pressed="false"></button>
+      <button class="dbtn" id="btn-pane" data-icon="panel" aria-label="詳細ドロワー" title="詳細ドロワー (Alt+P)" aria-pressed="true"></button>
+      <button class="dbtn" id="btn-theme" data-icon="sun" aria-label="テーマ切替" title="ライト / ダーク切替"></button>
+    </div>
+
+    <div class="dock-sep"></div>
+
+    <button class="dbtn pill proto" id="btn-spec" aria-haspopup="dialog">
+      <span data-icon="info"></span>試作メモ
+    </button>
+  </nav>
+</div>
+
+<!-- 試作メモダイアログ -->
+<dialog class="spec" id="spec" aria-labelledby="spec-title">
+  <div class="spec-head">
+    <h2 id="spec-title">試作メモ — 案2: Kinetic Horizon（大胆な構造刷新案）</h2>
+    <div class="seg-inline" role="group" aria-label="テーマ">
+      <button data-theme-opt="light">ライト</button>
+      <button data-theme-opt="dark">ダーク</button>
+      <button data-theme-opt="system">システム</button>
+    </div>
+    <button class="crumb-btn" id="spec-close" data-icon="x" aria-label="閉じる"></button>
+  </div>
+  <div class="spec-body">
+    <section class="wide">
+      <h3>大胆な構造変革の狙い</h3>
+      <p>従来の「左サイドバー＋上部ツールバー＋下部ステータスバー」という固定3ペイン構造を解体し、以下3つの構造革新を行っています：</p>
+      <p>1. <strong>ホライゾン・プレイスリボン</strong>：左サイドバーを廃止し、場所とドライブ容量ピルを上部に水平展開することで、一覧の横幅を最大化。<br>
+         2. <strong>サブフォルダー・ファセットシェルフ</strong>：フォルダーを上部水平カード棚として分離表示（切替可）し、詳細リストには拡張子バッジと相対サイズバーを搭載。<br>
+         3. <strong>フローティング・コマンドドック</strong>：検索・履歴移動・表示切替を画面下部の高コントラストなフローティングカプセルに集約。</p>
+      <p>※ファイル・フォルダー・ドライブのカラーアイコンは、実装時にOSから取得するアイコンの<strong>代用として描いた仮素材</strong>です。</p>
+    </section>
+    <section>
+      <h3>OSアイコン仮素材の切替</h3>
+      <div class="seg-inline">
+        <button data-icons-opt="win">Windows風</button>
+        <button data-icons-opt="mac">macOS風</button>
+      </div>
+    </section>
+    <section>
+      <h3>GPUI 実装代替と性能検証事項</h3>
+      <p>下部コマンドドックは <code>deferred(anchored(..))</code> またはオーバーレイレイヤーで描画。サイズ比率バーは <code>div()</code> の幅比率塗りのみで計算コストゼロで描画可能です。</p>
+    </section>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const OP = {
+  back: '<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>',
+  forward: '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+  up: '<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>',
+  x: '<path d="M17 7L7 17"/><path d="M7 7l10 10"/>',
+  list: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4.5 6h.01"/><path d="M4.5 12h.01"/><path d="M4.5 18h.01"/>',
+  grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+  panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>',
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  sortUp: '<path d="M6 15l6-6 6 6"/>',
+  sortDown: '<path d="M6 9l6 6 6-6"/>',
+  eye: '<path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z"/><circle cx="12" cy="12" r="2.8"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H7a2 2 0 0 0-2 2v8"/>',
+  open: '<path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/>',
+};
+const op = (name) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${OP[name]}</svg>`;
+
+const GLYPH = {
+  home: '<path d="M11 19.5l5-4.5 5 4.5"/><path d="M12.6 18.4v5.6h6.8v-5.6"/>',
+  desk: '<rect x="10.5" y="14.2" width="11" height="7.4" rx="1"/><path d="M14 24.6h4"/>',
+  docs: '<path d="M11.5 16h9"/><path d="M11.5 19.5h9"/><path d="M11.5 23h5.5"/>',
+  down: '<path d="M16 14v8.5"/><path d="M12.4 19.4L16 23l3.6-3.6"/>',
+  pics: '<path d="M10.5 24l4.2-4.6 3 3 2-2 2 3.6"/><circle cx="19.4" cy="15.6" r="1.2"/>',
+};
+const SVG32 = (inner) => `<svg viewBox="0 0 32 32" aria-hidden="true">${inner}</svg>`;
+function folderSvg(glyph) {
+  return SVG32(
+    '<path style="fill:var(--obj-folder-back)" d="M3 8.5A2.5 2.5 0 0 1 5.5 6h6.2a2 2 0 0 1 1.45.62L15 8.5h11.5A2.5 2.5 0 0 1 29 11v13.5a2.5 2.5 0 0 1-2.5 2.5h-21A2.5 2.5 0 0 1 3 24.5z"/>' +
+    '<path style="fill:var(--obj-folder)" d="M3 13a2.5 2.5 0 0 1 2.5-2.5h21A2.5 2.5 0 0 1 29 13v11.5a2.5 2.5 0 0 1-2.5 2.5h-21A2.5 2.5 0 0 1 3 24.5z"/>' +
+    (glyph ? `<g fill="none" style="stroke:var(--obj-folder-glyph)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[glyph]}</g>` : '')
+  );
+}
+const FT = {
+  xlsx: { c: '--obj-xls', l: 'XLS' }, csv: { c: '--obj-csv', l: 'CSV' },
+  docx: { c: '--obj-doc', l: 'DOC' }, pptx: { c: '--obj-ppt', l: 'PPT' },
+  pdf: { c: '--obj-pdf', l: 'PDF' }, zip: { c: '--obj-zip', l: 'ZIP' },
+  exe: { c: '--obj-exe', l: 'EXE' }, msi: { c: '--obj-exe', l: 'MSI' },
+  mp4: { c: '--obj-vid', l: 'MP4' }, ps1: { c: '--obj-code', l: 'PS1' },
+  png: { img: true }, jpg: { img: true },
+  txt: { text: true }, md: { text: true }, ini: { text: true }, dat: {}, gitconfig: { text: true },
+};
+function fileSvg(ext, big) {
+  const t = FT[ext] || {};
+  let inner =
+    '<path style="fill:var(--obj-page);stroke:var(--obj-page-edge)" d="M8 3.5h10.8l6.7 6.7V27a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 27V5A1.5 1.5 0 0 1 8 3.5z"/>' +
+    '<path style="fill:var(--obj-page-fold);stroke:var(--obj-page-edge)" stroke-linejoin="round" d="M18.8 3.5v5.2a1.5 1.5 0 0 0 1.5 1.5h5.2"/>';
+  if (t.img) {
+    inner += '<rect x="9.5" y="13" width="13" height="11" rx="1" style="fill:var(--obj-img-sky)"/>' +
+             '<path d="M9.5 22.6l4-4.4 3 3 2-2 4 4V24h-13z" style="fill:var(--obj-img-hill)"/>' +
+             '<circle cx="18.8" cy="16.2" r="1.5" style="fill:var(--obj-img-sun)"/>';
+  } else if (t.c) {
+    inner += `<rect x="3" y="15" width="18" height="9.5" rx="1.6" style="fill:var(${t.c})"/>`;
+    if (big) inner += `<text x="12" y="21.9" font-size="6.2" font-weight="700" text-anchor="middle" style="fill:var(--obj-badge-text)" font-family="Segoe UI, sans-serif">${t.l}</text>`;
+  } else if (t.text) {
+    inner += '<g style="stroke:var(--obj-text-line)" stroke-width="1.4" stroke-linecap="round"><path d="M10 14.5h12"/><path d="M10 18h12"/><path d="M10 21.5h12"/><path d="M10 25h7"/></g>';
+  }
+  return SVG32(inner);
+}
+function driveSvg(sys) {
+  return SVG32(
+    '<rect x="3" y="10" width="26" height="13" rx="3" style="fill:var(--obj-drive)"/>' +
+    '<path d="M3 17.5h26V20a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" style="fill:var(--obj-drive-dark)"/>' +
+    '<circle cx="24.6" cy="20.2" r="1.2" style="fill:var(--obj-drive-led)"/>' +
+    (sys ? '<rect x="6.5" y="12.6" width="5" height="3" rx=".8" style="fill:var(--obj-drive-mark)"/>' : '')
+  );
+}
+function objSvg(n, big) {
+  if (n.drive) return driveSvg(n.sys);
+  if (n.type === 'dir') return folderSvg(n.glyph);
+  return fileSvg(n.ext, big);
+}
+
+/* 共通サンプルデータ */
+const T = (y, m, d, h, mi) => new Date(y, m - 1, d, h, mi).getTime();
+const KB = 1024, MB = KB * 1024, GB = MB * 1024;
+function dir(name, mtime, children = [], extra = {}) { return { name, type: 'dir', mtime, children, ...extra }; }
+function file(name, size, mtime, extra = {}) {
+  const dot = name.lastIndexOf('.');
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+  return { name, type: 'file', ext, size: Math.round(size), mtime, ...extra };
+}
+const README = `# 共有ドキュメント\n\nチームの共有資料はこのフォルダーにまとめます。\n\n- 会議メモ … 週次定例の議事録\n- 請求書 … 月ごとにPDFで保存\n- プロジェクト … 進行中の案件ごと\n\n古い資料は「アーカイブ」へ移動してください。`;
+const MEMO = `買い出し\n・付箋（黄）\n・単三電池 ×4\n・宅配用の箱\n\n来週の確認事項\n・請求書の送付先変更\n・キックオフ資料の最終版`;
+const PS1 = String.raw`# ドキュメントを D: へ同期する\n$src = "$env:USERPROFILE\Documents"\n$dst = "D:\バックアップ\Documents"\nrobocopy $src $dst /MIR /R:1 /W:1 /NP`;
+const MTG = (d) => `# ${d} 定例\n\n## 決定事項\n- リリース判定は来週水曜\n- 素材は「素材一式.zip」を正とする\n\n## 宿題\n- 見積の再確認`;
+
+const docs = dir('ドキュメント', T(2026, 11, 14, 9, 41), [
+  dir('プロジェクト', T(2026, 11, 13, 18, 2), [
+    dir('サイト改修', T(2026, 11, 10, 15, 20), [
+      file('要件定義.docx', 284 * KB, T(2026, 11, 6, 11, 3)),
+      file('ワイヤーフレーム.pdf', 3.4 * MB, T(2026, 11, 9, 17, 48)),
+      file('スケジュール.xlsx', 61.2 * KB, T(2026, 11, 10, 15, 20)),
+    ]),
+    dir('年次レポート 2026', T(2026, 10, 28, 10, 15), [
+      file('原稿.docx', 512 * KB, T(2026, 10, 28, 10, 15)),
+      file('グラフ素材.zip', 22.8 * MB, T(2026, 10, 27, 19, 40)),
+    ]),
+    file('進捗まとめ.md', 4.2 * KB, T(2026, 11, 13, 18, 2), { content: '# 進捗まとめ\n\n- サイト改修: 設計レビュー済み\n- 年次レポート: 原稿 80%\n- ロードマップ: 来週更新' }),
+    file('タスク一覧.csv', 18.6 * KB, T(2026, 11, 12, 9, 30)),
+    file('ロードマップ.pptx', 2.9 * MB, T(2026, 11, 4, 16, 12)),
+  ], { ctime: T(2026, 4, 1, 9, 0) }),
+  dir('会議メモ', T(2026, 11, 12, 16, 30), [
+    file('2026-10-29 定例.md', 2.1 * KB, T(2026, 10, 29, 16, 40), { content: MTG('2026-10-29') }),
+    file('2026-11-05 定例.md', 2.4 * KB, T(2026, 11, 5, 16, 35), { content: MTG('2026-11-05') }),
+    file('2026-11-12 定例.md', 2.6 * KB, T(2026, 11, 12, 16, 30), { content: MTG('2026-11-12') }),
+    file('テンプレート.md', 0.6 * KB, T(2026, 6, 2, 10, 0), { content: '# YYYY-MM-DD 定例\n\n## 決定事項\n- \n\n## 宿題\n- ' }),
+  ]),
+  dir('請求書', T(2026, 11, 1, 10, 5), [
+    file('請求書_2026-09.pdf', 188 * KB, T(2026, 9, 30, 17, 0)),
+    file('請求書_2026-10.pdf', 192 * KB, T(2026, 10, 31, 17, 2)),
+    file('請求書_2026-11.pdf', 190 * KB, T(2026, 11, 1, 10, 5)),
+  ]),
+  dir('設計資料', T(2026, 11, 2, 13, 0), []),
+  dir('アーカイブ', T(2026, 4, 3, 9, 20), [
+    file('2024年度.zip', 1.2 * GB, T(2025, 4, 2, 18, 30)),
+    file('2025年度.zip', 1.6 * GB, T(2026, 4, 3, 9, 20)),
+  ]),
+  file('2026年度_予算案.xlsx', 48.2 * KB, T(2026, 11, 14, 9, 41)),
+  file('企画書_v3.docx', 1.24 * MB, T(2026, 11, 13, 21, 7), { ctime: T(2026, 10, 20, 14, 2) }),
+  file('キックオフ資料.pptx', 6.8 * MB, T(2026, 11, 11, 19, 25)),
+  file('契約書_署名済み.pdf', 842 * KB, T(2026, 11, 8, 12, 14)),
+  file('議事録_2026-11-12.docx', 36.4 * KB, T(2026, 11, 12, 17, 3)),
+  file('売上データ_10月.csv', 214 * KB, T(2026, 11, 2, 8, 55)),
+  file('README.md', 3.1 * KB, T(2026, 9, 18, 11, 22), { content: README }),
+  file('メモ.txt', 1.4 * KB, T(2026, 11, 14, 8, 12), { content: MEMO }),
+  file('ロゴ_最終版.png', 286 * KB, T(2026, 10, 24, 15, 9), { pv: 0 }),
+  file('集合写真_秋合宿.jpg', 4.6 * MB, T(2026, 10, 19, 13, 47), { pv: 1 }),
+  file('素材一式.zip', 128 * MB, T(2026, 11, 6, 20, 33)),
+  file('デモ動画.mp4', 312 * MB, T(2026, 11, 10, 22, 15)),
+  file('setup-tool.exe', 18.4 * MB, T(2026, 10, 30, 9, 8)),
+  file('backup.ps1', 2.2 * KB, T(2026, 9, 2, 23, 40), { content: PS1 }),
+  file('desktop.ini', 0.4 * KB, T(2026, 4, 1, 9, 0), { hidden: true, content: '[.ShellClassInfo]\nLocalizedResourceName=@%SystemRoot%\\system32\\shell32.dll,-21770' }),
+], { fs: 'Documents', glyph: 'docs', ctime: T(2025, 3, 30, 10, 0) });
+
+const desk = dir('デスクトップ', T(2026, 11, 14, 9, 30), [
+  dir('一時フォルダー', T(2026, 11, 13, 12, 0), []),
+  file('ショートカット一覧.txt', 2.8 * KB, T(2026, 11, 1, 10, 0), { content: 'Ctrl+F … 検索\nAlt+P … 詳細ペイン\nAlt+↑ … 上の階層へ' }),
+  file('スクリーンショット 2026-11-14 093012.png', 512 * KB, T(2026, 11, 14, 9, 30), { pv: 2 }),
+  file('見積書_ドラフト.xlsx', 33.9 * KB, T(2026, 11, 12, 18, 44)),
+], { fs: 'Desktop', glyph: 'desk' });
+
+const dl = dir('ダウンロード', T(2026, 11, 14, 8, 50), [
+  dir('解凍済み', T(2026, 11, 7, 21, 0), []),
+  file('setup-installer.msi', 64.3 * MB, T(2026, 11, 14, 8, 50)),
+  file('manual_ja.pdf', 9.7 * MB, T(2026, 11, 13, 20, 11)),
+  file('font-pack.zip', 41.5 * MB, T(2026, 11, 7, 20, 58)),
+  file('wallpaper_4k.jpg', 7.9 * MB, T(2026, 11, 5, 22, 3), { pv: 3 }),
+  file('invoice_2611.pdf', 101 * KB, T(2026, 11, 4, 9, 12)),
+  file('sample-data.csv', 1.1 * MB, T(2026, 10, 31, 15, 40)),
+  file('presentation-template.pptx', 4.4 * MB, T(2026, 10, 22, 11, 5)),
+  file('driver_update.exe', 212 * MB, T(2026, 10, 18, 7, 30)),
+], { fs: 'Downloads', glyph: 'down' });
+
+const pics = dir('ピクチャ', T(2026, 11, 14, 9, 30), [
+  dir('スクリーンショット', T(2026, 11, 14, 9, 30), [
+    file('スクリーンショット 2026-11-12 141502.png', 384 * KB, T(2026, 11, 12, 14, 15), { pv: 2 }),
+    file('スクリーンショット 2026-11-13 101144.png', 455 * KB, T(2026, 11, 13, 10, 11), { pv: 0 }),
+    file('スクリーンショット 2026-11-14 093012.png', 512 * KB, T(2026, 11, 14, 9, 30), { pv: 2 }),
+  ]),
+  dir('2026 秋', T(2026, 10, 20, 8, 0), [
+    file('IMG_2101.jpg', 5.2 * MB, T(2026, 10, 19, 13, 40), { pv: 1 }),
+    file('IMG_2102.jpg', 4.9 * MB, T(2026, 10, 19, 13, 47), { pv: 3 }),
+  ]),
+  file('プロフィール.jpg', 1.3 * MB, T(2026, 9, 1, 12, 0), { pv: 0 }),
+  file('banner.png', 702 * KB, T(2026, 10, 2, 17, 31), { pv: 3 }),
+  file('IMG_2041.jpg', 3.8 * MB, T(2026, 8, 14, 18, 22), { pv: 1 }),
+  file('IMG_2042.jpg', 4.1 * MB, T(2026, 8, 14, 18, 25), { pv: 3 }),
+  file('スキャン_領収書.pdf', 640 * KB, T(2026, 11, 3, 10, 2)),
+], { fs: 'Pictures', glyph: 'pics' });
+
+const aoi = dir('aoi', T(2026, 11, 14, 9, 12), [
+  desk, docs, dl, pics,
+  dir('ミュージック', T(2026, 3, 30, 10, 0), [], { fs: 'Music' }),
+  dir('ビデオ', T(2026, 11, 10, 22, 20), [file('デモ録画.mp4', 486 * MB, T(2026, 11, 10, 22, 20))], { fs: 'Videos' }),
+  file('.gitconfig', 312, T(2026, 7, 9, 22, 1), { hidden: true, content: '[user]\n\tname = aoi\n[core]\n\tautocrlf = true' }),
+  file('NTUSER.DAT', 3.1 * MB, T(2026, 11, 14, 9, 12), { hidden: true }),
+], { glyph: 'home' });
+
+const ROOT = dir('PC', 0, [
+  dir('ローカル ディスク (C:)', T(2026, 11, 14, 9, 0), [
+    dir('Program Files', T(2026, 11, 2, 9, 0), []),
+    dir('ユーザー', T(2026, 3, 30, 10, 0), [aoi, dir('パブリック', T(2026, 3, 30, 10, 0), [], { fs: 'Public' })], { fs: 'Users' }),
+    dir('Windows', T(2026, 11, 12, 3, 0), []),
+  ], { drive: 'C:', sys: true, total: 476 * GB, free: 182 * GB }),
+  dir('データ (D:)', T(2026, 11, 13, 22, 0), [
+    dir('バックアップ', T(2026, 11, 13, 22, 0), [dir('Documents', T(2026, 11, 13, 22, 0), [])]),
+    dir('写真ライブラリ', T(2026, 9, 9, 20, 0), []),
+    dir('作業用', T(2026, 11, 1, 9, 0), []),
+    file('メモ_ドライブ移行.txt', 1.9 * KB, T(2026, 6, 20, 21, 30), { content: 'C: の空き容量対策として写真を D: へ移動済み。' }),
+  ], { drive: 'D:', total: 932 * GB, free: 74 * GB }),
+]);
+
+const P_HOME = ['ローカル ディスク (C:)', 'ユーザー', 'aoi'];
+const PLACES = [
+  { label: 'ホーム', path: P_HOME },
+  { label: 'デスクトップ', path: [...P_HOME, 'デスクトップ'] },
+  { label: 'ドキュメント', path: [...P_HOME, 'ドキュメント'] },
+  { label: 'ダウンロード', path: [...P_HOME, 'ダウンロード'] },
+  { label: 'ピクチャ', path: [...P_HOME, 'ピクチャ'] },
+];
+
+function fmtSize(b) {
+  if (b < 1024) return `${b} B`;
+  const u = ['KB', 'MB', 'GB', 'TB'];
+  let v = b / 1024, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${u[i]}`;
+}
+const pad = (n) => String(n).padStart(2, '0');
+function fmtDate(t) {
+  const d = new Date(t);
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${d.getHours()}:${pad(d.getMinutes())}`;
+}
+function kindLabel(n) {
+  if (n.drive) return 'ドライブ';
+  if (n.type === 'dir') return 'フォルダー';
+  if (n.ext === 'txt') return 'TXT 文書';
+  if (!n.ext) return 'ファイル';
+  return `${n.ext.toUpperCase()}`;
+}
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const norm = (s) => s.normalize('NFKC').toLowerCase();
+
+const S = {
+  path: [...P_HOME, 'ドキュメント'],
+  back: [], fwd: [],
+  sel: new Set(['企画書_v3.docx']),
+  active: '企画書_v3.docx',
+  anchor: '企画書_v3.docx',
+  sort: { key: 'name', dir: 1 },
+  query: '',
+  view: 'details',
+  pane: true,
+  showHidden: false,
+  splitShelf: true,
+  themeMode: document.documentElement.dataset.themeMode || 'light',
+  icons: document.documentElement.dataset.icons || 'win',
+  list: [],
+  dirs: [],
+};
+let noticeTimer = 0;
+
+function nodeAt(path) {
+  let n = ROOT;
+  for (const name of path) {
+    n = (n.children || []).find((c) => c.name === name);
+    if (!n) return null;
+  }
+  return n;
+}
+const cur = () => nodeAt(S.path);
+function realPath(path) {
+  if (!path.length) return 'PC';
+  const parts = [];
+  let n = ROOT;
+  for (const name of path) {
+    n = n.children.find((c) => c.name === name);
+    parts.push(n.drive || n.fs || n.name);
+  }
+  return parts.length === 1 ? parts[0] + '\\' : parts.join('\\');
+}
+const sameP = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+function cmp(a, b) {
+  if ((a.type === 'dir') !== (b.type === 'dir')) return a.type === 'dir' ? -1 : 1;
+  const byName = a.name.localeCompare(b.name, 'ja', { numeric: true, sensitivity: 'base' });
+  let r = 0;
+  switch (S.sort.key) {
+    case 'mtime': r = a.mtime - b.mtime; break;
+    case 'kind': r = kindLabel(a).localeCompare(kindLabel(b), 'ja'); break;
+    case 'size': r = (a.size || 0) - (b.size || 0); break;
+  }
+  return (r || byName) * S.sort.dir;
+}
+function visibleChildren(n = cur()) { return (n.children || []).filter((c) => S.showHidden || !c.hidden); }
+
+const $ = (id) => document.getElementById(id);
+const els = {
+  rows: $('rows'), scroller: $('scroller'), lh: $('lh'), empty: $('empty'),
+  crumbs: $('crumbs'), search: $('search'), searchClear: $('search-clear'),
+  pane: $('pane'), paneBody: $('pane-body'), spec: $('spec'),
+  shelf: $('folder-shelf'), shelfCards: $('shelf-cards'),
+};
+
+function hl(name) {
+  const q = S.query.trim();
+  if (!q) return esc(name);
+  const nq = norm(q);
+  const i = name.toLowerCase().indexOf(nq);
+  if (i < 0 || norm(name).length !== name.length) return esc(name);
+  return esc(name.slice(0, i)) + '<mark>' + esc(name.slice(i, i + nq.length)) + '</mark>' + esc(name.slice(i + nq.length));
+}
+
+function renderAll() {
+  renderHorizon();
+  renderHeroCrumbs();
+  renderList();
+}
+
+function renderHorizon() {
+  $('places').innerHTML = PLACES.map((p) => {
+    const n = nodeAt(p.path);
+    const active = sameP(p.path, S.path);
+    return `<li><button class="ptab" data-path="${esc(JSON.stringify(p.path))}"${active ? ' aria-current="page"' : ''}>` +
+      `<span class="oi">${objSvg(n)}</span><span>${esc(p.label)}</span></button></li>`;
+  }).join('');
+
+  $('drives').innerHTML = ROOT.children.map((d) => {
+    const used = 1 - d.free / d.total;
+    const active = sameP([d.name], S.path);
+    return `<button class="dpill" data-path="${esc(JSON.stringify([d.name]))}"${active ? ' aria-current="page"' : ''}>` +
+      `<span class="oi" style="width:16px;height:16px">${objSvg(d)}</span>` +
+      `<span>${esc(d.drive)}</span>` +
+      `<span class="dpill-meter${used > 0.9 ? ' warn' : ''}"><span style="width:${(used * 100).toFixed(0)}%"></span></span>` +
+      `<span class="dpill-free">${fmtSize(d.free)}空き</span></button>`;
+  }).join('');
+}
+
+function renderHeroCrumbs() {
+  $('btn-back').disabled = !S.back.length;
+  $('btn-fwd').disabled = !S.fwd.length;
+  $('btn-up').disabled = S.path.length === 0;
+  const items = [{ label: 'PC', path: [] }, ...S.path.map((name, i) => ({ label: name, path: S.path.slice(0, i + 1) }))];
+  els.crumbs.innerHTML = items.map((it, i) => {
+    const last = i === items.length - 1;
+    return `<li><button class="crumb-btn" data-path="${esc(JSON.stringify(it.path))}"${last ? ' aria-current="page"' : ''}>${esc(it.label)}</button>${last ? '' : '<span class="crumb-sep">' + op('chevron') + '</span>'}</li>`;
+  }).join('');
+}
+
+function renderList() {
+  let all = visibleChildren();
+  const q = norm(S.query.trim());
+  if (q) all = all.filter((c) => norm(c.name).includes(q));
+  all.sort(cmp);
+
+  if (S.splitShelf && !q && S.path.length > 0) {
+    S.dirs = all.filter((c) => c.type === 'dir');
+    S.list = all.filter((c) => c.type !== 'dir');
+  } else {
+    S.dirs = [];
+    S.list = all;
+  }
+
+  /* フォルダー棚の描画 */
+  if (S.dirs.length > 0) {
+    els.shelf.hidden = false;
+    $('shelf-title').textContent = `サブフォルダー (${S.dirs.length})`;
+    els.shelfCards.innerHTML = S.dirs.map((d) => {
+      const cnt = visibleChildren(d).length;
+      const isSel = S.sel.has(d.name);
+      return `<button class="fcard${isSel ? ' sel' : ''}" data-dir="${esc(d.name)}">` +
+        `<span class="oi">${objSvg(d)}</span>` +
+        `<span class="fcard-meta"><span class="fcard-name">${hl(d.name)}</span><span class="fcard-sub">${cnt} 項目</span></span></button>`;
+    }).join('');
+  } else {
+    els.shelf.hidden = true;
+  }
+
+  const maxSize = Math.max(1, ...S.list.filter((n) => n.type === 'file').map((n) => n.size || 0));
+  const grid = S.view === 'icons';
+  els.rows.classList.toggle('grid', grid);
+  els.lh.hidden = grid;
+
+  els.rows.innerHTML = S.list.map((n, i) => {
+    const cls = n.hidden ? ' hid' : '';
+    if (grid) {
+      return `<div class="tile${cls}" role="option" id="it-${i}" data-i="${i}" aria-selected="false"><span class="oi">${objSvg(n, true)}</span><span class="nm">${hl(n.name)}</span></div>`;
+    }
+    const pct = n.type === 'file' ? Math.max(6, Math.round((Math.log10((n.size || 1) + 1) / Math.log10(maxSize + 1)) * 100)) : 0;
+    return `<div class="row${cls}" role="option" id="it-${i}" data-i="${i}" aria-selected="false">` +
+      `<div class="c c-name"><span class="oi">${objSvg(n)}</span><span class="nm">${hl(n.name)}</span></div>` +
+      `<div class="c c-kind"><span class="ext-pill">${esc(kindLabel(n))}</span></div>` +
+      `<div class="c c-size">${n.type === 'file' ? `<span class="size-bar"><span style="width:${pct}%"></span></span><span>${fmtSize(n.size)}</span>` : '—'}</div>` +
+      `<div class="c c-mod">${fmtDate(n.mtime)}</div></div>`;
+  }).join('');
+
+  const totalCount = S.dirs.length + S.list.length;
+  els.empty.hidden = totalCount > 0;
+  if (!totalCount) {
+    els.empty.innerHTML = S.query.trim()
+      ? `<div>「${esc(S.query.trim())}」に一致する項目はありません</div><button class="btn" data-clear-search>検索をクリア</button>`
+      : `<div>このフォルダーは空です</div>`;
+  }
+
+  renderHeader();
+  refreshSel();
+}
+
+function renderHeader() {
+  const labels = { name: '名前', kind: '形式', size: 'サイズ比率', mtime: '更新日時' };
+  els.lh.querySelectorAll('.hbtn').forEach((b) => {
+    const k = b.dataset.key;
+    const active = S.sort.key === k;
+    b.toggleAttribute('data-active', active);
+    b.innerHTML = esc(labels[k]) + (active ? op(S.sort.dir > 0 ? 'sortUp' : 'sortDown') : '');
+  });
+}
+
+function allVisibleItems() { return [...S.dirs, ...S.list]; }
+function selected() { return allVisibleItems().filter((n) => S.sel.has(n.name)); }
+const idxOf = (name) => S.list.findIndex((n) => n.name === name);
+
+function refreshSel() {
+  const kids = els.rows.children;
+  for (let i = 0; i < kids.length; i++) {
+    const n = S.list[i];
+    const s = S.sel.has(n.name);
+    const el = kids[i];
+    el.classList.toggle('sel', s);
+    el.setAttribute('aria-selected', s ? 'true' : 'false');
+    el.classList.toggle('active', n.name === S.active);
+  }
+  els.shelfCards.querySelectorAll('.fcard').forEach((card) => {
+    card.classList.toggle('sel', S.sel.has(card.dataset.dir));
+  });
+  renderPane();
+  renderStatus();
+}
+
+function renderStatus() {
+  const total = visibleChildren().length;
+  const shown = S.dirs.length + S.list.length;
+  $('st-count').textContent = S.query.trim() ? `${total} 項目中 ${shown} 件一致` : `${total} 項目`;
+  const sel = selected();
+  const bytes = sel.filter((n) => n.type === 'file').reduce((a, n) => a + n.size, 0);
+  const selEl = $('st-sel');
+  if (sel.length) {
+    selEl.hidden = false;
+    selEl.textContent = `${sel.length} 選択${bytes ? ' · ' + fmtSize(bytes) : ''}`;
+  } else {
+    selEl.hidden = true;
+  }
+  $('btn-hidden').setAttribute('aria-pressed', S.showHidden ? 'true' : 'false');
+}
+
+function samplePreview(n) {
+  const v = n.pv || 0;
+  const sky = v % 2 ? 'var(--sample-sky-2)' : 'var(--sample-sky)';
+  return `<svg viewBox="0 0 160 120" preserveAspectRatio="xMidYMid slice"><rect width="160" height="120" style="fill:${sky}"/><circle cx="114" cy="34" r="14" style="fill:var(--sample-sun)"/><path d="M0 86 L38 52 L70 80 L104 44 L160 92 V120 H0z" style="fill:var(--sample-hill)"/><path d="M0 98 L52 74 L96 96 L132 80 L160 92 V120 H0z" style="fill:var(--sample-hill-2)"/></svg>`;
+}
+
+function renderPane() {
+  els.pane.hidden = !S.pane;
+  $('btn-pane').setAttribute('aria-pressed', S.pane ? 'true' : 'false');
+  if (!S.pane) return;
+  const sel = selected();
+  const n0 = cur();
+  let h = '';
+  const prop = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+  if (sel.length === 0) {
+    const kids = visibleChildren(n0);
+    const nd = kids.filter((c) => c.type === 'dir').length;
+    const nf = kids.length - nd;
+    h += `<div class="hero"><span class="hero-icon">${n0 === ROOT ? driveSvg(false) : objSvg(n0, true)}</span></div>`;
+    h += `<div><h2 class="p-name">${esc(n0 === ROOT ? 'PC' : n0.name)}</h2><div class="p-kind">現在のステージ</div></div>`;
+    h += '<dl class="props">';
+    h += prop('内訳', `${nf} ファイル / ${nd} フォルダー`);
+    h += prop('実パス', esc(realPath(S.path)));
+    h += '</dl>';
+  } else if (sel.length === 1) {
+    const n = sel[0];
+    const path = [...S.path, n.name];
+    const isImg = n.type === 'file' && FT[n.ext] && FT[n.ext].img;
+    h += isImg ? `<div class="hero image">${samplePreview(n)}</div>` : `<div class="hero"><span class="hero-icon">${objSvg(n, true)}</span></div>`;
+    h += `<div><h2 class="p-name">${esc(n.name)}</h2><div class="p-kind">${esc(kindLabel(n))}</div></div>`;
+    h += '<dl class="props">';
+    if (n.type === 'file') h += prop('サイズ', `${fmtSize(n.size)} (${n.size.toLocaleString('ja-JP')} B)`);
+    else h += prop('内容', `${visibleChildren(n).length} 項目`);
+    h += prop('更新日時', fmtDate(n.mtime));
+    h += prop('場所', esc(realPath(S.path)));
+    h += '</dl>';
+    if (n.content) h += `<section><h3 class="sec-h">内容プレビュー</h3><pre class="pre">${esc(n.content)}</pre></section>`;
+    h += `<div class="actions"><button class="btn primary" data-act="open">${op('open')}開く</button><button class="btn" data-act="copy" data-path="${esc(realPath(path))}">${op('copy')}パスをコピー</button></div>`;
+  } else {
+    h += `<div class="hero"><div class="stack">${sel.slice(0, 3).map((n, i) => `<span class="hero-icon" style="left:${i * 12}px;top:${i * 7}px">${objSvg(n, true)}</span>`).join('')}</div></div>`;
+    h += `<div><h2 class="p-name">${sel.length} 項目を選択</h2></div>`;
+  }
+  els.paneBody.innerHTML = h;
+}
+
+function notice(msg) {
+  const el = $('st-notice');
+  el.textContent = msg;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (el.textContent = ''), 3500);
+}
+
+function navigate(path, { push = true, select = null } = {}) {
+  if (!nodeAt(path)) return;
+  if (push) {
+    if (sameP(path, S.path)) return;
+    S.back.push({ path: S.path, sel: S.active });
+    S.fwd = [];
+  }
+  S.path = path;
+  S.query = '';
+  els.search.value = '';
+  S.sel = new Set(select ? [select] : []);
+  S.active = select;
+  S.anchor = select;
+  renderAll();
+  els.scroller.scrollTop = 0;
+}
+function goBack() {
+  const e = S.back.pop(); if (!e) return;
+  S.fwd.push({ path: S.path, sel: S.active });
+  navigate(e.path, { push: false, select: e.sel });
+}
+function goForward() {
+  const e = S.fwd.pop(); if (!e) return;
+  S.back.push({ path: S.path, sel: S.active });
+  navigate(e.path, { push: false, select: e.sel });
+}
+function goUp() {
+  if (!S.path.length) return;
+  const from = S.path[S.path.length - 1];
+  S.back.push({ path: S.path, sel: S.active });
+  S.fwd = [];
+  navigate(S.path.slice(0, -1), { push: false, select: from });
+}
+function openItem(n) {
+  if (!n) return;
+  if (n.type === 'dir') navigate([...S.path, n.name]);
+  else notice(`「${n.name}」を開く操作（試作モック）`);
+}
+
+function setTheme(mode) {
+  S.themeMode = mode;
+  try { localStorage.setItem('argon-c2-theme', mode); } catch (e) {}
+  const dark = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.querySelectorAll('[data-theme-opt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.themeOpt === mode));
+}
+function setIcons(ic) {
+  S.icons = ic;
+  try { localStorage.setItem('argon-c2-icons', ic); } catch (e) {}
+  document.documentElement.dataset.icons = ic;
+  document.querySelectorAll('[data-icons-opt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.iconsOpt === ic));
+}
+
+/* イベント */
+$('places').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-path]');
+  if (b) navigate(JSON.parse(b.dataset.path));
+});
+$('drives').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-path]');
+  if (b) navigate(JSON.parse(b.dataset.path));
+});
+els.crumbs.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-path]');
+  if (b) navigate(JSON.parse(b.dataset.path));
+});
+$('btn-toggle-shelf').addEventListener('click', () => {
+  S.splitShelf = !S.splitShelf;
+  renderList();
+});
+els.shelfCards.addEventListener('click', (e) => {
+  const card = e.target.closest('[data-dir]');
+  if (!card) return;
+  const name = card.dataset.dir;
+  S.sel = new Set([name]);
+  S.active = name;
+  refreshSel();
+});
+els.shelfCards.addEventListener('dblclick', (e) => {
+  const card = e.target.closest('[data-dir]');
+  if (card) navigate([...S.path, card.dataset.dir]);
+});
+
+els.rows.addEventListener('mousedown', (e) => {
+  const it = e.target.closest('[data-i]');
+  if (!it) { if (!e.ctrlKey && !e.shiftKey) { S.sel.clear(); refreshSel(); } return; }
+  const i = +it.dataset.i;
+  const name = S.list[i].name;
+  if (e.ctrlKey || e.metaKey) {
+    if (S.sel.has(name)) S.sel.delete(name); else S.sel.add(name);
+  } else {
+    S.sel = new Set([name]);
+  }
+  S.active = name;
+  S.anchor = name;
+  refreshSel();
+});
+els.rows.addEventListener('dblclick', (e) => {
+  const it = e.target.closest('[data-i]');
+  if (it) openItem(S.list[+it.dataset.i]);
+});
+els.rows.addEventListener('keydown', (e) => {
+  const len = S.list.length;
+  const ai = idxOf(S.active);
+  if (e.key === 'ArrowDown' && len) {
+    e.preventDefault();
+    const next = Math.min(len - 1, ai < 0 ? 0 : ai + 1);
+    S.sel = new Set([S.list[next].name]);
+    S.active = S.list[next].name;
+    refreshSel();
+  } else if (e.key === 'ArrowUp' && len) {
+    e.preventDefault();
+    const prev = Math.max(0, ai < 0 ? 0 : ai - 1);
+    S.sel = new Set([S.list[prev].name]);
+    S.active = S.list[prev].name;
+    refreshSel();
+  } else if (e.key === 'Enter' && ai >= 0) {
+    e.preventDefault();
+    openItem(S.list[ai]);
+  } else if (e.key === 'Backspace') {
+    e.preventDefault();
+    goBack();
+  }
+});
+
+els.lh.addEventListener('click', (e) => {
+  const b = e.target.closest('.hbtn');
+  if (b) {
+    const key = b.dataset.key;
+    S.sort = S.sort.key === key ? { key, dir: -S.sort.dir } : { key, dir: 1 };
+    renderList();
+  }
+});
+
+$('btn-back').addEventListener('click', goBack);
+$('btn-fwd').addEventListener('click', goForward);
+$('btn-up').addEventListener('click', goUp);
+$('btn-refresh').addEventListener('click', () => { renderAll(); notice('更新しました'); });
+$('view-details').addEventListener('click', () => { S.view = 'details'; $('view-details').setAttribute('aria-pressed', 'true'); $('view-icons').setAttribute('aria-pressed', 'false'); renderList(); });
+$('view-icons').addEventListener('click', () => { S.view = 'icons'; $('view-details').setAttribute('aria-pressed', 'false'); $('view-icons').setAttribute('aria-pressed', 'true'); renderList(); });
+$('btn-hidden').addEventListener('click', () => { S.showHidden = !S.showHidden; renderList(); });
+$('btn-pane').addEventListener('click', () => { S.pane = !S.pane; renderPane(); });
+$('pane-close').addEventListener('click', () => { S.pane = false; renderPane(); });
+$('btn-theme').addEventListener('click', () => {
+  const curTheme = document.documentElement.dataset.theme;
+  setTheme(curTheme === 'dark' ? 'light' : 'dark');
+});
+
+els.search.addEventListener('input', () => { S.query = els.search.value; els.searchClear.hidden = !S.query; renderList(); });
+els.searchClear.addEventListener('click', () => { S.query = ''; els.search.value = ''; els.searchClear.hidden = true; renderList(); });
+els.empty.addEventListener('click', (e) => {
+  if (e.target.closest('[data-clear-search]')) {
+    S.query = ''; els.search.value = ''; els.searchClear.hidden = true; renderList();
+  }
+});
+
+els.paneBody.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'open') openItem(selected()[0]);
+  if (b.dataset.act === 'copy') notice(`コピーしました: ${b.dataset.path}`);
+});
+
+$('btn-spec').addEventListener('click', () => {
+  setTheme(S.themeMode);
+  setIcons(S.icons);
+  els.spec.showModal();
+});
+$('spec-close').addEventListener('click', () => els.spec.close());
+els.spec.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-theme-opt]');
+  if (t) setTheme(t.dataset.themeOpt);
+  const ic = e.target.closest('[data-icons-opt]');
+  if (ic) setIcons(ic.dataset.iconsOpt);
+});
+
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); els.search.focus(); }
+  else if (e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); S.pane = !S.pane; renderPane(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') { e.preventDefault(); S.showHidden = !S.showHidden; renderList(); }
+});
+
+document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = op(el.dataset.icon); });
+renderAll();
+</script>
+</body>
+</html>

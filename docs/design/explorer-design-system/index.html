@@ -1,0 +1,1952 @@
+<!doctype html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explorer デザインシステム — Prism Canopy Compact</title>
+<script>
+  (function () {
+    var mode = 'light';
+    try { mode = localStorage.getItem('ex-ds-theme') || 'light'; } catch (e) {}
+    var root = document.documentElement;
+    root.dataset.themeMode = mode;
+    if (mode === 'system') root.removeAttribute('data-theme'); else root.dataset.theme = mode;
+  })();
+</script>
+<!-- 生成ブロック: tools/build-tokens.cjs が tokens.json から差し込む。直接編集しない -->
+<style id="ex-tokens">
+/*
+ * Prism Canopy Compact — Explorer design tokens
+ * GENERATED FILE. 直接編集しない。編集元: tokens.json
+ * 再生成: node docs/design/explorer-design-system/tools/build-tokens.cjs
+ * テーマ: <html data-theme="light|dark">。属性なしはOS設定（prefers-color-scheme）に従う。
+ *         任意の要素に data-theme を付けると、その中だけテーマを固定できる。
+ * 密度:   data-density="compact" で行高24px。
+ */
+:root {
+  /* font */
+  --ex-font-ui: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", -apple-system, BlinkMacSystemFont, "Hiragino Sans", system-ui, sans-serif;
+  --ex-font-mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  --ex-font-size-caption: 11px;
+  --ex-font-size-small: 12px;
+  --ex-font-size-control: 13px;
+  --ex-font-size-body: 13.5px;
+  --ex-font-size-title: 15px;
+  --ex-font-size-code: 11.5px;
+  --ex-font-weight-regular: 400;
+  --ex-font-weight-medium: 500;
+  --ex-font-weight-strong: 600;
+  --ex-font-weight-bold: 700;
+  --ex-font-line-body: 1.45;
+  --ex-font-line-tight: 1.35;
+  --ex-font-line-code: 1.55;
+  --ex-font-tracking-heading: 0.04em;
+  /* space */
+  --ex-space-2: 2px;
+  --ex-space-3: 3px;
+  --ex-space-4: 4px;
+  --ex-space-6: 6px;
+  --ex-space-8: 8px;
+  --ex-space-10: 10px;
+  --ex-space-12: 12px;
+  --ex-space-14: 14px;
+  --ex-space-16: 16px;
+  --ex-space-18: 18px;
+  --ex-space-20: 20px;
+  --ex-layout-gap: 6px;
+  /* size */
+  --ex-size-tabbar: 32px;
+  --ex-size-tab: 30px;
+  --ex-size-tab-width: 180px;
+  --ex-size-tab-close: 22px;
+  --ex-size-tab-add: 28px;
+  --ex-size-toolbar: 44px;
+  --ex-size-field: 36px;
+  --ex-size-icon-button: 32px;
+  --ex-size-icon-button-sm: 24px;
+  --ex-size-segment-item-w: 30px;
+  --ex-size-segment-item-h: 28px;
+  --ex-size-crumb: 26px;
+  --ex-size-list-header: 28px;
+  --ex-size-row: 28px;
+  --ex-size-side-item: 28px;
+  --ex-size-statusbar: 28px;
+  --ex-size-status-button: 24px;
+  --ex-size-button: 32px;
+  --ex-size-menu-item: 30px;
+  --ex-size-menu-min: 224px;
+  --ex-size-pane-header: 44px;
+  --ex-size-dialog-header: 50px;
+  --ex-size-dialog-max: 760px;
+  --ex-size-sidebar: 200px;
+  --ex-size-inspector: 268px;
+  --ex-size-col-name-min: 200px;
+  --ex-size-col-modified: 144px;
+  --ex-size-col-kind: 136px;
+  --ex-size-col-size: 92px;
+  --ex-size-tile-min: 118px;
+  --ex-size-tile-icon: 52px;
+  --ex-size-file-icon: 18px;
+  --ex-size-icon: 16px;
+  --ex-size-icon-sm: 14px;
+  --ex-size-icon-xs: 12px;
+  --ex-size-preview: 156px;
+  --ex-size-preview-icon: 68px;
+  --ex-size-meter: 5px;
+  --ex-size-window-min-w: 960px;
+  --ex-size-window-min-h: 600px;
+  /* radius */
+  --ex-radius-island: 10px;
+  --ex-radius-row: 6px;
+  --ex-radius-tab: 8px;
+  --ex-radius-place: 10px;
+  --ex-radius-card: 12px;
+  --ex-radius-code: 10px;
+  --ex-radius-tile: 14px;
+  --ex-radius-dialog: 16px;
+  --ex-radius-small: 5px;
+  --ex-radius-mark: 3px;
+  --ex-radius-pill: 999px;
+  /* line */
+  --ex-border-width: 1px;
+  --ex-focus-width: 2px;
+  --ex-focus-offset: 1px;
+  --ex-focus-halo-width: 3px;
+  --ex-focus-row-width: 2px;
+  /* motion */
+  --ex-motion-row: 0.08s;
+  --ex-motion-base: 0.12s;
+  --ex-motion-field: 0.15s;
+  --ex-motion-press-scale: 0.96;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  /* color */
+  --ex-surface-canvas: #f5f7fa;
+  --ex-surface-content: #ffffff;
+  --ex-surface-chrome: #fafbfd;
+  --ex-surface-statusbar: #fafbfd;
+  --ex-surface-field: #f1f4f9;
+  --ex-surface-field-focus: #ffffff;
+  --ex-surface-card: #ffffff;
+  --ex-surface-chip-selected: #ffffff;
+  --ex-surface-raised: #ffffff;
+  --ex-surface-dialog: #ffffff;
+  --ex-surface-backdrop: rgba(15, 23, 42, 0.24);
+  --ex-text-primary: #0f172a;
+  --ex-text-secondary: #475569;
+  --ex-text-muted: #64748b;
+  --ex-text-disabled: #cbd5e1;
+  --ex-text-emphasis: #0f172a;
+  --ex-text-on-accent: #ffffff;
+  --ex-icon-default: #475569;
+  --ex-accent-fg: #2563eb;
+  --ex-accent-soft: rgba(37, 99, 235, 0.12);
+  --ex-focus-ring: #2563eb;
+  --ex-focus-halo: rgba(37, 99, 235, 0.25);
+  --ex-state-hover: rgba(37, 99, 235, 0.055);
+  --ex-state-pressed: rgba(37, 99, 235, 0.1);
+  --ex-nav-current-bg: #2864e8;
+  --ex-nav-current-fg: #ffffff;
+  --ex-nav-current-caption: rgba(255, 255, 255, 0.85);
+  --ex-nav-current-meter-track: rgba(255, 255, 255, 0.25);
+  --ex-nav-current-meter-fill: #ffffff;
+  --ex-selection-bg: #e8effc;
+  --ex-selection-border: rgba(37, 99, 235, 0.32);
+  --ex-selection-fg: #2563eb;
+  --ex-selection-fg-secondary: #64748b;
+  --ex-selection-inactive-bg: rgba(148, 163, 184, 0.14);
+  --ex-selection-inactive-border: transparent;
+  --ex-tab-bg: transparent;
+  --ex-tab-border: transparent;
+  --ex-tab-fg: #475569;
+  --ex-tab-hover-bg: rgba(37, 99, 235, 0.055);
+  --ex-tab-hover-border: transparent;
+  --ex-tab-hover-fg: #475569;
+  --ex-tab-active-bg: #ffffff;
+  --ex-tab-active-border: rgba(15, 23, 42, 0.075);
+  --ex-button-bg: #ffffff;
+  --ex-button-border: rgba(15, 23, 42, 0.075);
+  --ex-button-fg: #0f172a;
+  --ex-button-hover-bg: #f7f7f7;
+  --ex-button-hover-border: rgba(15, 23, 42, 0.075);
+  --ex-button-primary-bg: #2563eb;
+  --ex-button-primary-border: transparent;
+  --ex-button-primary-hover-bg: #2460e4;
+  --ex-menu-highlight-bg: #2563eb;
+  --ex-menu-highlight-fg: #ffffff;
+  --ex-menu-highlight-kbd: rgba(255, 255, 255, 0.8);
+  --ex-menu-hover-bg: transparent;
+  --ex-badge-bg: rgba(37, 99, 235, 0.12);
+  --ex-badge-border: transparent;
+  --ex-badge-fg: #2563eb;
+  --ex-border-subtle: rgba(15, 23, 42, 0.06);
+  --ex-border-default: rgba(15, 23, 42, 0.075);
+  --ex-border-content: rgba(15, 23, 42, 0.075);
+  --ex-border-card: rgba(15, 23, 42, 0.06);
+  --ex-border-statusbar: rgba(15, 23, 42, 0.06);
+  --ex-border-dialog: rgba(15, 23, 42, 0.075);
+  --ex-match-bg: rgba(251, 191, 36, 0.38);
+  --ex-match-fg: currentColor;
+  --ex-meter-fill: #3b82f6;
+  --ex-meter-warn: #f59e0b;
+  --ex-meter-track: rgba(148, 163, 184, 0.22);
+  --ex-scrollbar-thumb: rgba(100, 116, 139, 0.26);
+  --ex-danger-fg: #c8453b;
+  --ex-danger-solid: #c8453b;
+  /* shadow */
+  --ex-shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.14);
+  /* placeholderIcon */
+  --ex-obj-folder: #fbbf24;
+  --ex-obj-folder-back: #d97706;
+  --ex-obj-folder-glyph: #78350f;
+  --ex-obj-page: #ffffff;
+  --ex-obj-page-fold: #e2e8f0;
+  --ex-obj-page-edge: #94a3b8;
+  --ex-obj-text-line: #94a3b8;
+  --ex-obj-xls: #10b981;
+  --ex-obj-csv: #059669;
+  --ex-obj-doc: #2563eb;
+  --ex-obj-ppt: #ea580c;
+  --ex-obj-pdf: #dc2626;
+  --ex-obj-zip: #d97706;
+  --ex-obj-exe: #475569;
+  --ex-obj-vid: #7c3aed;
+  --ex-obj-code: #0284c7;
+  --ex-obj-img-sky: #bae6fd;
+  --ex-obj-img-hill: #34d399;
+  --ex-obj-img-sun: #fbbf24;
+  --ex-obj-drive: #cbd5e1;
+  --ex-obj-drive-dark: #64748b;
+  --ex-obj-drive-led: #22c55e;
+  --ex-obj-drive-mark: #3b82f6;
+  --ex-obj-badge-text: #ffffff;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  /* color */
+  --ex-surface-canvas: #191919;
+  --ex-surface-content: #191919;
+  --ex-surface-chrome: #242424;
+  --ex-surface-statusbar: #202020;
+  --ex-surface-field: #1c1c1c;
+  --ex-surface-field-focus: #292929;
+  --ex-surface-card: #1c1c1c;
+  --ex-surface-chip-selected: #353535;
+  --ex-surface-raised: #2c2c2c;
+  --ex-surface-dialog: #262626;
+  --ex-surface-backdrop: rgba(0, 0, 0, 0.62);
+  --ex-text-primary: #f2f2f2;
+  --ex-text-secondary: #cecece;
+  --ex-text-muted: #adadad;
+  --ex-text-disabled: #626262;
+  --ex-text-emphasis: #fafafa;
+  --ex-text-on-accent: #ffffff;
+  --ex-icon-default: #bdbdbd;
+  --ex-accent-fg: #76b8ff;
+  --ex-accent-soft: rgba(59, 130, 246, 0.2);
+  --ex-focus-ring: #60a5fa;
+  --ex-focus-halo: rgba(96, 165, 250, 0.32);
+  --ex-state-hover: rgba(255, 255, 255, 0.06);
+  --ex-state-pressed: rgba(255, 255, 255, 0.11);
+  --ex-nav-current-bg: #245cce;
+  --ex-nav-current-fg: #ffffff;
+  --ex-nav-current-caption: rgba(255, 255, 255, 0.85);
+  --ex-nav-current-meter-track: rgba(255, 255, 255, 0.25);
+  --ex-nav-current-meter-fill: #ffffff;
+  --ex-selection-bg: #25344c;
+  --ex-selection-border: rgba(96, 165, 250, 0.56);
+  --ex-selection-fg: #fafafa;
+  --ex-selection-fg-secondary: #cecece;
+  --ex-selection-inactive-bg: rgba(180, 180, 180, 0.14);
+  --ex-selection-inactive-border: rgba(180, 180, 180, 0.22);
+  --ex-tab-bg: rgba(29, 29, 29, 0.54);
+  --ex-tab-border: rgba(180, 180, 180, 0.1);
+  --ex-tab-fg: #cecece;
+  --ex-tab-hover-bg: rgba(45, 45, 45, 0.76);
+  --ex-tab-hover-border: rgba(180, 180, 180, 0.2);
+  --ex-tab-hover-fg: #f2f2f2;
+  --ex-tab-active-bg: #343434;
+  --ex-tab-active-border: rgba(255, 255, 255, 0.28);
+  --ex-button-bg: #333333;
+  --ex-button-border: rgba(180, 180, 180, 0.24);
+  --ex-button-fg: #f2f2f2;
+  --ex-button-hover-bg: #3e3e3e;
+  --ex-button-hover-border: rgba(180, 180, 180, 0.36);
+  --ex-button-primary-bg: #2563eb;
+  --ex-button-primary-border: rgba(147, 197, 253, 0.36);
+  --ex-button-primary-hover-bg: #3b82f6;
+  --ex-menu-highlight-bg: #2563eb;
+  --ex-menu-highlight-fg: #ffffff;
+  --ex-menu-highlight-kbd: rgba(255, 255, 255, 0.8);
+  --ex-menu-hover-bg: rgba(255, 255, 255, 0.06);
+  --ex-badge-bg: rgba(255, 255, 255, 0.06);
+  --ex-badge-border: rgba(255, 255, 255, 0.15);
+  --ex-badge-fg: #cecece;
+  --ex-border-subtle: rgba(180, 180, 180, 0.12);
+  --ex-border-default: rgba(180, 180, 180, 0.16);
+  --ex-border-content: rgba(180, 180, 180, 0.18);
+  --ex-border-card: rgba(180, 180, 180, 0.14);
+  --ex-border-statusbar: rgba(180, 180, 180, 0.15);
+  --ex-border-dialog: rgba(180, 180, 180, 0.22);
+  --ex-match-bg: rgba(245, 158, 11, 0.34);
+  --ex-match-fg: #fef3c7;
+  --ex-meter-fill: #3b82f6;
+  --ex-meter-warn: #f59e0b;
+  --ex-meter-track: rgba(148, 163, 184, 0.22);
+  --ex-scrollbar-thumb: rgba(180, 180, 180, 0.28);
+  --ex-danger-fg: #e5736b;
+  --ex-danger-solid: #c8453b;
+  /* shadow */
+  --ex-shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.35);
+  /* placeholderIcon */
+  --ex-obj-folder: #fbbf24;
+  --ex-obj-folder-back: #d97706;
+  --ex-obj-folder-glyph: #78350f;
+  --ex-obj-page: #e8e8e8;
+  --ex-obj-page-fold: #a3a3a3;
+  --ex-obj-page-edge: #737373;
+  --ex-obj-text-line: #737373;
+  --ex-obj-xls: #10b981;
+  --ex-obj-csv: #059669;
+  --ex-obj-doc: #2563eb;
+  --ex-obj-ppt: #ea580c;
+  --ex-obj-pdf: #dc2626;
+  --ex-obj-zip: #d97706;
+  --ex-obj-exe: #475569;
+  --ex-obj-vid: #7c3aed;
+  --ex-obj-code: #0284c7;
+  --ex-obj-img-sky: #bae6fd;
+  --ex-obj-img-hill: #34d399;
+  --ex-obj-img-sun: #fbbf24;
+  --ex-obj-drive: #cbd5e1;
+  --ex-obj-drive-dark: #64748b;
+  --ex-obj-drive-led: #22c55e;
+  --ex-obj-drive-mark: #3b82f6;
+  --ex-obj-badge-text: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    /* color */
+    --ex-surface-canvas: #191919;
+    --ex-surface-content: #191919;
+    --ex-surface-chrome: #242424;
+    --ex-surface-statusbar: #202020;
+    --ex-surface-field: #1c1c1c;
+    --ex-surface-field-focus: #292929;
+    --ex-surface-card: #1c1c1c;
+    --ex-surface-chip-selected: #353535;
+    --ex-surface-raised: #2c2c2c;
+    --ex-surface-dialog: #262626;
+    --ex-surface-backdrop: rgba(0, 0, 0, 0.62);
+    --ex-text-primary: #f2f2f2;
+    --ex-text-secondary: #cecece;
+    --ex-text-muted: #adadad;
+    --ex-text-disabled: #626262;
+    --ex-text-emphasis: #fafafa;
+    --ex-text-on-accent: #ffffff;
+    --ex-icon-default: #bdbdbd;
+    --ex-accent-fg: #76b8ff;
+    --ex-accent-soft: rgba(59, 130, 246, 0.2);
+    --ex-focus-ring: #60a5fa;
+    --ex-focus-halo: rgba(96, 165, 250, 0.32);
+    --ex-state-hover: rgba(255, 255, 255, 0.06);
+    --ex-state-pressed: rgba(255, 255, 255, 0.11);
+    --ex-nav-current-bg: #245cce;
+    --ex-nav-current-fg: #ffffff;
+    --ex-nav-current-caption: rgba(255, 255, 255, 0.85);
+    --ex-nav-current-meter-track: rgba(255, 255, 255, 0.25);
+    --ex-nav-current-meter-fill: #ffffff;
+    --ex-selection-bg: #25344c;
+    --ex-selection-border: rgba(96, 165, 250, 0.56);
+    --ex-selection-fg: #fafafa;
+    --ex-selection-fg-secondary: #cecece;
+    --ex-selection-inactive-bg: rgba(180, 180, 180, 0.14);
+    --ex-selection-inactive-border: rgba(180, 180, 180, 0.22);
+    --ex-tab-bg: rgba(29, 29, 29, 0.54);
+    --ex-tab-border: rgba(180, 180, 180, 0.1);
+    --ex-tab-fg: #cecece;
+    --ex-tab-hover-bg: rgba(45, 45, 45, 0.76);
+    --ex-tab-hover-border: rgba(180, 180, 180, 0.2);
+    --ex-tab-hover-fg: #f2f2f2;
+    --ex-tab-active-bg: #343434;
+    --ex-tab-active-border: rgba(255, 255, 255, 0.28);
+    --ex-button-bg: #333333;
+    --ex-button-border: rgba(180, 180, 180, 0.24);
+    --ex-button-fg: #f2f2f2;
+    --ex-button-hover-bg: #3e3e3e;
+    --ex-button-hover-border: rgba(180, 180, 180, 0.36);
+    --ex-button-primary-bg: #2563eb;
+    --ex-button-primary-border: rgba(147, 197, 253, 0.36);
+    --ex-button-primary-hover-bg: #3b82f6;
+    --ex-menu-highlight-bg: #2563eb;
+    --ex-menu-highlight-fg: #ffffff;
+    --ex-menu-highlight-kbd: rgba(255, 255, 255, 0.8);
+    --ex-menu-hover-bg: rgba(255, 255, 255, 0.06);
+    --ex-badge-bg: rgba(255, 255, 255, 0.06);
+    --ex-badge-border: rgba(255, 255, 255, 0.15);
+    --ex-badge-fg: #cecece;
+    --ex-border-subtle: rgba(180, 180, 180, 0.12);
+    --ex-border-default: rgba(180, 180, 180, 0.16);
+    --ex-border-content: rgba(180, 180, 180, 0.18);
+    --ex-border-card: rgba(180, 180, 180, 0.14);
+    --ex-border-statusbar: rgba(180, 180, 180, 0.15);
+    --ex-border-dialog: rgba(180, 180, 180, 0.22);
+    --ex-match-bg: rgba(245, 158, 11, 0.34);
+    --ex-match-fg: #fef3c7;
+    --ex-meter-fill: #3b82f6;
+    --ex-meter-warn: #f59e0b;
+    --ex-meter-track: rgba(148, 163, 184, 0.22);
+    --ex-scrollbar-thumb: rgba(180, 180, 180, 0.28);
+    --ex-danger-fg: #e5736b;
+    --ex-danger-solid: #c8453b;
+    /* shadow */
+    --ex-shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.35);
+    /* placeholderIcon */
+    --ex-obj-folder: #fbbf24;
+    --ex-obj-folder-back: #d97706;
+    --ex-obj-folder-glyph: #78350f;
+    --ex-obj-page: #e8e8e8;
+    --ex-obj-page-fold: #a3a3a3;
+    --ex-obj-page-edge: #737373;
+    --ex-obj-text-line: #737373;
+    --ex-obj-xls: #10b981;
+    --ex-obj-csv: #059669;
+    --ex-obj-doc: #2563eb;
+    --ex-obj-ppt: #ea580c;
+    --ex-obj-pdf: #dc2626;
+    --ex-obj-zip: #d97706;
+    --ex-obj-exe: #475569;
+    --ex-obj-vid: #7c3aed;
+    --ex-obj-code: #0284c7;
+    --ex-obj-img-sky: #bae6fd;
+    --ex-obj-img-hill: #34d399;
+    --ex-obj-img-sun: #fbbf24;
+    --ex-obj-drive: #cbd5e1;
+    --ex-obj-drive-dark: #64748b;
+    --ex-obj-drive-led: #22c55e;
+    --ex-obj-drive-mark: #3b82f6;
+    --ex-obj-badge-text: #ffffff;
+  }
+}
+
+/* 仮素材アイコンの macOS 風切替（検証用。本番はOS取得アイコンをそのまま使う） */
+[data-icons="mac"] {
+  --ex-obj-folder: #60a5fa;
+  --ex-obj-folder-back: #3b82f6;
+  --ex-obj-folder-glyph: #1d4ed8;
+}
+
+[data-density="compact"] {
+  --ex-size-row: 24px;
+}
+
+@media (max-width: 1140px) {
+  :root {
+    --ex-size-sidebar: 196px;
+  }
+}
+</style>
+<style>
+/* ==========================================================================
+   1. コンポーネント層（採用済みモック concept-1.html の部品を意味トークンで再記述）
+   ========================================================================== */
+.ex-scope, .demo-body, .pair-col { font: var(--ex-font-size-body)/var(--ex-font-line-body) var(--ex-font-ui); color: var(--ex-text-primary); }
+.ex-ico { width: var(--ex-size-icon); height: var(--ex-size-icon); flex: none; display: block; }
+.ex-oi { width: var(--ex-size-file-icon); height: var(--ex-size-file-icon); flex: none; display: block; }
+.ex-oi svg { width: 100%; height: 100%; display: block; }
+.is-focus { outline: var(--ex-focus-width) solid var(--ex-focus-ring); outline-offset: var(--ex-focus-offset); }
+
+/* アイコンボタン */
+.ex-ibtn { width: var(--ex-size-icon-button); height: var(--ex-size-icon-button); display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: var(--ex-radius-pill); background: transparent; color: var(--ex-icon-default); transition: background var(--ex-motion-base) ease, color var(--ex-motion-base) ease, transform 0.1s ease; }
+.ex-ibtn:hover:not(:disabled), .ex-ibtn.is-hover { background: var(--ex-state-hover); color: var(--ex-text-primary); }
+.ex-ibtn:active:not(:disabled), .ex-ibtn.is-pressed { background: var(--ex-state-pressed); transform: scale(var(--ex-motion-press-scale)); }
+.ex-ibtn:disabled { color: var(--ex-text-disabled); cursor: default; }
+.ex-ibtn[aria-pressed="true"], .ex-ibtn[aria-expanded="true"] { background: var(--ex-accent-soft); color: var(--ex-accent-fg); }
+.ex-ibtn.sm { width: var(--ex-size-icon-button-sm); height: var(--ex-size-icon-button-sm); }
+.ex-ibtn.sm .ex-ico { width: var(--ex-size-icon-sm); height: var(--ex-size-icon-sm); }
+.ex-group { display: inline-flex; align-items: center; gap: var(--ex-space-2); padding: var(--ex-space-3); background: var(--ex-surface-field); border: var(--ex-border-width) solid var(--ex-border-subtle); border-radius: var(--ex-radius-pill); }
+
+/* テキストボタン */
+.ex-btn { height: var(--ex-size-button); padding: 0 var(--ex-space-14); display: inline-flex; align-items: center; gap: 6px; border: var(--ex-border-width) solid var(--ex-button-border); border-radius: var(--ex-radius-pill); background: var(--ex-button-bg); color: var(--ex-button-fg); font-size: var(--ex-font-size-small); font-weight: var(--ex-font-weight-strong); white-space: nowrap; }
+.ex-btn .ex-ico { width: var(--ex-size-icon-sm); height: var(--ex-size-icon-sm); color: var(--ex-icon-default); }
+.ex-btn:hover:not(:disabled), .ex-btn.is-hover { background: var(--ex-button-hover-bg); border-color: var(--ex-button-hover-border); }
+.ex-btn.primary { background: var(--ex-button-primary-bg); border-color: var(--ex-button-primary-border); color: var(--ex-text-on-accent); }
+.ex-btn.primary .ex-ico { color: var(--ex-text-on-accent); }
+.ex-btn.primary:hover:not(:disabled), .ex-btn.primary.is-hover { background: var(--ex-button-primary-hover-bg); }
+.ex-btn.danger { background: var(--ex-danger-solid); border-color: transparent; color: var(--ex-text-on-accent); }
+.ex-btn:disabled, .ex-btn.is-disabled { color: var(--ex-text-disabled); cursor: default; background: var(--ex-button-bg); }
+.ex-btn.primary:disabled, .ex-btn.primary.is-disabled { background: var(--ex-surface-field); color: var(--ex-text-disabled); border-color: var(--ex-border-subtle); }
+.ex-btn:disabled .ex-ico, .ex-btn.is-disabled .ex-ico { color: var(--ex-text-disabled); }
+
+/* タブバー */
+.ex-tabbar { display: flex; align-items: center; gap: var(--ex-space-4); height: var(--ex-size-tabbar); padding: 0 var(--ex-space-4); background: var(--ex-surface-canvas); min-width: 0; }
+.ex-tabs { display: flex; gap: var(--ex-space-4); overflow-x: auto; min-width: 0; scrollbar-width: thin; scrollbar-color: var(--ex-scrollbar-thumb) transparent; }
+.ex-tab { display: flex; align-items: center; flex: 0 0 var(--ex-size-tab-width); min-width: 0; height: var(--ex-size-tab); border: var(--ex-border-width) solid var(--ex-tab-border); border-radius: var(--ex-radius-tab); background: var(--ex-tab-bg); color: var(--ex-tab-fg); }
+.ex-tab:hover, .ex-tab.is-hover { background: var(--ex-tab-hover-bg); border-color: var(--ex-tab-hover-border); color: var(--ex-tab-hover-fg); }
+.ex-tab.active, .ex-tab.active:hover { background: var(--ex-tab-active-bg); border-color: var(--ex-tab-active-border); color: var(--ex-text-emphasis); }
+[data-theme="dark"] .ex-tab.active .ex-tab-select { font-weight: var(--ex-font-weight-strong); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .ex-tab.active .ex-tab-select { font-weight: var(--ex-font-weight-strong); } }
+.ex-tab-select { display: flex; align-items: center; gap: 7px; background: transparent; border: 0; min-width: 0; flex: 1; height: 100%; padding: 0 var(--ex-space-8); text-align: left; font-size: var(--ex-font-size-small); color: inherit; }
+.ex-tab-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-tab-select .ex-oi { width: var(--ex-size-icon); height: var(--ex-size-icon); }
+.ex-tab-close, .ex-tab-add { display: grid; place-items: center; border: 0; background: transparent; color: var(--ex-text-secondary); border-radius: var(--ex-radius-small); flex: none; padding: 0; }
+.ex-tab-close { width: var(--ex-size-tab-close); height: var(--ex-size-tab-close); margin-right: var(--ex-space-4); }
+.ex-tab-add { width: var(--ex-size-tab-add); height: var(--ex-size-tab-add); font-size: 21px; }
+.ex-tab-close:hover, .ex-tab-add:hover, .ex-tab-close.is-hover, .ex-tab-add.is-hover { background: var(--ex-state-pressed); color: var(--ex-text-primary); }
+
+/* ツールバー */
+.ex-toolbar { height: var(--ex-size-toolbar); display: flex; align-items: center; gap: var(--ex-space-12); padding: 0 var(--ex-space-12); background: var(--ex-surface-chrome); border: var(--ex-border-width) solid var(--ex-border-default); border-radius: var(--ex-radius-island); min-width: 0; }
+
+/* パンくず／アドレス */
+.ex-address { flex: 1 1 0; min-width: 200px; height: var(--ex-size-field); display: flex; align-items: center; gap: var(--ex-space-4); padding: 0 var(--ex-space-12); background: var(--ex-surface-field); border: var(--ex-border-width) solid var(--ex-border-subtle); border-radius: var(--ex-radius-pill); overflow: hidden; }
+.ex-address > .ex-oi { margin-right: var(--ex-space-4); }
+.ex-crumbs { display: flex; align-items: center; min-width: 0; flex: 1; margin: 0; padding: 0; list-style: none; overflow: hidden; gap: var(--ex-space-2); }
+.ex-crumbs li { display: flex; align-items: center; flex: none; min-width: 0; }
+.ex-crumbs li.shrink { flex: 0 1 auto; }
+.ex-crumb { height: var(--ex-size-crumb); padding: 0 var(--ex-space-10); border: 0; border-radius: var(--ex-radius-pill); background: transparent; color: var(--ex-text-secondary); font-size: var(--ex-font-size-control); font-weight: var(--ex-font-weight-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ex-crumb:hover, .ex-crumb.is-hover { background: var(--ex-state-hover); color: var(--ex-text-primary); }
+.ex-crumb[aria-current="page"] { background: var(--ex-surface-chip-selected); color: var(--ex-text-emphasis); font-weight: var(--ex-font-weight-strong); }
+.ex-crumb-sep { color: var(--ex-text-disabled); display: flex; padding: 0 1px; }
+.ex-crumb-sep .ex-ico { width: var(--ex-size-icon-xs); height: var(--ex-size-icon-xs); }
+
+/* 検索 */
+.ex-search { flex: 0 1 256px; min-width: 160px; height: var(--ex-size-field); display: flex; align-items: center; gap: var(--ex-space-8); padding: 0 var(--ex-space-8) 0 var(--ex-space-14); background: var(--ex-surface-field); border: var(--ex-border-width) solid var(--ex-border-subtle); border-radius: var(--ex-radius-pill); color: var(--ex-icon-default); transition: all var(--ex-motion-field) ease; }
+.ex-search:focus-within, .ex-search.is-focus { background: var(--ex-surface-field-focus); border-color: var(--ex-focus-ring); box-shadow: 0 0 0 var(--ex-focus-halo-width) var(--ex-focus-halo); outline: none; }
+.ex-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: none; background: transparent; color: var(--ex-text-primary); font: inherit; font-size: var(--ex-font-size-control); }
+.ex-search input::placeholder { color: var(--ex-text-muted); }
+.ex-search input::-webkit-search-cancel-button { display: none; }
+.ex-search .ex-ibtn[hidden] { display: none; }
+
+/* セグメント */
+.ex-seg { display: inline-flex; gap: var(--ex-space-2); padding: var(--ex-space-3); background: var(--ex-surface-field); border: var(--ex-border-width) solid var(--ex-border-subtle); border-radius: var(--ex-radius-pill); flex: none; }
+.ex-seg .ex-ibtn { width: var(--ex-size-segment-item-w); height: var(--ex-size-segment-item-h); }
+.ex-seg .ex-ibtn[aria-pressed="true"] { background: var(--ex-surface-chip-selected); color: var(--ex-accent-fg); }
+.ex-seg .ex-opt { height: 26px; padding: 0 var(--ex-space-12); border: 0; border-radius: var(--ex-radius-pill); background: transparent; color: var(--ex-text-secondary); font-size: var(--ex-font-size-small); font-weight: var(--ex-font-weight-medium); white-space: nowrap; }
+.ex-seg .ex-opt:hover { color: var(--ex-text-primary); }
+.ex-seg .ex-opt[aria-pressed="true"] { background: var(--ex-surface-chip-selected); color: var(--ex-accent-fg); font-weight: var(--ex-font-weight-strong); }
+
+/* サイドバー */
+.ex-sidebar { width: var(--ex-size-sidebar); display: flex; flex-direction: column; padding: var(--ex-space-6); background: var(--ex-surface-chrome); border: var(--ex-border-width) solid var(--ex-border-default); border-radius: var(--ex-radius-island); flex: none; }
+.ex-side-h { margin: 0; padding: var(--ex-space-10) var(--ex-space-10) var(--ex-space-6); font-size: var(--ex-font-size-caption); font-weight: var(--ex-font-weight-bold); letter-spacing: var(--ex-font-tracking-heading); color: var(--ex-text-muted); }
+.ex-side-h:first-child { padding-top: var(--ex-space-2); }
+.ex-side-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ex-space-3); }
+.ex-place { position: relative; width: 100%; min-height: var(--ex-size-side-item); display: flex; align-items: center; gap: var(--ex-space-10); padding: 0 var(--ex-space-12); border: 0; border-radius: var(--ex-radius-place); background: transparent; color: var(--ex-text-secondary); font-weight: var(--ex-font-weight-medium); text-align: left; transition: background var(--ex-motion-base) ease, color var(--ex-motion-base) ease; }
+.ex-place:hover, .ex-place.is-hover { background: var(--ex-state-hover); color: var(--ex-text-primary); }
+.ex-place[aria-current="page"] { background: var(--ex-nav-current-bg); color: var(--ex-nav-current-fg); font-weight: var(--ex-font-weight-strong); }
+.ex-place .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* モック準拠: ドライブカードはホバーで塗りを変えず文字色のみ変わる */
+.ex-place.drive { align-items: flex-start; padding: var(--ex-space-6) var(--ex-space-10); background: var(--ex-surface-field); border: var(--ex-border-width) solid var(--ex-border-subtle); margin-top: var(--ex-space-4); }
+.ex-place.drive[aria-current="page"] { background: var(--ex-nav-current-bg); border-color: transparent; }
+.ex-place.drive[aria-current="page"] .ex-drive-free { color: var(--ex-nav-current-caption); }
+.ex-place.drive[aria-current="page"] .ex-meter { background: var(--ex-nav-current-meter-track); }
+.ex-place.drive[aria-current="page"] .ex-meter > span { background: var(--ex-nav-current-meter-fill); }
+.ex-drive-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.ex-meter { height: var(--ex-size-meter); border-radius: 99px; background: var(--ex-meter-track); overflow: hidden; }
+.ex-meter > span { display: block; height: 100%; border-radius: 99px; background: var(--ex-meter-fill); }
+.ex-meter.warn > span { background: var(--ex-meter-warn); }
+.ex-drive-free { font-size: var(--ex-font-size-caption); color: var(--ex-text-muted); font-weight: var(--ex-font-weight-regular); font-variant-numeric: tabular-nums; }
+
+/* 一覧（ステージ・ヘッダー・行） */
+.ex-stage { background: var(--ex-surface-content); border: var(--ex-border-width) solid var(--ex-border-content); border-radius: var(--ex-radius-island); overflow: hidden; min-width: 0; }
+.ex-list { --cols: minmax(var(--ex-size-col-name-min), 1fr) var(--ex-size-col-modified) var(--ex-size-col-kind) var(--ex-size-col-size); }
+.ex-list.narrow { --cols: minmax(140px, 1fr) var(--ex-size-col-modified) var(--ex-size-col-size); }
+.ex-list.narrow .c-kind { display: none !important; }
+.ex-lh { height: var(--ex-size-list-header); display: grid; grid-template-columns: var(--cols); align-items: center; padding: 0 var(--ex-space-6); background: var(--ex-surface-chrome); border-bottom: var(--ex-border-width) solid var(--ex-border-subtle); font-size: var(--ex-font-size-small); }
+.ex-hc { display: flex; min-width: 0; }
+.ex-hbtn { flex: 1; min-width: 0; height: 26px; display: flex; align-items: center; gap: 5px; padding: 0 var(--ex-space-10); border: 0; border-radius: var(--ex-radius-row); background: transparent; color: var(--ex-text-muted); font-weight: var(--ex-font-weight-strong); white-space: nowrap; }
+.ex-hbtn:hover, .ex-hbtn.is-hover { background: var(--ex-state-hover); color: var(--ex-text-primary); }
+.ex-hbtn[data-active] { color: var(--ex-accent-fg); }
+.ex-hbtn .ex-ico { width: var(--ex-size-icon-xs); height: var(--ex-size-icon-xs); }
+.ex-hc.c-size .ex-hbtn { justify-content: flex-end; }
+.ex-hc.c-name .ex-hbtn { padding-left: 38px; }
+.ex-rows { padding: var(--ex-space-2) var(--ex-space-6) var(--ex-space-4); outline: none; display: flex; flex-direction: column; }
+.ex-row { flex-shrink: 0; display: grid; grid-template-columns: var(--cols); align-items: center; height: var(--ex-size-row); border-radius: var(--ex-radius-row); border: var(--ex-border-width) solid transparent; color: var(--ex-text-primary); transition: background var(--ex-motion-row) ease; }
+.ex-row .c { min-width: 0; padding: 0 var(--ex-space-10); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ex-row .c-name { display: flex; align-items: center; gap: var(--ex-space-10); font-weight: var(--ex-font-weight-medium); }
+.ex-row .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ex-row .c-mod, .ex-row .c-kind, .ex-row .c-size { color: var(--ex-text-muted); font-size: var(--ex-font-size-small); font-variant-numeric: tabular-nums; }
+.ex-row .c-size { text-align: right; }
+.ex-row:hover, .ex-row.is-hover, .ex-tile:hover, .ex-tile.is-hover { background: var(--ex-state-hover); }
+.ex-row.sel, .ex-tile.sel { background: var(--ex-selection-inactive-bg); border-color: var(--ex-selection-inactive-border); }
+.ex-rows.focused .ex-row.sel, .ex-rows.focused .ex-tile.sel { background: var(--ex-selection-bg); border-color: var(--ex-selection-border); }
+.ex-rows.focused .ex-row.sel .c-name { color: var(--ex-selection-fg); font-weight: var(--ex-font-weight-strong); }
+.ex-rows.focused .ex-row.sel .c-mod, .ex-rows.focused .ex-row.sel .c-kind, .ex-rows.focused .ex-row.sel .c-size { color: var(--ex-selection-fg-secondary); }
+.ex-rows.kbd.focused .active, .ex-rows .is-kbd { box-shadow: 0 0 0 var(--ex-focus-row-width) var(--ex-focus-ring); }
+.ex-row.hid .nm, .ex-tile.hid .nm { color: var(--ex-text-muted); }
+.ex-row.hid .ex-oi, .ex-tile.hid .ex-oi { opacity: 0.48; }
+mark { background: var(--ex-match-bg); color: var(--ex-match-fg); border-radius: var(--ex-radius-mark); padding: 0 2px; }
+/* グリッド */
+.ex-rows.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--ex-size-tile-min), 1fr)); align-content: start; gap: var(--ex-space-10); padding: var(--ex-space-8); }
+.ex-tile { display: flex; flex-direction: column; align-items: center; gap: var(--ex-space-8); padding: var(--ex-space-14) var(--ex-space-10) var(--ex-space-12); border-radius: var(--ex-radius-tile); border: var(--ex-border-width) solid transparent; text-align: center; }
+.ex-tile .ex-oi { width: var(--ex-size-tile-icon); height: var(--ex-size-tile-icon); }
+.ex-tile .nm { font-size: var(--ex-font-size-small); font-weight: var(--ex-font-weight-medium); line-height: var(--ex-font-line-tight); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ex-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ex-space-12); color: var(--ex-text-muted); text-align: center; padding: 32px 16px; }
+
+/* インスペクタ */
+.ex-pane { width: var(--ex-size-inspector); display: flex; flex-direction: column; background: var(--ex-surface-chrome); border: var(--ex-border-width) solid var(--ex-border-default); border-radius: var(--ex-radius-island); overflow: hidden; flex: none; }
+.ex-pane-head { flex: none; height: var(--ex-size-pane-header); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--ex-space-12) 0 var(--ex-space-18); font-size: var(--ex-font-size-small); font-weight: var(--ex-font-weight-bold); color: var(--ex-text-muted); border-bottom: var(--ex-border-width) solid var(--ex-border-subtle); }
+.ex-pane-body { padding: var(--ex-space-18); display: flex; flex-direction: column; gap: var(--ex-space-16); }
+.ex-hero { height: var(--ex-size-preview); display: grid; place-items: center; background: var(--ex-surface-card); border: var(--ex-border-width) solid var(--ex-border-card); border-radius: var(--ex-radius-card); }
+.ex-hero .ex-oi { width: var(--ex-size-preview-icon); height: var(--ex-size-preview-icon); }
+.ex-p-name { margin: 0; font-size: var(--ex-font-size-title); font-weight: var(--ex-font-weight-bold); line-height: var(--ex-font-line-tight); overflow-wrap: anywhere; }
+.ex-badge { display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: var(--ex-radius-pill); background: var(--ex-badge-bg); border: var(--ex-border-width) solid var(--ex-badge-border); color: var(--ex-badge-fg); font-size: var(--ex-font-size-caption); font-weight: var(--ex-font-weight-strong); }
+.ex-props-card { padding: var(--ex-space-12) var(--ex-space-14); background: var(--ex-surface-card); border: var(--ex-border-width) solid var(--ex-border-card); border-radius: var(--ex-radius-card); }
+.ex-props { display: grid; grid-template-columns: auto 1fr; gap: var(--ex-space-8) var(--ex-space-14); margin: 0; font-size: var(--ex-font-size-small); }
+.ex-props dt { color: var(--ex-text-muted); white-space: nowrap; }
+.ex-props dd { margin: 0; color: var(--ex-text-primary); font-weight: var(--ex-font-weight-medium); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.ex-sec-h { margin: 0 0 var(--ex-space-8); font-size: var(--ex-font-size-caption); font-weight: var(--ex-font-weight-bold); color: var(--ex-text-muted); }
+.ex-pre { margin: 0; max-height: 190px; overflow: auto; padding: var(--ex-space-12); font: var(--ex-font-size-code)/var(--ex-font-line-code) var(--ex-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ex-surface-card); border: var(--ex-border-width) solid var(--ex-border-card); border-radius: var(--ex-radius-code); color: var(--ex-text-primary); }
+.ex-actions { display: flex; gap: var(--ex-space-8); flex-wrap: wrap; }
+
+/* 下端情報バー */
+.ex-statusbar { height: var(--ex-size-statusbar); display: flex; align-items: center; justify-content: space-between; gap: var(--ex-space-8); border-top: var(--ex-border-width) solid var(--ex-border-statusbar); background: var(--ex-surface-statusbar); padding: 0 var(--ex-space-10); min-width: 0; }
+.ex-status-pill { min-width: 0; display: flex; align-items: center; gap: var(--ex-space-10); font-size: var(--ex-font-size-caption); color: var(--ex-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ex-status-pill:first-child { flex: 1; overflow: hidden; }
+.ex-status-pill .sep { width: 1px; height: 12px; background: var(--ex-border-default); }
+.ex-status-pill .sel-badge { color: var(--ex-accent-fg); font-weight: var(--ex-font-weight-strong); }
+.ex-status-pill .notice { color: var(--ex-text-primary); font-weight: var(--ex-font-weight-medium); overflow: hidden; text-overflow: ellipsis; }
+.ex-sbtn { height: var(--ex-size-status-button); padding: 0 var(--ex-space-8); display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: var(--ex-radius-pill); background: transparent; color: var(--ex-text-secondary); font-size: var(--ex-font-size-caption); font-weight: var(--ex-font-weight-medium); white-space: nowrap; }
+.ex-sbtn:hover, .ex-sbtn.is-hover { background: var(--ex-state-hover); color: var(--ex-text-primary); }
+.ex-sbtn[aria-pressed="true"] { background: var(--ex-accent-soft); color: var(--ex-accent-fg); }
+.ex-sbtn .ex-ico { width: 13px; height: 13px; }
+.ex-sbtn.proto { border: var(--ex-border-width) dashed var(--ex-selection-border); color: var(--ex-accent-fg); }
+
+/* メニュー */
+.ex-menu { min-width: var(--ex-size-menu-min); padding: var(--ex-space-6); background: var(--ex-surface-raised); border: var(--ex-border-width) solid var(--ex-border-default); border-radius: var(--ex-radius-card); box-shadow: var(--ex-shadow-popover); outline: none; }
+.ex-mi { width: 100%; height: var(--ex-size-menu-item); display: flex; align-items: center; gap: var(--ex-space-10); padding: 0 var(--ex-space-12) 0 var(--ex-space-8); border: 0; border-radius: var(--ex-radius-tab); background: transparent; color: var(--ex-text-primary); font-size: var(--ex-font-size-control); text-align: left; white-space: nowrap; }
+.ex-mi .chk { width: var(--ex-size-icon-sm); height: var(--ex-size-icon-sm); visibility: hidden; flex: none; }
+.ex-mi .chk .ex-ico { width: 100%; height: 100%; }
+.ex-mi[aria-checked="true"] .chk { visibility: visible; }
+.ex-mi .kbd { margin-left: auto; padding-left: var(--ex-space-18); color: var(--ex-text-muted); font-size: var(--ex-font-size-code); }
+.ex-mi:hover:not(.cur), .ex-mi.is-hover { background: var(--ex-menu-hover-bg); }
+.ex-mi.cur { background: var(--ex-menu-highlight-bg); color: var(--ex-menu-highlight-fg); }
+.ex-mi.cur .kbd { color: var(--ex-menu-highlight-kbd); }
+.ex-mi:disabled { color: var(--ex-text-disabled); cursor: default; }
+.ex-msep { height: 1px; margin: 5px 6px; background: var(--ex-border-subtle); }
+.ex-mh { padding: 6px 10px 2px 32px; font-size: var(--ex-font-size-caption); font-weight: var(--ex-font-weight-bold); color: var(--ex-text-muted); }
+
+/* ダイアログ */
+.ex-dialog { width: min(var(--ex-size-dialog-max), calc(100vw - 48px)); max-height: calc(100vh - 48px); padding: 0; border: var(--ex-border-width) solid var(--ex-border-dialog); border-radius: var(--ex-radius-dialog); background: var(--ex-surface-dialog); color: var(--ex-text-primary); box-shadow: var(--ex-shadow-popover); }
+.ex-dialog::backdrop { background: var(--ex-surface-backdrop); }
+.ex-dialog-head { display: flex; align-items: center; gap: var(--ex-space-12); height: var(--ex-size-dialog-header); padding: 0 var(--ex-space-14) 0 var(--ex-space-20); border-bottom: var(--ex-border-width) solid var(--ex-border-subtle); }
+.ex-dialog-head h3 { margin: 0; font-size: var(--ex-font-size-title); font-weight: var(--ex-font-weight-bold); flex: 1; }
+.ex-dialog-body { padding: var(--ex-space-20); font-size: var(--ex-font-size-small); color: var(--ex-text-secondary); line-height: 1.6; }
+.ex-dialog-body h4 { margin: 0 0 8px; font-size: 12px; font-weight: var(--ex-font-weight-bold); color: var(--ex-accent-fg); }
+.ex-dialog-body p { margin: 0 0 8px; }
+.ex-dialog-foot { display: flex; justify-content: flex-end; gap: var(--ex-space-8); padding: 0 var(--ex-space-20) var(--ex-space-20); }
+
+/* 追加提案のみ */
+.ex-tooltip { display: inline-block; padding: 4px 8px; background: var(--ex-surface-raised); color: var(--ex-text-primary); border: var(--ex-border-width) solid var(--ex-border-default); border-radius: var(--ex-radius-row); box-shadow: var(--ex-shadow-popover); font-size: var(--ex-font-size-small); white-space: nowrap; }
+.ex-tooltip .kbd { color: var(--ex-text-muted); margin-left: 6px; }
+.ex-rename { height: 22px; min-width: 0; width: 100%; padding: 0 6px; border: var(--ex-border-width) solid var(--ex-focus-ring); border-radius: 4px; background: var(--ex-surface-field-focus); color: var(--ex-text-primary); font: inherit; font-weight: var(--ex-font-weight-medium); box-shadow: 0 0 0 var(--ex-focus-halo-width) var(--ex-focus-halo); outline: none; }
+.ex-error { color: var(--ex-danger-fg); font-weight: var(--ex-font-weight-strong); }
+.ex-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ex-border-default); border-top-color: var(--ex-accent-fg); animation: ex-spin 0.9s linear infinite; flex: none; }
+@keyframes ex-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ex-spin { animation: none; } }
+
+/* ==========================================================================
+   2. ドキュメントサイト層（リファレンス自体の枠。アプリのトークン外の読み物用設定を含む）
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-padding-top: 64px; }
+body { margin: 0; background: var(--ex-surface-canvas); color: var(--ex-text-primary); font: 14px/1.7 var(--ex-font-ui); }
+:focus-visible { outline: var(--ex-focus-width) solid var(--ex-focus-ring); outline-offset: var(--ex-focus-offset); }
+a { color: var(--ex-accent-fg); }
+code, kbd, .mono { font-family: var(--ex-font-mono); font-size: 12px; }
+code { background: var(--ex-surface-field); border: 1px solid var(--ex-border-subtle); border-radius: 4px; padding: 0 4px; overflow-wrap: anywhere; }
+kbd { display: inline-block; min-width: 20px; padding: 0 5px; border: 1px solid var(--ex-border-default); border-bottom-width: 2px; border-radius: 4px; background: var(--ex-surface-card); color: var(--ex-text-primary); text-align: center; line-height: 1.6; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; cursor: pointer; }
+#live-tabs { position: relative; }
+#toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+.doc-app { display: flex; flex-direction: column; gap: var(--ex-layout-gap); padding: var(--ex-layout-gap); min-height: 100vh; }
+.doc-top { position: sticky; top: 6px; z-index: 20; height: var(--ex-size-toolbar); flex-wrap: nowrap; }
+.doc-top::before { content: ""; position: absolute; left: -7px; right: -7px; top: -7px; height: 7px; background: var(--ex-surface-canvas); }
+.doc-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; }
+.doc-title strong { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-title span { font-size: 12px; color: var(--ex-text-muted); white-space: nowrap; }
+.doc-menu-btn { display: none !important; }
+.doc-body { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: var(--ex-layout-gap); align-items: start; }
+.doc-toc { position: sticky; top: 56px; max-height: calc(100vh - 62px); overflow-y: auto; width: auto; scrollbar-width: thin; scrollbar-color: var(--ex-scrollbar-thumb) transparent; }
+.doc-toc .ex-search { flex: none; width: 100%; min-width: 0; height: 32px; margin-bottom: 6px; padding-left: 10px; }
+.doc-toc .ex-place { min-height: 26px; font-size: 13px; text-decoration: none; padding: 0 10px; }
+.doc-toc .ex-place[aria-current="true"] { background: var(--ex-nav-current-bg); color: var(--ex-nav-current-fg); font-weight: var(--ex-font-weight-strong); }
+.toc-empty { padding: 6px 10px; font-size: 12px; color: var(--ex-text-muted); }
+.doc-main { background: var(--ex-surface-content); border: 1px solid var(--ex-border-content); border-radius: var(--ex-radius-island); padding: 8px 28px 40px; min-width: 0; }
+.doc-sec { padding: 28px 0 8px; border-top: 1px solid var(--ex-border-subtle); }
+.doc-sec:first-child { border-top: 0; }
+.doc-sec > h2 { margin: 0 0 6px; font-size: 20px; line-height: 1.35; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.doc-sec > h3 { margin: 22px 0 8px; font-size: 15px; }
+.doc-sec > p, .doc-sec > ul > li, .doc-sec > ol > li, .doc-sec > .kv dd { color: var(--ex-text-secondary); max-width: 78ch; }
+.doc-sec > p strong, .doc-sec > ul > li strong, .doc-sec > ol > li strong { color: var(--ex-text-primary); }
+.doc-sec > ul { padding-left: 20px; }
+.lead { font-size: 15px; }
+.grp-h { margin: 18px 0 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--ex-text-muted); }
+
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; border: 1px solid transparent; vertical-align: middle; }
+.tag.adopted { background: var(--ex-accent-soft); color: var(--ex-accent-fg); }
+.tag.derived { background: var(--ex-surface-field); color: var(--ex-text-secondary); border-color: var(--ex-border-default); }
+.tag.proposed { color: var(--ex-accent-fg); border: 1px dashed var(--ex-selection-border); }
+.tag.placeholder { color: var(--ex-text-secondary); border: 1px dashed var(--ex-border-default); background: var(--ex-surface-field); }
+.tag.fail { background: var(--ex-match-bg); color: var(--ex-text-primary); }
+.tag.pass { background: var(--ex-surface-field); color: var(--ex-text-secondary); border-color: var(--ex-border-subtle); }
+
+.demo { margin: 14px 0; border: 1px solid var(--ex-border-default); border-radius: 10px; overflow: hidden; }
+.demo-label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 12px; background: var(--ex-surface-chrome); border-bottom: 1px solid var(--ex-border-subtle); font-size: 12px; font-weight: 600; color: var(--ex-text-secondary); }
+.demo-label .hint { font-weight: 400; color: var(--ex-text-muted); }
+.demo.live .demo-label::before { content: "操作できる"; display: inline-flex; height: 18px; align-items: center; padding: 0 7px; border-radius: 999px; background: var(--ex-nav-current-bg); color: var(--ex-nav-current-fg); font-size: 10.5px; }
+.demo.proposed { border-style: dashed; border-color: var(--ex-selection-border); }
+.demo-body { padding: 16px; background: var(--ex-surface-canvas); overflow-x: auto; }
+.demo-body.on-content { background: var(--ex-surface-content); }
+.demo-body.on-chrome { background: var(--ex-surface-chrome); }
+.states { display: flex; flex-wrap: wrap; gap: 18px 22px; align-items: flex-start; }
+.states.col { flex-direction: column; flex-wrap: nowrap; gap: 6px; align-items: stretch; }
+.states figure { margin: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; }
+.states figcaption { font-size: 11px; color: var(--ex-text-muted); line-height: 1.4; }
+.pair-wrap { display: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+body.pair-on .pair-wrap { display: grid; }
+body.pair-on .demo-body.pairable > .states { display: none; }
+.pair-col { padding: 14px; background: var(--ex-surface-canvas); color: var(--ex-text-primary); min-width: 0; overflow-x: auto; }
+.pair-col + .pair-col { border-left: 1px solid var(--ex-border-default); }
+.pair-col > .pair-h { font-size: 11px; font-weight: 700; color: var(--ex-text-muted); margin-bottom: 10px; }
+.pair-col.on-content { background: var(--ex-surface-content); }
+
+.tbl-wrap { overflow-x: auto; margin: 10px 0; border: 1px solid var(--ex-border-subtle); border-radius: 8px; }
+table.spec { width: 100%; border-collapse: collapse; font-size: 12.5px; line-height: 1.5; }
+table.spec th, table.spec td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--ex-border-subtle); }
+table.spec th { background: var(--ex-surface-chrome); color: var(--ex-text-muted); font-weight: 600; white-space: nowrap; position: sticky; top: 0; }
+table.spec tr:last-child td { border-bottom: 0; }
+table.spec td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.copy { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border: 1px solid var(--ex-border-subtle); border-radius: 999px; background: var(--ex-surface-field); color: var(--ex-text-secondary); font: 500 11.5px var(--ex-font-mono); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copy:hover { background: var(--ex-state-hover); color: var(--ex-text-primary); }
+.copy::after { content: ""; width: 10px; height: 10px; flex: none; background: currentColor; opacity: 0.6; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4'%3E%3Crect x='9' y='9' width='11' height='11' rx='2'/%3E%3Cpath d='M15 5H7a2 2 0 0 0-2 2v8'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4'%3E%3Crect x='9' y='9' width='11' height='11' rx='2'/%3E%3Cpath d='M15 5H7a2 2 0 0 0-2 2v8'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 10px; margin: 8px 0 4px; }
+.sw { border: 1px solid var(--ex-border-default); border-radius: 10px; overflow: hidden; background: var(--ex-surface-content); display: flex; flex-direction: column; min-width: 0; }
+.sw-chips { display: grid; grid-template-columns: 1fr 1fr; height: 62px; }
+.sw-chip { position: relative; padding: 8px; display: flex; align-items: flex-end; }
+.sw-chip i { position: absolute; inset: 8px 8px 30px; border-radius: 5px; border: 1px solid rgba(128, 128, 128, 0.28); }
+.sw-chip span { position: relative; font: 10px/1.15 var(--ex-font-mono); overflow-wrap: anywhere; }
+.sw-chip.l { background: #ffffff; color: #475569; }
+.sw-chip.d { background: #191919; color: #adadad; }
+.sw-meta { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+.sw-meta b { font-size: 12.5px; overflow-wrap: anywhere; }
+.sw-meta .use { color: var(--ex-text-secondary); line-height: 1.45; }
+.sw-meta .legacy { color: var(--ex-text-muted); font-size: 11px; overflow-wrap: anywhere; }
+.sw-meta .row1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.aa { display: inline-grid; place-items: center; width: 44px; height: 26px; border-radius: 5px; font-weight: 600; font-size: 13px; border: 1px solid rgba(128, 128, 128, 0.25); }
+.ratio { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.layout-map { display: grid; grid-template-columns: 200px 1fr 268px; grid-template-rows: 32px 44px 150px 28px; gap: 6px; padding: 6px 6px 0; background: var(--ex-surface-canvas); border: 1px solid var(--ex-border-default); border-radius: 8px; min-width: 620px; font-size: 11px; color: var(--ex-text-secondary); }
+.layout-map > div { display: grid; place-items: center; text-align: center; border: 1px solid var(--ex-border-default); border-radius: 6px; background: var(--ex-surface-chrome); line-height: 1.35; }
+.layout-map .lm-tabs { grid-column: 1 / -1; background: transparent; border-style: dashed; }
+.layout-map .lm-tool { grid-column: 1 / -1; }
+.layout-map .lm-main { background: var(--ex-surface-content); }
+.layout-map .lm-status { grid-column: 1 / -1; margin: 0 -6px; border-radius: 0; border-width: 1px 0 0; background: var(--ex-surface-statusbar); }
+
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.icon-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px 8px; border: 1px solid var(--ex-border-subtle); border-radius: 8px; background: var(--ex-surface-content); color: var(--ex-icon-default); font-size: 11px; }
+.icon-cell .copy { font-size: 10.5px; }
+
+.compose { display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 0; background: var(--ex-surface-canvas); width: 940px; height: 560px; border: 1px solid var(--ex-border-default); border-radius: 8px; overflow: hidden; }
+.compose .ex-tabbar { padding: 0 4px; }
+.compose-ws { flex: 1; min-height: 0; display: flex; gap: 6px; }
+.compose .ex-stage { flex: 1; }
+.compose .ex-statusbar { margin: 0 -6px; }
+.compose .ex-pane-body { padding: 14px 18px; gap: 12px; }
+.compose .ex-hero { height: 110px; }
+
+.code { margin: 10px 0; border: 1px solid var(--ex-border-subtle); border-radius: 8px; background: var(--ex-surface-chrome); }
+.code summary { cursor: pointer; padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--ex-text-secondary); }
+.code-body { position: relative; border-top: 1px solid var(--ex-border-subtle); }
+.code-body pre { margin: 0; padding: 12px 14px; overflow-x: auto; font: 11.5px/1.6 var(--ex-font-mono); color: var(--ex-text-primary); background: var(--ex-surface-card); border-radius: 0 0 8px 8px; }
+.code-body .copy { position: absolute; top: 8px; right: 8px; }
+
+.toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 60; max-width: calc(100vw - 32px); padding: 7px 14px; border-radius: 999px; background: var(--ex-surface-raised); color: var(--ex-text-primary); border: 1px solid var(--ex-border-default); box-shadow: var(--ex-shadow-popover); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copy-dialog textarea { width: 100%; min-height: 84px; resize: vertical; font: 12px/1.5 var(--ex-font-mono); padding: 8px; border: 1px solid var(--ex-focus-ring); border-radius: 8px; background: var(--ex-surface-field-focus); color: var(--ex-text-primary); }
+.menu-anchor { position: relative; display: inline-block; }
+.menu-anchor .ex-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 5; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 13px; }
+.kv dt { color: var(--ex-text-muted); }
+.kv dd { margin: 0; }
+.prio { counter-reset: p; list-style: none; padding: 0 !important; }
+.prio li { counter-increment: p; display: grid; grid-template-columns: 26px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--ex-border-subtle); }
+.prio li::before { content: counter(p); display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ex-surface-field); border: 1px solid var(--ex-border-subtle); font-size: 11px; font-weight: 700; color: var(--ex-text-secondary); }
+
+/* 狭幅：目次をドロワー化し、本文とサンプルは1列 */
+@media (max-width: 900px) {
+  .doc-body { grid-template-columns: minmax(0, 1fr); }
+  .doc-menu-btn { display: inline-grid !important; }
+  .doc-toc { position: fixed; z-index: 40; top: 56px; left: 6px; bottom: 6px; max-height: none; width: min(300px, calc(100vw - 12px)); box-shadow: var(--ex-shadow-popover); display: none; }
+  body.toc-open .doc-toc { display: flex; }
+  .doc-main { padding: 4px 16px 32px; }
+  .pair-wrap { grid-template-columns: minmax(0, 1fr); }
+  .pair-col + .pair-col { border-left: 0; border-top: 1px solid var(--ex-border-default); }
+}
+@media (max-width: 560px) {
+  .doc-top { gap: 6px; padding: 0 6px; }
+  .doc-title span { display: none; }
+  .doc-top .ex-seg .ex-opt { padding: 0 8px; }
+  .doc-pair-label { display: none; }
+  .doc-sec > h2 { font-size: 18px; }
+  .demo-body { padding: 12px; }
+  .doc-main { padding: 4px 12px 28px; }
+  .swatches { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="doc-app">
+  <header class="ex-toolbar doc-top">
+    <button class="ex-ibtn doc-menu-btn" id="toc-toggle" aria-label="目次を開く" aria-expanded="false" aria-controls="toc" data-op="menu"></button>
+    <div class="doc-title"><strong>Explorer デザインシステム</strong><span>Prism Canopy Compact · v1.0 · 2026-11-15</span></div>
+    <button class="ex-sbtn" id="pair-toggle" aria-pressed="false" title="状態見本をライトとダークで並べて表示"><span data-op="panel"></span><span class="doc-pair-label">明暗並列</span></button>
+    <div class="ex-seg" role="group" aria-label="テーマ">
+      <button class="ex-opt" data-theme-opt="light">ライト</button>
+      <button class="ex-opt" data-theme-opt="dark">ダーク</button>
+      <button class="ex-opt" data-theme-opt="system">システム</button>
+    </div>
+  </header>
+
+  <div class="doc-body">
+    <nav class="ex-sidebar doc-toc" id="toc" aria-label="目次">
+      <div class="ex-search" role="search">
+        <span data-op="search" aria-hidden="true"></span>
+        <input type="search" id="toc-filter" placeholder="目次を絞り込む（例: 選択）" aria-label="目次を絞り込む" autocomplete="off">
+        <button class="ex-ibtn sm" id="toc-filter-clear" data-op="x" aria-label="絞り込みを解除" hidden></button>
+      </div>
+      <div id="toc-list"></div>
+      <div class="toc-empty" id="toc-empty" hidden>該当する項目がありません</div>
+    </nav>
+
+    <main class="doc-main" id="main">
+
+<!-- ================================================================== 概要 -->
+<section class="doc-sec" id="overview" data-group="基礎" data-toc="概要と原則" data-kw="原則 方針 正本 採用 提案 凡例 ガラス 廃止">
+  <h2>Explorer デザインシステム <span class="tag adopted">採用済みモックを体系化</span></h2>
+  <p class="lead">毎日使う Windows / macOS 向けファイルエクスプローラーの UI 規約です。<strong>高密度で控えめなモダンさ</strong>を保ち、OS 間で同じ外観にします。値はすべて採用済みモック <a href="../explorer-directions/argon/concept-1.html">concept-1.html</a> / <a href="../explorer-directions/argon/concept-1-dark.html">concept-1-dark.html</a> から抽出しており、新しいデザイン案ではありません。</p>
+  <h3>5つの原則</h3>
+  <ul>
+    <li><strong>面は不透明の単色。</strong>背景ぼかし・白い内縁光沢・装飾影・グラデーションは使わない。面の区別は明度差と 1px の細線だけで行う。</li>
+    <li><strong>影は機能のためだけ。</strong>メニュー・ダイアログ等の浮遊物に <code>shadow.popover</code> のみ。パネルには付けない。</li>
+    <li><strong>ダークは無彩色チャコール。</strong>地・面・文字・境界に青みを入れない。青は選択・フォーカス・主要操作のアクセントに限る。</li>
+    <li><strong>密度は固定寸法で守る。</strong>タブ 32 / ツールバー 44 / 行 28（コンパクト 24）/ 情報バー 28 / パネル間隔 6 / サイドバー 200 / インスペクタ 268。フォルダー大見出しと上部の件数・種類フィルター帯は置かない。</li>
+    <li><strong>ファイルのアイコンは OS のもの。</strong>ファイル・フォルダー・ドライブは OS から取得したフルカラーを色加工せずに表示。このページの色付きアイコンは仮素材。操作アイコンだけが共通の単色線画。</li>
+  </ul>
+  <h3>状態ラベルの読み方</h3>
+  <dl class="kv">
+    <dt><span class="tag adopted">採用済み</span></dt><dd>モックに存在し、本人レビューを通った値・部品。そのまま実装対象。</dd>
+    <dt><span class="tag derived">換算</span></dt><dd>モックの表現（例: <code>filter: brightness(0.97)</code>）を、ネイティブで扱える不透明色へ置き換えた値。見た目は同等。</dd>
+    <dt><span class="tag proposed">追加提案</span></dt><dd>モックに無いもの。最小限の案で、本人承認前。実装前に確認が必要。</dd>
+    <dt><span class="tag placeholder">仮素材</span></dt><dd>OS アイコンの代わりに描いた SVG とその色。本番では使わない。</dd>
+  </dl>
+  <h3>このページの見方</h3>
+  <p><strong>状態見本</strong>は hover・押下・フォーカス等をクラスで固定した静止画で、触っても変わりません。<strong>操作できる展示</strong>（青いラベル付き）はクリックやキーボードで状態が変わりますが、見た目を確かめるためだけのもので、ファイル操作は行いません。上部の「明暗並列」で状態見本をライトとダークに並べて比較できます。</p>
+  <p>このページは HTML のリファレンスです。<strong>Rust / GPUI 側はまだ実装していません。</strong>移し方は <a href="GPUI.md">GPUI.md</a>、設計意図と検証結果は <a href="DESIGN.md">DESIGN.md</a> を参照してください。</p>
+</section>
+
+<!-- ================================================================== 色 -->
+<section class="doc-sec" id="colors" data-group="基礎" data-toc="色の役割" data-kw="色 カラー トークン surface text accent selection border 背景 文字 境界">
+  <h2>色の役割</h2>
+  <p>色は役割名で使います（例: <code>surface.content</code> → CSS では <code>--ex-surface-content</code>）。各カードの左がライト、右がダークの実値です。名前・値のボタンでコピーできます。半透明の値は、その上に重なる面と合成して見えます。</p>
+  <div id="color-groups"></div>
+  <h3>仮素材アイコンの色 <span class="tag placeholder">仮素材</span></h3>
+  <p>モック内の仮 SVG を描くためだけの色です。ダークで紙面色を暗くしているのも仮素材だけの調整で、<strong>本番の OS アイコンには色変更を加えません。</strong></p>
+  <div class="swatches" id="placeholder-swatches"></div>
+</section>
+
+<!-- ================================================================== コントラスト -->
+<section class="doc-sec" id="contrast" data-group="基礎" data-toc="組み合わせとコントラスト" data-kw="コントラスト WCAG 比 可読性 未達 修正案 アクセシビリティ">
+  <h2>組み合わせとコントラスト</h2>
+  <p>実際に重なる組み合わせを WCAG 2.x の相対輝度で計算しました（半透明は下の面と合成）。目標は文字 4.5:1、非テキスト（アイコン・フォーカスリング等）3:1。値は <code>tools/build-tokens.cjs</code> が tokens.json から計算し、<code>tools/verify.cjs</code> がブラウザーの描画色でも照合します。</p>
+  <p id="contrast-summary"></p>
+  <div class="tbl-wrap"><table class="spec" id="contrast-table"></table></div>
+</section>
+
+<!-- ================================================================== タイポ -->
+<section class="doc-sec" id="type" data-group="基礎" data-toc="タイポグラフィ" data-kw="フォント 文字 サイズ 太さ 行間 Segoe Yu Gothic Hiragino">
+  <h2>タイポグラフィ</h2>
+  <p>OS 標準の UI フォントを優先します（Windows: Segoe UI Variable / Yu Gothic UI、macOS: システムフォント / Hiragino Sans）。字形は OS で変わりますが、<strong>サイズ・太さ・行高は共通</strong>です。基準は 13.5px / 1.45。数値列は等幅数字（<code>tabular-nums</code>）。</p>
+  <div class="tbl-wrap"><table class="spec" id="type-table"></table></div>
+</section>
+
+<!-- ================================================================== 余白・寸法 -->
+<section class="doc-sec" id="space" data-group="基礎" data-toc="余白と寸法" data-kw="余白 寸法 サイズ 高さ 幅 レイアウト 6px 28px 44px 200 268 密度 コンパクト">
+  <h2>余白と寸法</h2>
+  <p>ウィンドウ外周とパネル間の間隔は <strong>6px のみ</strong>。上から タブバー 32 → ツールバー 44 → 作業面（サイドバー 200 / 一覧 / インスペクタ 268）→ 全幅の情報バー 28。情報バーは一覧に重ねず、ウィンドウ下端に接地します。</p>
+  <div class="demo"><div class="demo-label">レイアウト骨格 <span class="hint">数値は px。高さは固定、一覧だけが伸縮</span></div>
+    <div class="demo-body">
+      <div class="layout-map" aria-label="レイアウト骨格の図">
+        <div class="lm-tabs">タブバー 32（タブ 180×30、間隔 4）</div>
+        <div class="lm-tool">ツールバー 44 ／ 内部: 履歴ボタン群・アドレス 36・検索 36（基準幅256）・表示切替・設定</div>
+        <div>サイドバー 200<br>（1140px 以下で 196）</div>
+        <div class="lm-main">一覧（伸縮）<br>ヘッダー 28 ／ 行 28・コンパクト 24<br>列: 名前 ≥200 / 日時 144 / 種類 136 / サイズ 92</div>
+        <div>インスペクタ 268<br>見出し 44 ／ 本文余白 18</div>
+        <div class="lm-status">情報バー 28（全幅・下端固定）</div>
+      </div>
+    </div>
+  </div>
+  <p>一覧の幅が 610px 以下で「種類」列、440px 以下で「更新日時」列を隠します。ウィンドウ最小は 960×600。</p>
+  <h3>余白スケール</h3>
+  <div class="tbl-wrap"><table class="spec" id="space-table"></table></div>
+  <h3>寸法</h3>
+  <div class="tbl-wrap"><table class="spec" id="size-table"></table></div>
+</section>
+
+<!-- ================================================================== 角丸・線・影 -->
+<section class="doc-sec" id="shape" data-group="基礎" data-toc="角丸・線・影・動き" data-kw="角丸 radius 線 border 影 shadow ピル 動き モーション transition">
+  <h2>角丸・線・影・動き</h2>
+  <p>入れ子の内側ほど角丸を小さくします（パネル 10 → カード 12 は例外的に大きめ、行 6）。操作部品（アドレス・検索・ボタン・バッジ）はピル形状。線はすべて 1px。</p>
+  <div class="tbl-wrap"><table class="spec" id="radius-table"></table></div>
+  <h3>線とフォーカス</h3>
+  <div class="tbl-wrap"><table class="spec" id="line-table"></table></div>
+  <h3>影</h3>
+  <p>影は <code>shadow.popover</code> の 1 種類だけ。メニュー・ダイアログ・（提案の）ツールチップなど、他の面の上に浮く要素を分離するためにだけ使います。パネル・タブ・ボタン・選択行には付けません。</p>
+  <div class="tbl-wrap"><table class="spec" id="shadow-table"></table></div>
+  <h3>動き</h3>
+  <p>状態変化は 0.08〜0.15 秒の短い色変化のみ。テーマ切替にアニメーションは付けません。</p>
+  <div class="tbl-wrap"><table class="spec" id="motion-table"></table></div>
+</section>
+
+<!-- ================================================================== アイコン -->
+<section class="doc-sec" id="icons" data-group="基礎" data-toc="アイコン方針" data-kw="アイコン SVG OS 仮素材 操作 線幅 1.75 フォルダー ファイル ドライブ">
+  <h2>アイコン方針</h2>
+  <dl class="kv">
+    <dt>操作アイコン</dt><dd>24px グリッド・線幅 1.75・丸端の単色 SVG。色は <code>currentColor</code>（既定 <code>icon.default</code>）。表示 16px、小ボタン内 14px、ソート/区切り 12px。</dd>
+    <dt>ファイル等</dt><dd><strong>本番は OS から取得したアイコンをそのまま</strong>表示（行 18px / タブ・サイドバー 16px / グリッド 52px / プレビュー 68px）。減色・着色・明暗反転をしない。取得完了まで場所を空けて待ち、レイアウトを動かさない。</dd>
+    <dt>仮素材</dt><dd>下の色付きアイコンはモック用の代用品。Windows 風（黄フォルダー）と macOS 風（青フォルダー）の切替は検証用。</dd>
+  </dl>
+  <h3>操作アイコン <span class="tag adopted">採用済み</span></h3>
+  <div class="icon-grid" id="op-icons"></div>
+  <h3>仮素材アイコン <span class="tag placeholder">仮素材</span></h3>
+  <div class="icon-grid" id="obj-icons"></div>
+  <p>タブの閉じる「×」と追加「+」はモックでは文字です。ネイティブ実装では操作アイコン <code>x</code> と同じ線画にそろえることを提案します <span class="tag proposed">追加提案</span>。</p>
+</section>
+
+<!-- ================================================================== 状態 -->
+<section class="doc-sec" id="states" data-group="基礎" data-toc="状態と優先順位" data-kw="状態 優先順位 hover 押下 選択 フォーカス 無効 disabled 非アクティブ">
+  <h2>状態と優先順位</h2>
+  <p>1 つの要素に複数の状態が重なるとき、<strong>塗り</strong>は次の順で上位のものだけを使います。<strong>フォーカスリングは塗りとは別の層</strong>で、どの状態にも重ねて描きます。</p>
+  <ol class="prio">
+    <li><div><strong>無効（disabled）</strong> — 文字/アイコンを <code>text.disabled</code>。ホバー・押下に反応しない。フォーカスも受けない（メニュー項目はキー移動で飛ばす）。</div></li>
+    <li><div><strong>押下中（pressed）</strong> — <code>state.pressed</code>。アイコンボタンは 0.96 倍に縮む。指を離すまでの一瞬だけ。</div></li>
+    <li><div><strong>選択＋一覧にフォーカス</strong> — <code>selection.bg</code>＋<code>selection.border</code>、名前を <code>selection.fg</code>・600。</div></li>
+    <li><div><strong>選択＋フォーカスなし（非アクティブ選択）</strong> — <code>selection.inactive.bg</code>（ダークは枠も）。文字色は通常。他のペインを操作中でも選択が分かる。<em>モックでは色の定義のみで、一覧は常にフォーカス扱い（切替は未実装・未検証）。</em></div></li>
+    <li><div><strong>トグルオン／現在地</strong> — <code>accent.soft</code>＋<code>accent.fg</code>（トグル）、<code>nav.current.bg</code>（サイドバー現在地）、<code>surface.chip-selected</code>（現在パンくず・セグメント）。</div></li>
+    <li><div><strong>ホバー</strong> — <code>state.hover</code>。選択行の上では出さない（選択の塗りが優先）。</div></li>
+    <li><div><strong>通常</strong></div></li>
+  </ol>
+  <p><strong>重ねて描くもの:</strong> キーボードフォーカス（2px <code>focus.ring</code>）、検索一致マーカー（<code>match.bg</code>）、隠しファイルの減光（名前 <code>text.muted</code>・アイコン不透明度 0.48）は、上の塗りと同時に成り立ちます。</p>
+  <p><strong>モックとの差（要確認）:</strong> モックではトグルオンのアイコンボタンにポインターを乗せるとホバー色が勝ちます（CSS の詳細度による）。上の順序表では「トグルオン」をホバーより上にしています。ネイティブ実装ではこの順を推奨します <span class="tag proposed">追加提案</span>。</p>
+  <div class="demo"><div class="demo-label">状態見本 — 行に重なる状態</div>
+    <div class="demo-body on-content pairable"><div class="states col" style="min-width:560px">
+      <div class="ex-list"><div class="ex-rows focused">
+        <div class="ex-row"><div class="c c-name"><span class="ex-oi" data-obj="file:docx"></span><span class="nm">通常 — 企画書_v3.docx</span></div><div class="c c-mod">2026/11/13 21:07</div><div class="c c-kind">DOCX ファイル</div><div class="c c-size">1.2 MB</div></div>
+        <div class="ex-row is-hover"><div class="c c-name"><span class="ex-oi" data-obj="file:xlsx"></span><span class="nm">ホバー — 2026年度_予算案.xlsx</span></div><div class="c c-mod">2026/11/14 9:41</div><div class="c c-kind">XLSX ファイル</div><div class="c c-size">48.2 KB</div></div>
+        <div class="ex-row sel"><div class="c c-name"><span class="ex-oi" data-obj="file:pdf"></span><span class="nm">選択（一覧にフォーカス）</span></div><div class="c c-mod">2026/11/08 12:14</div><div class="c c-kind">PDF ファイル</div><div class="c c-size">842 KB</div></div>
+        <div class="ex-row sel is-kbd"><div class="c c-name"><span class="ex-oi" data-obj="file:pptx"></span><span class="nm">選択＋キーボードフォーカス</span></div><div class="c c-mod">2026/11/11 19:25</div><div class="c c-kind">PPTX ファイル</div><div class="c c-size">6.8 MB</div></div>
+        <div class="ex-row is-kbd"><div class="c c-name"><span class="ex-oi" data-obj="file:md"></span><span class="nm">キーボードフォーカスのみ（Ctrl+移動）</span></div><div class="c c-mod">2026/09/18 11:22</div><div class="c c-kind">MD ファイル</div><div class="c c-size">3.1 KB</div></div>
+        <div class="ex-row sel hid"><div class="c c-name"><span class="ex-oi" data-obj="file:ini"></span><span class="nm">選択＋隠しファイル — desktop.ini</span></div><div class="c c-mod">2026/04/01 9:00</div><div class="c c-kind">INI ファイル</div><div class="c c-size">0.4 KB</div></div>
+      </div></div>
+      <div class="ex-list"><div class="ex-rows">
+        <div class="ex-row sel"><div class="c c-name"><span class="ex-oi" data-obj="folder:"></span><span class="nm">非アクティブ選択（フォーカスは他のペイン）</span></div><div class="c c-mod">2026/04/03 9:20</div><div class="c c-kind">フォルダー</div><div class="c c-size">—</div></div>
+      </div></div>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== キーボード -->
+<section class="doc-sec" id="keyboard" data-group="基礎" data-toc="キーボードとフォーカス" data-kw="キーボード ショートカット フォーカス Tab 矢印 Ctrl Alt アクセシビリティ">
+  <h2>キーボードとフォーカス</h2>
+  <ul>
+    <li><strong>フォーカスはキーボード操作時だけ見せる</strong>（<code>:focus-visible</code> 相当）。2px <code>focus.ring</code>、外側 1px。検索欄は枠を <code>focus.ring</code> にし外側 3px の <code>focus.halo</code>。</li>
+    <li>一覧は 1 つのタブ停止点（listbox）。中の移動は矢印キー。キーボードで動かすと現在行に 2px リングが付き、マウス操作では付けない。</li>
+    <li>タブ列も 1 つのタブ停止点（tablist）。←/→ で切替、Delete で閉じる。閉じる「×」はタブ順に入れない。</li>
+    <li>メニューは開いた時に最初の有効項目へフォーカス、↑/↓ で移動、Enter で実行、Esc で閉じて元のボタンへ戻す。</li>
+  </ul>
+  <div class="tbl-wrap"><table class="spec">
+    <thead><tr><th>操作</th><th>キー</th><th>モックでの状態</th></tr></thead>
+    <tbody>
+      <tr><td>一覧の移動 / 範囲選択 / 追加選択</td><td><kbd>↑</kbd><kbd>↓</kbd><kbd>Home</kbd><kbd>End</kbd>、<kbd>Shift</kbd>+移動、<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+クリック</td><td>実装済み</td></tr>
+      <tr><td>開く / 全選択 / 選択解除 / 戻る</td><td><kbd>Enter</kbd>、<kbd>Ctrl</kbd>+<kbd>A</kbd>、<kbd>Esc</kbd>、<kbd>Backspace</kbd></td><td>実装済み</td></tr>
+      <tr><td>検索へ移動 / インスペクタ開閉 / 隠しファイル</td><td><kbd>Ctrl</kbd>+<kbd>F</kbd>、<kbd>Alt</kbd>+<kbd>P</kbd>、<kbd>Ctrl</kbd>+<kbd>H</kbd></td><td>実装済み</td></tr>
+      <tr><td>タブ追加 / 閉じる / 次のタブ</td><td><kbd>Ctrl</kbd>+<kbd>T</kbd>、<kbd>Ctrl</kbd>+<kbd>W</kbd>、<kbd>Ctrl</kbd>+<kbd>Tab</kbd></td><td>実装済み（ブラウザーが先に取る場合あり。本番で再検証）</td></tr>
+      <tr><td>戻る / 進む / 上へ / 更新</td><td><kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd>/<kbd>↑</kbd>、<kbd>F5</kbd></td><td>ツールチップ表記のみ（本番で実装）</td></tr>
+      <tr><td>検索をクリア</td><td>検索欄で <kbd>Esc</kbd></td><td>表記のみ（クリアボタンは実装済み）</td></tr>
+    </tbody>
+  </table></div>
+  <p>macOS では <kbd>Ctrl</kbd> を <kbd>⌘</kbd>、<kbd>Alt</kbd> を <kbd>⌥</kbd> に読み替えます。最終的な割り当ては OS ごとの慣習と衝突しないか本番で確認します（未検証）。</p>
+</section>
+
+<!-- ================================================================== ボタン -->
+<section class="doc-sec" id="c-button" data-group="コンポーネント" data-toc="ボタン" data-kw="ボタン button primary 主要 開く コピー 無効">
+  <h2>ボタン <span class="tag adopted">採用済み</span></h2>
+  <p>高さ 32・ピル形・12px/600。<strong>主要ボタンは 1 つの領域に 1 つまで</strong>（例: インスペクタの「開く」）。それ以外は標準ボタン。アイコンは 14px で文字の左。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body on-chrome pairable"><div class="states">
+      <figure><button class="ex-btn primary" tabindex="-1"><span data-op="open"></span>開く</button><figcaption>主要</figcaption></figure>
+      <figure><button class="ex-btn primary is-hover" tabindex="-1"><span data-op="open"></span>開く</button><figcaption>主要・ホバー <span class="tag derived">換算</span></figcaption></figure>
+      <figure><button class="ex-btn primary is-focus" tabindex="-1"><span data-op="open"></span>開く</button><figcaption>主要・フォーカス</figcaption></figure>
+      <figure><button class="ex-btn" tabindex="-1"><span data-op="copy"></span>パスをコピー</button><figcaption>標準</figcaption></figure>
+      <figure><button class="ex-btn is-hover" tabindex="-1"><span data-op="copy"></span>パスをコピー</button><figcaption>標準・ホバー</figcaption></figure>
+      <figure><button class="ex-btn is-focus" tabindex="-1"><span data-op="copy"></span>パスをコピー</button><figcaption>標準・フォーカス</figcaption></figure>
+      <figure><button class="ex-btn is-disabled" tabindex="-1"><span data-op="copy"></span>パスをコピー</button><figcaption>無効 <span class="tag proposed">追加提案</span></figcaption></figure>
+      <figure><button class="ex-btn primary is-disabled" tabindex="-1"><span data-op="open"></span>開く</button><figcaption>主要・無効 <span class="tag proposed">追加提案</span></figcaption></figure>
+    </div></div>
+  </div>
+  <p>モックの無効ボタンは未定義のため、無効表現は提案です（<code>text.disabled</code> の文字、主要は塗りを <code>surface.field</code> に落とす）。ライトのホバーはモックの <code>brightness(0.97)</code> を不透明色に換算しました。</p>
+  <details class="code"><summary>HTML とトークン</summary><div class="code-body"><pre>&lt;button class="ex-btn primary"&gt;&lt;svg class="ex-ico"…/&gt;開く&lt;/button&gt;
+&lt;button class="ex-btn"&gt;&lt;svg class="ex-ico"…/&gt;パスをコピー&lt;/button&gt;
+
+height: var(--ex-size-button);            /* 32px */
+background: var(--ex-button-primary-bg);  /* #2563eb（明暗共通） */
+color: var(--ex-text-on-accent);
+border-radius: var(--ex-radius-pill);</pre></div></details>
+</section>
+
+<!-- ================================================================== アイコンボタン -->
+<section class="doc-sec" id="c-ibtn" data-group="コンポーネント" data-toc="アイコンボタン・ボタン群" data-kw="アイコンボタン icon button 戻る 進む 上へ 更新 トグル グループ nav-cluster">
+  <h2>アイコンボタン・ボタン群 <span class="tag adopted">採用済み</span></h2>
+  <p>32×32（小 24×24）の円形。ツールバーでは <code>surface.field</code> のピル（ボタン群）にまとめます。必ず <code>aria-label</code> とショートカット付きのツールチップを持たせます。トグルは <code>aria-pressed</code>、メニューを開くものは <code>aria-expanded</code> で <code>accent.soft</code> になります。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body on-chrome pairable"><div class="states">
+      <figure><button class="ex-ibtn" tabindex="-1" data-op="refresh"></button><figcaption>通常</figcaption></figure>
+      <figure><button class="ex-ibtn is-hover" tabindex="-1" data-op="refresh"></button><figcaption>ホバー</figcaption></figure>
+      <figure><button class="ex-ibtn is-pressed" tabindex="-1" data-op="refresh"></button><figcaption>押下</figcaption></figure>
+      <figure><button class="ex-ibtn is-focus" tabindex="-1" data-op="refresh"></button><figcaption>フォーカス</figcaption></figure>
+      <figure><button class="ex-ibtn" tabindex="-1" aria-pressed="true" data-op="panel"></button><figcaption>トグルオン</figcaption></figure>
+      <figure><button class="ex-ibtn" tabindex="-1" disabled data-op="forward"></button><figcaption>無効</figcaption></figure>
+      <figure><button class="ex-ibtn sm" tabindex="-1" data-op="x"></button><figcaption>小 24</figcaption></figure>
+      <figure><div class="ex-group"><button class="ex-ibtn" tabindex="-1" disabled data-op="back"></button><button class="ex-ibtn" tabindex="-1" data-op="forward"></button><button class="ex-ibtn" tabindex="-1" data-op="up"></button><button class="ex-ibtn" tabindex="-1" data-op="refresh"></button></div><figcaption>ボタン群（履歴と階層移動）</figcaption></figure>
+      <figure><div class="ex-group"><button class="ex-ibtn" tabindex="-1" data-op="sun"></button><button class="ex-ibtn" tabindex="-1" aria-pressed="true" data-op="panel"></button><button class="ex-ibtn" tabindex="-1" aria-expanded="true" data-op="settings"></button></div><figcaption>表示ボタン群（インスペクタ オン・設定メニュー展開中）</figcaption></figure>
+    </div></div>
+  </div>
+  <div class="demo live"><div class="demo-label">ボタン群 <span class="hint">クリック・Tab・Space で試せます。押しても何も起きません</span></div>
+    <div class="demo-body on-chrome"><div class="ex-group" role="group" aria-label="展示用ボタン群">
+      <button class="ex-ibtn" data-op="back" aria-label="戻る（展示）" title="戻る (Alt+←)"></button>
+      <button class="ex-ibtn" data-op="forward" aria-label="進む（展示）" title="進む (Alt+→)" disabled></button>
+      <button class="ex-ibtn" data-op="up" aria-label="上の階層へ（展示）" title="上の階層へ (Alt+↑)"></button>
+      <button class="ex-ibtn" data-op="panel" aria-label="インスペクタ（展示トグル）" aria-pressed="true" data-toggle></button>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== タブ -->
+<section class="doc-sec" id="c-tabs" data-group="コンポーネント" data-toc="タブバー" data-kw="タブ tab 閉じる 追加 現在 あふれ overflow スクロール">
+  <h2>タブバー <span class="tag adopted">採用済み</span></h2>
+  <p>高さ 32 の帯に幅 180×高さ 30 のタブを 4px 間隔で並べます。現在タブだけが面（<code>tab.active.bg</code>＋枠）を持ち、非現在タブは地に沈みます。数が多いときは<strong>横スクロール</strong>（採用済み）。閉じると隣のタブへ移り、最後の 1 枚は残します。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body pairable"><div class="states">
+      <figure><div class="ex-tabbar" style="padding:0"><div class="ex-tab active"><button class="ex-tab-select" tabindex="-1"><span class="ex-oi" data-obj="folder:docs"></span><span>ドキュメント</span></button><button class="ex-tab-close" tabindex="-1">×</button></div></div><figcaption>現在</figcaption></figure>
+      <figure><div class="ex-tabbar" style="padding:0"><div class="ex-tab"><button class="ex-tab-select" tabindex="-1"><span class="ex-oi" data-obj="folder:down"></span><span>ダウンロード</span></button><button class="ex-tab-close" tabindex="-1">×</button></div></div><figcaption>非現在</figcaption></figure>
+      <figure><div class="ex-tabbar" style="padding:0"><div class="ex-tab is-hover"><button class="ex-tab-select" tabindex="-1"><span class="ex-oi" data-obj="folder:pics"></span><span>ピクチャ</span></button><button class="ex-tab-close is-hover" tabindex="-1">×</button></div></div><figcaption>非現在・ホバー（閉じるにもホバー）</figcaption></figure>
+      <figure><div class="ex-tabbar" style="padding:0"><div class="ex-tab active"><button class="ex-tab-select is-focus" tabindex="-1"><span class="ex-oi" data-obj="folder:docs"></span><span>とても長いフォルダー名は省略記号で切る</span></button><button class="ex-tab-close" tabindex="-1">×</button></div></div><figcaption>フォーカス・長い名前</figcaption></figure>
+      <figure><div class="ex-tabbar" style="padding:0"><button class="ex-tab-add" tabindex="-1">+</button><button class="ex-tab-add is-hover" tabindex="-1">+</button></div><figcaption>新しいタブ（通常・ホバー）</figcaption></figure>
+    </div></div>
+  </div>
+  <div class="demo live"><div class="demo-label">タブ列 <span class="hint">クリックで切替、×で閉じる、＋で追加。タブにフォーカスして ←/→/Home/End/Delete。フォルダーは開きません</span></div>
+    <div class="demo-body"><div class="ex-tabbar" id="live-tabbar" style="max-width:640px"><div class="ex-tabs" id="live-tabs" role="tablist" aria-label="展示用タブ"></div><button class="ex-tab-add" id="live-tab-add" aria-label="新しいタブ（展示）" title="新しいタブ (Ctrl+T)">+</button></div>
+    <p style="margin:8px 0 0;font-size:12px;color:var(--ex-text-muted)">6 枚以上で横スクロールになります（幅 640px に制限した展示）。</p></div>
+  </div>
+  <div class="demo proposed"><div class="demo-label">あふれ時の一覧ボタン <span class="tag proposed">追加提案</span> <span class="hint">モックは横スクロールのみ。タブが隠れたとき末尾に小ボタンでタブ一覧メニューを出す案</span></div>
+    <div class="demo-body"><div class="ex-tabbar" style="max-width:520px;padding:0"><div class="ex-tabs" style="overflow:hidden"><div class="ex-tab active"><button class="ex-tab-select" tabindex="-1"><span class="ex-oi" data-obj="folder:docs"></span><span>ドキュメント</span></button><button class="ex-tab-close" tabindex="-1">×</button></div><div class="ex-tab"><button class="ex-tab-select" tabindex="-1"><span class="ex-oi" data-obj="folder:down"></span><span>ダウンロード</span></button><button class="ex-tab-close" tabindex="-1">×</button></div><div class="ex-tab"><button class="ex-tab-select" tabindex="-1"><span class="ex-oi" data-obj="folder:pics"></span><span>ピクチャ</span></button><button class="ex-tab-close" tabindex="-1">×</button></div></div><button class="ex-ibtn sm" tabindex="-1" data-op="sortDown" aria-label="すべてのタブ"></button><button class="ex-tab-add" tabindex="-1">+</button></div></div>
+  </div>
+</section>
+
+<!-- ================================================================== アドレス -->
+<section class="doc-sec" id="c-address" data-group="コンポーネント" data-toc="パンくず・アドレス" data-kw="パンくず breadcrumb アドレス パス 現在地 区切り">
+  <h2>パンくず・アドレス <span class="tag adopted">採用済み</span></h2>
+  <p>高さ 36 のピル（<code>surface.field</code>）。先頭に現在フォルダーの OS アイコン、各階層は高さ 26 のボタン、区切りは 12px の山形（<code>text.disabled</code>）。<strong>現在地は 1 段浮いたチップ</strong>（<code>surface.chip-selected</code>・600）。狭いときは中間の階層から省略します。フォルダー名の大見出しは置かず、現在地はここで示します。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body on-chrome pairable"><div class="states col">
+      <nav class="ex-address" style="max-width:640px" aria-label="見本"><span class="ex-oi" data-obj="folder:docs"></span><ol class="ex-crumbs">
+        <li><button class="ex-crumb" tabindex="-1">PC</button></li><li class="ex-crumb-sep" data-op="chevron"></li>
+        <li><button class="ex-crumb is-hover" tabindex="-1">ローカル ディスク (C:)</button></li><li class="ex-crumb-sep" data-op="chevron"></li>
+        <li><button class="ex-crumb" tabindex="-1">ユーザー</button></li><li class="ex-crumb-sep" data-op="chevron"></li>
+        <li><button class="ex-crumb" tabindex="-1">aoi</button></li><li class="ex-crumb-sep" data-op="chevron"></li>
+        <li><button class="ex-crumb" tabindex="-1" aria-current="page">ドキュメント</button></li></ol></nav>
+      <figcaption style="font-size:11px;color:var(--ex-text-muted)">「ローカル ディスク (C:)」はホバー、「ドキュメント」は現在地</figcaption>
+      <nav class="ex-address" style="max-width:340px" aria-label="見本（狭幅）"><span class="ex-oi" data-obj="folder:"></span><ol class="ex-crumbs">
+        <li><button class="ex-crumb" tabindex="-1">…</button></li><li class="ex-crumb-sep" data-op="chevron"></li>
+        <li class="shrink"><button class="ex-crumb" tabindex="-1">年次レポート 2026</button></li><li class="ex-crumb-sep" data-op="chevron"></li>
+        <li class="shrink"><button class="ex-crumb is-focus" tabindex="-1" aria-current="page">グラフ素材の最終確認用フォルダー</button></li></ol></nav>
+      <figcaption style="font-size:11px;color:var(--ex-text-muted)">狭幅：上位を「…」に畳み、残りは省略記号。現在地にフォーカス</figcaption>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== 検索 -->
+<section class="doc-sec" id="c-search" data-group="コンポーネント" data-toc="検索" data-kw="検索 search クリア フォーカス 一致 マーカー 0件">
+  <h2>検索 <span class="tag adopted">採用済み</span></h2>
+  <p>高さ 36・基準幅 256・最小 160 のピル。入力があるとクリアボタン（小 24）を表示。フォーカス時は面を <code>surface.field-focus</code> にし、枠を <code>focus.ring</code>＋外側 3px <code>focus.halo</code>。一致部分は <code>match.bg</code> で示し、文字色は変えません（ダークのみ淡い黄）。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body on-chrome pairable"><div class="states">
+      <figure><div class="ex-search" style="width:256px"><span data-op="search"></span><input tabindex="-1" placeholder="ドキュメントを検索…" aria-label="見本"></div><figcaption>未入力</figcaption></figure>
+      <figure><div class="ex-search is-focus" style="width:256px"><span data-op="search"></span><input tabindex="-1" value="仕様" aria-label="見本"><button class="ex-ibtn sm" tabindex="-1" data-op="x"></button></div><figcaption>フォーカス＋入力あり（クリア表示）</figcaption></figure>
+      <figure><div class="ex-list" style="width:300px"><div class="ex-rows" style="padding:0"><div class="ex-row" style="--cols:1fr"><div class="c c-name"><span class="ex-oi" data-obj="file:docx"></span><span class="nm">製品<mark>仕様</mark>書_v3.2.docx</span></div></div></div></div><figcaption>一致マーカー</figcaption></figure>
+    </div></div>
+  </div>
+  <div class="demo live"><div class="demo-label">検索と結果 <span class="hint">入力で絞り込み、Esc かクリアで解除。該当なしの表示も確認できます</span></div>
+    <div class="demo-body on-chrome">
+      <div class="ex-search" style="max-width:320px" role="search"><span data-op="search" aria-hidden="true"></span><input type="search" id="live-search" placeholder="ドキュメントを検索…" aria-label="展示用の検索" autocomplete="off"><button class="ex-ibtn sm" id="live-search-clear" data-op="x" aria-label="検索をクリア" title="検索をクリア (Esc)" hidden></button></div>
+      <div class="ex-stage ex-list" style="margin-top:10px;max-width:640px"><div class="ex-rows focused" id="live-search-rows" style="min-height:120px"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================== セグメント -->
+<section class="doc-sec" id="c-seg" data-group="コンポーネント" data-toc="セグメント" data-kw="セグメント segmented 表示切替 リスト グリッド テーマ">
+  <h2>セグメント <span class="tag adopted">採用済み</span></h2>
+  <p>2〜3 択の排他切替。<code>surface.field</code> の溝の中で、選ばれた項目だけが <code>surface.chip-selected</code> に浮き、アイコン/文字が <code>accent.fg</code> になります。アイコン型（30×28）は一覧の表示方法、文字型（高さ 26）は設定に使います。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body on-chrome pairable"><div class="states">
+      <figure><div class="ex-seg"><button class="ex-ibtn" tabindex="-1" aria-pressed="true" data-op="list"></button><button class="ex-ibtn" tabindex="-1" aria-pressed="false" data-op="grid"></button></div><figcaption>アイコン型（詳細リスト選択中）</figcaption></figure>
+      <figure><div class="ex-seg"><button class="ex-ibtn" tabindex="-1" aria-pressed="true" data-op="list"></button><button class="ex-ibtn is-hover" tabindex="-1" aria-pressed="false" data-op="grid"></button></div><figcaption>未選択側にホバー</figcaption></figure>
+      <figure><div class="ex-seg"><button class="ex-opt" tabindex="-1" aria-pressed="false">ライト</button><button class="ex-opt" tabindex="-1" aria-pressed="true">ダーク</button><button class="ex-opt" tabindex="-1" aria-pressed="false">システム</button></div><figcaption>文字型</figcaption></figure>
+    </div></div>
+  </div>
+  <p>このページ右上のテーマ切替も文字型セグメントです（操作できます）。アイコン型は下の「ファイル行」の展示で一覧/グリッド切替として動きます。</p>
+</section>
+
+<!-- ================================================================== サイドバー -->
+<section class="doc-sec" id="c-sidebar" data-group="コンポーネント" data-toc="サイドバー・ドライブメーター" data-kw="サイドバー sidebar 場所 ドライブ メーター 容量 現在地 ナビゲーション">
+  <h2>サイドバー・ドライブメーター <span class="tag adopted">採用済み</span></h2>
+  <p>幅 200 の <code>surface.chrome</code> パネル。見出しは 11px/700・字間 0.04em。項目は最小高 28・角丸 10・間隔 3。<strong>現在の場所は青い塗り</strong>（<code>nav.current.bg</code>・白文字）で、アプリ内で最も強い色面です。ドライブはカード型（<code>surface.field</code>）に使用量メーター（太さ 5）と空き容量を表示し、残りが少ないと <code>meter.warn</code>。</p>
+  <div class="demo live"><div class="demo-label">サイドバー <span class="hint">項目をクリックすると現在地が移ります（展示のみ）</span></div>
+    <div class="demo-body"><aside class="ex-sidebar" id="live-sidebar" aria-label="展示用サイドバー">
+      <h4 class="ex-side-h">よく使う場所</h4>
+      <ul class="ex-side-list">
+        <li><button class="ex-place"><span class="ex-oi" data-obj="folder:home" style="width:16px;height:16px"></span><span class="lbl">ホーム</span></button></li>
+        <li><button class="ex-place"><span class="ex-oi" data-obj="folder:desk" style="width:16px;height:16px"></span><span class="lbl">デスクトップ</span></button></li>
+        <li><button class="ex-place" aria-current="page"><span class="ex-oi" data-obj="folder:docs" style="width:16px;height:16px"></span><span class="lbl">ドキュメント</span></button></li>
+        <li><button class="ex-place"><span class="ex-oi" data-obj="folder:down" style="width:16px;height:16px"></span><span class="lbl">ダウンロード</span></button></li>
+      </ul>
+      <h4 class="ex-side-h">ストレージ</h4>
+      <ul class="ex-side-list">
+        <li><button class="ex-place drive"><span class="ex-oi" data-obj="drive:sys" style="width:16px;height:16px;margin-top:2px"></span><span class="ex-drive-info"><span class="lbl">ローカル ディスク (C:)</span><span class="ex-meter"><span style="width:62%"></span></span><span class="ex-drive-free">空き 182 GB / 476 GB</span></span></button></li>
+        <li><button class="ex-place drive"><span class="ex-oi" data-obj="drive:" style="width:16px;height:16px;margin-top:2px"></span><span class="ex-drive-info"><span class="lbl">データ (D:)</span><span class="ex-meter warn"><span style="width:92%"></span></span><span class="ex-drive-free">空き 74.0 GB / 932 GB</span></span></button></li>
+      </ul>
+    </aside></div>
+  </div>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body on-chrome pairable"><div class="states">
+      <figure style="width:188px"><button class="ex-place" tabindex="-1"><span class="ex-oi" data-obj="folder:pics" style="width:16px;height:16px"></span><span class="lbl">ピクチャ</span></button><figcaption>通常</figcaption></figure>
+      <figure style="width:188px"><button class="ex-place is-hover" tabindex="-1"><span class="ex-oi" data-obj="folder:pics" style="width:16px;height:16px"></span><span class="lbl">ピクチャ</span></button><figcaption>ホバー</figcaption></figure>
+      <figure style="width:188px"><button class="ex-place is-focus" tabindex="-1" aria-current="page"><span class="ex-oi" data-obj="folder:pics" style="width:16px;height:16px"></span><span class="lbl">ピクチャ</span></button><figcaption>現在地＋フォーカス</figcaption></figure>
+      <figure style="width:188px"><button class="ex-place drive" tabindex="-1" aria-current="page"><span class="ex-oi" data-obj="drive:sys" style="width:16px;height:16px;margin-top:2px"></span><span class="ex-drive-info"><span class="lbl">ローカル ディスク (C:)</span><span class="ex-meter"><span style="width:62%"></span></span><span class="ex-drive-free">空き 182 GB / 476 GB</span></span></button><figcaption>現在のドライブ</figcaption></figure>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== 一覧ヘッダー -->
+<section class="doc-sec" id="c-header" data-group="コンポーネント" data-toc="一覧ヘッダー・ソート" data-kw="ヘッダー 列 ソート 並び替え 昇順 降順 table header">
+  <h2>一覧ヘッダー・ソート <span class="tag adopted">採用済み</span></h2>
+  <p>高さ 28・<code>surface.chrome</code>・下に <code>border.subtle</code>。スクロールしても上に固定。見出しは 12px/600 の <code>text.muted</code>、<strong>ソート中の列だけ <code>accent.fg</code> と 12px の矢印</strong>。もう一度押すと昇順⇔降順。サイズ列は右寄せ、名前列はアイコン分（38px）字下げします。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body on-content pairable"><div class="states col" style="min-width:600px">
+      <div class="ex-list"><div class="ex-lh"><div class="ex-hc c-name"><button class="ex-hbtn" tabindex="-1" data-active>名前<span data-op="sortUp"></span></button></div><div class="ex-hc c-mod"><button class="ex-hbtn is-hover" tabindex="-1">更新日時</button></div><div class="ex-hc c-kind"><button class="ex-hbtn" tabindex="-1">種類</button></div><div class="ex-hc c-size"><button class="ex-hbtn" tabindex="-1">サイズ</button></div></div></div>
+      <figcaption style="font-size:11px;color:var(--ex-text-muted)">名前で昇順、「更新日時」にホバー</figcaption>
+      <div class="ex-list"><div class="ex-lh"><div class="ex-hc c-name"><button class="ex-hbtn" tabindex="-1">名前</button></div><div class="ex-hc c-mod"><button class="ex-hbtn" tabindex="-1">更新日時</button></div><div class="ex-hc c-kind"><button class="ex-hbtn" tabindex="-1">種類</button></div><div class="ex-hc c-size"><button class="ex-hbtn is-focus" tabindex="-1" data-active>サイズ<span data-op="sortDown"></span></button></div></div></div>
+      <figcaption style="font-size:11px;color:var(--ex-text-muted)">サイズで降順、フォーカス</figcaption>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== ファイル行 -->
+<section class="doc-sec" id="c-row" data-group="コンポーネント" data-toc="ファイル行" data-kw="行 row ファイル 選択 複数選択 非アクティブ ホバー フォーカス コンパクト 密度 listbox">
+  <h2>ファイル行 <span class="tag adopted">採用済み</span></h2>
+  <p>標準 28px、コンパクト 24px。角丸 6・左右 6px 内側。名前 13.5px/500＋18px の OS アイコン、補助列は 12px の <code>text.muted</code>・等幅数字。行間に区切り線は引きません。状態の重なり方は「<a href="#states">状態と優先順位</a>」を参照。</p>
+  <div class="demo live"><div class="demo-label">一覧 <span class="hint">クリック／Ctrl・⌘+クリック／Shift+クリック、一覧にフォーカスして ↑↓ Home End Ctrl+A Esc。外をクリックすると非アクティブ選択になります</span></div>
+    <div class="demo-body">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <div class="ex-seg" role="group" aria-label="表示方法（展示）"><button class="ex-ibtn" id="live-view-list" data-op="list" aria-label="詳細リスト" aria-pressed="true"></button><button class="ex-ibtn" id="live-view-grid" data-op="grid" aria-label="グリッド" aria-pressed="false"></button></div>
+        <div class="ex-seg" role="group" aria-label="行の密度（展示）"><button class="ex-opt" data-density-opt="standard" aria-pressed="true">標準 28</button><button class="ex-opt" data-density-opt="compact" aria-pressed="false">コンパクト 24</button></div>
+      </div>
+      <div class="ex-stage ex-list" id="live-list" style="min-width:560px">
+        <div class="ex-lh" id="live-lh"><div class="ex-hc c-name"><button class="ex-hbtn" data-sort="name">名前</button></div><div class="ex-hc c-mod"><button class="ex-hbtn" data-sort="mtime">更新日時</button></div><div class="ex-hc c-kind"><button class="ex-hbtn" data-sort="kind">種類</button></div><div class="ex-hc c-size"><button class="ex-hbtn" data-sort="size">サイズ</button></div></div>
+        <div class="ex-rows" id="live-rows" role="listbox" tabindex="0" aria-multiselectable="true" aria-label="展示用ファイル一覧"></div>
+        <div class="ex-statusbar"><div class="ex-status-pill"><span id="live-count"></span><span class="sep"></span><span class="sel-badge" id="live-sel"></span></div><div class="ex-status-pill"><span class="mono" id="live-focus" style="font-size:11px"></span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="demo"><div class="demo-label">状態見本 — 複数選択とコンパクト</div>
+    <div class="demo-body on-content pairable"><div class="states col" style="min-width:560px">
+      <div class="ex-list"><div class="ex-rows focused">
+        <div class="ex-row sel"><div class="c c-name"><span class="ex-oi" data-obj="file:docx"></span><span class="nm">企画書_v3.docx</span></div><div class="c c-mod">2026/11/13 21:07</div><div class="c c-kind">DOCX ファイル</div><div class="c c-size">1.2 MB</div></div>
+        <div class="ex-row sel is-kbd"><div class="c c-name"><span class="ex-oi" data-obj="file:docx"></span><span class="nm">議事録_2026-11-12.docx</span></div><div class="c c-mod">2026/11/12 17:03</div><div class="c c-kind">DOCX ファイル</div><div class="c c-size">36.4 KB</div></div>
+        <div class="ex-row"><div class="c c-name"><span class="ex-oi" data-obj="file:pdf"></span><span class="nm">契約書_署名済み.pdf</span></div><div class="c c-mod">2026/11/08 12:14</div><div class="c c-kind">PDF ファイル</div><div class="c c-size">842 KB</div></div>
+      </div></div>
+      <figcaption style="font-size:11px;color:var(--ex-text-muted)">複数選択（2 件目がキーボードの現在行）。連続した選択行の間は詰めて表示</figcaption>
+      <div class="ex-list" data-density="compact"><div class="ex-rows focused">
+        <div class="ex-row"><div class="c c-name"><span class="ex-oi" data-obj="folder:"></span><span class="nm">会議メモ</span></div><div class="c c-mod">2026/11/12 16:30</div><div class="c c-kind">フォルダー</div><div class="c c-size">—</div></div>
+        <div class="ex-row sel"><div class="c c-name"><span class="ex-oi" data-obj="file:csv"></span><span class="nm">売上データ_10月.csv</span></div><div class="c c-mod">2026/11/02 8:55</div><div class="c c-kind">CSV ファイル</div><div class="c c-size">214 KB</div></div>
+        <div class="ex-row"><div class="c c-name"><span class="ex-oi" data-obj="file:zip"></span><span class="nm">素材一式.zip</span></div><div class="c c-mod">2026/11/06 20:33</div><div class="c c-kind">ZIP ファイル</div><div class="c c-size">128 MB</div></div>
+      </div></div>
+      <figcaption style="font-size:11px;color:var(--ex-text-muted)">コンパクト 24px（<code>data-density="compact"</code>）</figcaption>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== グリッド -->
+<section class="doc-sec" id="c-tile" data-group="コンポーネント" data-toc="グリッドタイル" data-kw="グリッド タイル アイコン表示 tile">
+  <h2>グリッドタイル <span class="tag adopted">採用済み</span></h2>
+  <p>最小幅 118・間隔 10・角丸 14。52px の OS アイコンと 12px/500 の名前（2 行で省略）。選択の色は行と同じトークンを使います。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body on-content pairable"><div class="states">
+      <div class="ex-rows grid focused" style="width:560px;padding:0;grid-template-columns:repeat(4,1fr)">
+        <div class="ex-tile"><span class="ex-oi" data-obj="folder:"></span><span class="nm">プロジェクト</span></div>
+        <div class="ex-tile is-hover"><span class="ex-oi" data-obj="file:xlsx:big"></span><span class="nm">2026年度_予算案.xlsx</span></div>
+        <div class="ex-tile sel"><span class="ex-oi" data-obj="file:pptx:big"></span><span class="nm">キックオフ資料.pptx</span></div>
+        <div class="ex-tile sel is-kbd"><span class="ex-oi" data-obj="file:png"></span><span class="nm">ロゴ_最終版.png（とても長い名前は2行で省略します）</span></div>
+      </div>
+      <figure><div class="ex-rows grid" style="width:136px;padding:0;grid-template-columns:1fr"><div class="ex-tile sel"><span class="ex-oi" data-obj="file:pdf:big"></span><span class="nm">契約書_署名済み.pdf</span></div></div><figcaption>非アクティブ選択</figcaption></figure>
+    </div></div>
+  </div>
+  <p style="font-size:12px">左から 通常・ホバー・選択・選択＋キーボードフォーカス。</p>
+</section>
+
+<!-- ================================================================== インスペクタ -->
+<section class="doc-sec" id="c-inspector" data-group="コンポーネント" data-toc="インスペクタ" data-kw="インスペクタ 詳細 プレビュー 属性 バッジ inspector pane">
+  <h2>インスペクタ <span class="tag adopted">採用済み</span></h2>
+  <p>幅 268 の右パネル。見出し 44（12px/700 <code>text.muted</code>＋閉じる小ボタン）、本文は余白 18・ブロック間 16。プレビュー（高さ 156）、項目名 15px/700、種類バッジ、属性カード、テキストプレビュー（等幅 11.5px）、操作ボタンの順。中の文字は選択・コピー可能にします。</p>
+  <div class="demo"><div class="demo-label">状態見本 — 実寸</div>
+    <div class="demo-body pairable"><div class="states">
+      <aside class="ex-pane" aria-label="見本">
+        <div class="ex-pane-head"><span>インスペクタ</span><button class="ex-ibtn sm" tabindex="-1" data-op="x"></button></div>
+        <div class="ex-pane-body">
+          <div class="ex-hero"><span class="ex-oi" data-obj="file:md:big"></span></div>
+          <div><p class="ex-p-name">README.md</p><span class="ex-badge">MD ファイル</span></div>
+          <div class="ex-props-card"><dl class="ex-props"><dt>サイズ</dt><dd>3.1 KB</dd><dt>更新日時</dt><dd>2026/09/18 11:22</dd><dt>場所</dt><dd>C:\Users\aoi\Documents</dd></dl></div>
+          <div><h4 class="ex-sec-h">プレビュー</h4><pre class="ex-pre"># 共有ドキュメント
+
+チームの共有資料はこのフォルダーにまとめます。</pre></div>
+          <div class="ex-actions"><button class="ex-btn primary" tabindex="-1"><span data-op="open"></span>開く</button><button class="ex-btn" tabindex="-1"><span data-op="copy"></span>パスをコピー</button></div>
+        </div>
+      </aside>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== 情報バー -->
+<section class="doc-sec" id="c-status" data-group="コンポーネント" data-toc="下端情報バー" data-kw="ステータスバー 情報バー 件数 選択数 通知 status bar">
+  <h2>下端情報バー <span class="tag adopted">採用済み</span></h2>
+  <p>ウィンドウ下端に全幅で接地する高さ 28 の帯。<strong>一覧に重ねない</strong>。左に件数・区切り線・選択数（<code>accent.fg</code>/600）・一時通知、右に小ボタン（高さ 24）。11px。一覧上部の件数・種類フィルター帯は廃止し、件数はここへ集約しました。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body pairable"><div class="states col" style="min-width:600px">
+      <div class="ex-statusbar"><div class="ex-status-pill"><span>19 項目</span><span class="sep"></span><span class="sel-badge">2 項目を選択（1.24 MB）</span><span class="notice">パスをコピーしました: C:\Users\aoi\Documents</span></div><div class="ex-status-pill"><button class="ex-sbtn" tabindex="-1" aria-pressed="true"><span data-op="eye"></span>隠しファイル</button><button class="ex-sbtn is-hover" tabindex="-1"><span data-op="eye"></span>ホバー</button><button class="ex-sbtn proto" tabindex="-1"><span data-op="info"></span>試作メモ</button></div></div>
+    </div></div>
+  </div>
+  <p>「試作メモ」の破線ボタンはモック専用の印です。製品では使いません。</p>
+</section>
+
+<!-- ================================================================== メニュー -->
+<section class="doc-sec" id="c-menu" data-group="コンポーネント" data-toc="メニュー" data-kw="メニュー menu コンテキスト チェック ショートカット 区切り">
+  <h2>メニュー <span class="tag adopted">採用済み</span></h2>
+  <p>最小幅 224・内側 6・角丸 12・<code>surface.raised</code>＋<code>shadow.popover</code>（影を使う数少ない部品）。項目は高さ 30・13px。左にチェック欄 14px、右にショートカット（<code>text.muted</code>）。<strong>現在行（キー/ポインター）は青い塗りに白文字</strong>。見出しは 11px/700、区切りは 1px。</p>
+  <div class="demo"><div class="demo-label">状態見本</div>
+    <div class="demo-body pairable"><div class="states">
+      <div class="ex-menu" role="presentation">
+        <div class="ex-mh">テーマ</div>
+        <button class="ex-mi" tabindex="-1" aria-checked="true"><span class="chk" data-op="check"></span>ライト</button>
+        <button class="ex-mi cur" tabindex="-1" aria-checked="false"><span class="chk" data-op="check"></span>ダーク<span class="kbd">Ctrl+Shift+D</span></button>
+        <div class="ex-msep"></div>
+        <button class="ex-mi is-hover" tabindex="-1"><span class="chk" data-op="check"></span>隠しファイルを表示<span class="kbd">Ctrl+H</span></button>
+        <button class="ex-mi" tabindex="-1" disabled><span class="chk" data-op="check"></span>無効な項目</button>
+      </div>
+    </div></div>
+  </div>
+  <p style="font-size:12px">上から 見出し／チェック済み／現在行／区切り／ホバー（ダークのみ塗り。ライトのホバーはモックで未定義）／無効 <span class="tag proposed">無効は追加提案</span>。ショートカット「Ctrl+Shift+D」は見本用の架空表記です。</p>
+  <div class="demo live"><div class="demo-label">メニュー <span class="hint">ボタンで開閉、↑↓ で移動、Enter/Space で選択、Esc で閉じる</span></div>
+    <div class="demo-body" style="min-height:230px"><div class="menu-anchor">
+      <button class="ex-ibtn" id="live-menu-btn" data-op="settings" aria-label="表示と設定（展示）" aria-haspopup="menu" aria-expanded="false" title="表示と設定"></button>
+      <div class="ex-menu" id="live-menu" role="menu" aria-label="表示と設定（展示）" hidden>
+        <div class="ex-mh" role="presentation">行の高さ</div>
+        <button class="ex-mi" role="menuitemradio" aria-checked="true" data-group="d" tabindex="-1"><span class="chk" data-op="check"></span>標準（28px）</button>
+        <button class="ex-mi" role="menuitemradio" aria-checked="false" data-group="d" tabindex="-1"><span class="chk" data-op="check"></span>コンパクト（24px）</button>
+        <div class="ex-msep" role="separator"></div>
+        <button class="ex-mi" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><span class="chk" data-op="check"></span>隠しファイルを表示<span class="kbd">Ctrl+H</span></button>
+        <button class="ex-mi" role="menuitem" disabled tabindex="-1"><span class="chk" data-op="check"></span>無効な項目</button>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== ダイアログ -->
+<section class="doc-sec" id="c-dialog" data-group="コンポーネント" data-toc="ダイアログ" data-kw="ダイアログ dialog モーダル 確認 背景">
+  <h2>ダイアログ <span class="tag adopted">採用済み</span></h2>
+  <p>最大幅 760・角丸 16・<code>surface.dialog</code>＋<code>shadow.popover</code>。見出し帯 50（15px/700＋閉じる小ボタン）、本文余白 20。背面は <code>surface.backdrop</code> で減光し、<strong>ぼかしは使いません</strong>。モックでは「試作メモ」がこの形です。</p>
+  <div class="demo live"><div class="demo-label">ダイアログ <span class="hint">開くと背面を減光。Esc か閉じるボタンで閉じ、フォーカスは開いたボタンへ戻ります</span></div>
+    <div class="demo-body"><button class="ex-btn" id="live-dialog-open"><span data-op="info"></span>ダイアログを開く</button></div>
+  </div>
+  <dialog class="ex-dialog ex-scope" id="live-dialog" aria-labelledby="live-dialog-title">
+    <div class="ex-dialog-head"><h3 id="live-dialog-title">試作メモ</h3><button class="ex-ibtn sm" data-op="x" data-close aria-label="閉じる"></button></div>
+    <div class="ex-dialog-body"><h4>見出し（12px / 700 / accent.fg）</h4><p>本文は 12px の text.secondary。行間 1.6。ダイアログは不透明の単色面で、背面は減光のみ。</p><p>この展示は見た目の確認用です。</p></div>
+  </dialog>
+</section>
+
+<!-- ================================================================== ツールチップ -->
+<section class="doc-sec" id="c-tooltip" data-group="コンポーネント" data-toc="ツールチップ（提案）" data-kw="ツールチップ tooltip ヒント title ショートカット 提案">
+  <h2>ツールチップ <span class="tag proposed">追加提案</span></h2>
+  <p>モックはブラウザー標準の <code>title</code> 属性に頼っており、独自の見た目はありません。ネイティブでは OS 標準ツールチップを使うか、次の最小案で統一します：<code>surface.raised</code>・<code>border.default</code>・角丸 6・12px・<code>shadow.popover</code>、ショートカットは <code>text.muted</code>。表示まで約 0.5 秒待ち、操作中は出しません。</p>
+  <div class="demo proposed"><div class="demo-label">見た目の案 <span class="tag proposed">追加提案</span></div>
+    <div class="demo-body on-chrome pairable"><div class="states">
+      <figure><span class="ex-tooltip">戻る<span class="kbd">Alt+←</span></span><figcaption>アイコンボタンの名前＋ショートカット</figcaption></figure>
+      <figure><span class="ex-tooltip">C:\Users\aoi\Documents\プロジェクト</span><figcaption>タブ・パンくずの完全パス</figcaption></figure>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== 空・エラー -->
+<section class="doc-sec" id="p-empty" data-group="パターン" data-toc="空・0件・読込・エラー" data-kw="空 0件 該当なし 読み込み エラー アクセス拒否 empty loading error">
+  <h2>空・検索 0 件・読込・エラー</h2>
+  <p>一覧の中央に短い 1 行（<code>text.muted</code>）と、必要なら 1 つだけボタン。イラストや大きな見出しは置きません。</p>
+  <div class="demo"><div class="demo-label">採用済み <span class="tag adopted">採用済み</span></div>
+    <div class="demo-body pairable"><div class="states">
+      <figure style="width:300px"><div class="ex-stage" style="width:100%"><div class="ex-empty"><div>このフォルダーは空です</div></div></div><figcaption>空のフォルダー</figcaption></figure>
+      <figure style="width:300px"><div class="ex-stage" style="width:100%"><div class="ex-empty"><div>条件に一致する項目はありません</div><button class="ex-btn" tabindex="-1">フィルターを解除</button></div></div><figcaption>検索 0 件</figcaption></figure>
+    </div></div>
+  </div>
+  <div class="demo proposed"><div class="demo-label">追加提案 <span class="tag proposed">追加提案</span> <span class="hint">ボタンは見本で、押しても何も起きません</span></div>
+    <div class="demo-body pairable"><div class="states">
+      <figure style="width:300px"><div class="ex-stage" style="width:100%"><div class="ex-empty"><div style="display:flex;gap:8px;align-items:center"><span class="ex-spin" aria-hidden="true"></span>読み込み中…</div></div></div><figcaption>読込：0.3 秒以上かかる時だけ表示。行は届いた分から出す</figcaption></figure>
+      <figure style="width:300px"><div class="ex-stage" style="width:100%"><div class="ex-empty"><div class="ex-error">このフォルダーを開けません</div><div style="font-size:12px">アクセスが拒否されました（管理者権限が必要です）</div><button class="ex-btn" tabindex="-1"><span data-op="refresh"></span>再試行</button></div></div><figcaption>エラー：原因を 1 行、取れる行動を 1 つ。<code>danger.fg</code> は見出しだけ</figcaption></figure>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== フォーム・破壊操作 -->
+<section class="doc-sec" id="p-form" data-group="パターン" data-toc="名前変更・破壊操作（提案）" data-kw="名前変更 rename 入力 フォーム 削除 破壊 確認 danger 提案">
+  <h2>名前変更・破壊操作 <span class="tag proposed">追加提案</span></h2>
+  <p>モックにはありません。将来必要になる最小例だけを示します。入力欄は行の高さに収め、フォーカスの見え方は検索欄と同じ。破壊操作の確定ボタンだけに <code>danger.solid</code> を使い、既定のフォーカスは「キャンセル」に置きます。色の出どころは現行 Rust PoC（<code>apps/explorer/src/theme.rs</code> の <code>danger</code>）です。</p>
+  <div class="demo proposed"><div class="demo-label">見た目の案 <span class="tag proposed">追加提案</span> <span class="hint">入力・ボタンは見本で、実際には動きません</span></div>
+    <div class="demo-body pairable"><div class="states">
+      <figure style="width:520px;max-width:100%"><div class="ex-stage ex-list" style="width:100%"><div class="ex-rows focused"><div class="ex-row sel" style="--cols:1fr 120px"><div class="c c-name" style="overflow:visible"><span class="ex-oi" data-obj="file:docx"></span><input class="ex-rename" tabindex="-1" value="企画書_v4.docx" aria-label="見本"></div><div class="c c-mod">2026/11/13 21:07</div></div></div></div><figcaption>行内の名前変更（高さ 22・行 28 に収める）</figcaption></figure>
+      <figure><div class="ex-dialog" style="position:static;display:block;width:360px;max-width:100%;box-shadow:none"><div class="ex-dialog-head"><h3>完全に削除しますか？</h3></div><div class="ex-dialog-body"><p>「素材一式.zip」（128 MB）をごみ箱を経由せずに削除します。元に戻せません。</p></div><div class="ex-dialog-foot"><button class="ex-btn is-focus" tabindex="-1">キャンセル</button><button class="ex-btn danger" tabindex="-1">削除</button></div></div><figcaption>破壊操作の確認（既定フォーカスはキャンセル）</figcaption></figure>
+    </div></div>
+  </div>
+</section>
+
+<!-- ================================================================== 組み合わせ -->
+<section class="doc-sec" id="p-compose" data-group="パターン" data-toc="組み合わせ例" data-kw="組み合わせ 全体 画面 レイアウト explorer 例">
+  <h2>組み合わせ例 <span class="tag adopted">採用済みの構成</span></h2>
+  <p>上の部品を実寸のまま組んだ縮小版（幅 940px）です。動きません。実際に操作できる画面は <a href="../explorer-directions/argon/concept-1.html">concept-1.html（ライト）</a> / <a href="../explorer-directions/argon/concept-1-dark.html">concept-1-dark.html（ダーク）</a> を開いてください。</p>
+  <div class="demo"><div class="demo-label">縮小組み合わせ <span class="hint">狭い画面ではこの枠の中を横にスクロール</span></div>
+    <div class="demo-body" style="padding:12px">
+      <div class="compose" aria-label="Explorer の組み合わせ見本" inert>
+        <div class="ex-tabbar"><div class="ex-tabs"><div class="ex-tab active"><button class="ex-tab-select"><span class="ex-oi" data-obj="folder:docs"></span><span>ドキュメント</span></button><button class="ex-tab-close">×</button></div><div class="ex-tab"><button class="ex-tab-select"><span class="ex-oi" data-obj="folder:down"></span><span>ダウンロード</span></button><button class="ex-tab-close">×</button></div></div><button class="ex-tab-add">+</button></div>
+        <div class="ex-toolbar">
+          <div class="ex-group"><button class="ex-ibtn" disabled data-op="back"></button><button class="ex-ibtn" disabled data-op="forward"></button><button class="ex-ibtn" data-op="up"></button><button class="ex-ibtn" data-op="refresh"></button></div>
+          <nav class="ex-address"><span class="ex-oi" data-obj="folder:docs"></span><ol class="ex-crumbs"><li><button class="ex-crumb">PC</button></li><li class="ex-crumb-sep" data-op="chevron"></li><li><button class="ex-crumb">…</button></li><li class="ex-crumb-sep" data-op="chevron"></li><li><button class="ex-crumb">aoi</button></li><li class="ex-crumb-sep" data-op="chevron"></li><li><button class="ex-crumb" aria-current="page">ドキュメント</button></li></ol></nav>
+          <div class="ex-search" style="flex-basis:200px"><span data-op="search"></span><input placeholder="ドキュメントを検索…" aria-label="見本"></div>
+          <div class="ex-seg"><button class="ex-ibtn" aria-pressed="true" data-op="list"></button><button class="ex-ibtn" aria-pressed="false" data-op="grid"></button></div>
+          <div class="ex-group"><button class="ex-ibtn" aria-pressed="true" data-op="panel"></button><button class="ex-ibtn" data-op="settings"></button></div>
+        </div>
+        <div class="compose-ws">
+          <aside class="ex-sidebar"><h4 class="ex-side-h">よく使う場所</h4><ul class="ex-side-list">
+            <li><button class="ex-place"><span class="ex-oi" data-obj="folder:home" style="width:16px;height:16px"></span><span class="lbl">ホーム</span></button></li>
+            <li><button class="ex-place" aria-current="page"><span class="ex-oi" data-obj="folder:docs" style="width:16px;height:16px"></span><span class="lbl">ドキュメント</span></button></li>
+            <li><button class="ex-place"><span class="ex-oi" data-obj="folder:down" style="width:16px;height:16px"></span><span class="lbl">ダウンロード</span></button></li></ul>
+            <h4 class="ex-side-h">ストレージ</h4><ul class="ex-side-list"><li><button class="ex-place drive"><span class="ex-oi" data-obj="drive:sys" style="width:16px;height:16px;margin-top:2px"></span><span class="ex-drive-info"><span class="lbl">ローカル ディスク (C:)</span><span class="ex-meter"><span style="width:62%"></span></span><span class="ex-drive-free">空き 182 GB / 476 GB</span></span></button></li></ul></aside>
+          <main class="ex-stage ex-list narrow" id="compose-list"></main>
+          <aside class="ex-pane"><div class="ex-pane-head"><span>インスペクタ</span><button class="ex-ibtn sm" data-op="x"></button></div><div class="ex-pane-body"><div class="ex-hero"><span class="ex-oi" data-obj="file:docx:big"></span></div><div><p class="ex-p-name">企画書_v3.docx</p><span class="ex-badge">DOCX ファイル</span></div><div class="ex-actions"><button class="ex-btn primary"><span data-op="open"></span>開く</button><button class="ex-btn"><span data-op="copy"></span>パスをコピー</button></div></div></aside>
+        </div>
+        <div class="ex-statusbar"><div class="ex-status-pill"><span>19 項目</span><span class="sep"></span><span class="sel-badge">1 項目を選択</span></div><div class="ex-status-pill"><button class="ex-sbtn"><span data-op="eye"></span>隠しファイル</button></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================== 旧変数名 -->
+<section class="doc-sec" id="legacy" data-group="資料" data-toc="旧変数名の対応表" data-kw="旧 legacy glass 変数 対応 移行 bg-glass bg-pill 廃止">
+  <h2>旧変数名の対応表</h2>
+  <p>モックの CSS 変数（ガラス時代の名前を含む）と、モック内でテーマ別に上書きしていた箇所を、意味トークンへ対応づけました。新しいコードでは右列の名前だけを使います。</p>
+  <div class="tbl-wrap"><table class="spec" id="legacy-table"></table></div>
+  <h3>廃止・未使用</h3>
+  <div class="tbl-wrap"><table class="spec" id="unused-table"></table></div>
+</section>
+
+<!-- ================================================================== ファイル -->
+<section class="doc-sec" id="files" data-group="資料" data-toc="ファイルと再生成" data-kw="ファイル 生成 tokens.json tokens.css 検証 verify build">
+  <h2>ファイルと再生成</h2>
+  <div class="tbl-wrap"><table class="spec">
+    <thead><tr><th>ファイル</th><th>役割</th></tr></thead>
+    <tbody>
+      <tr><td><code>tokens.json</code></td><td><strong>唯一の編集元。</strong>値・状態ラベル・旧名・用途・コントラスト対象の組み合わせ・修正案</td></tr>
+      <tr><td><code>tokens.css</code></td><td>生成物。<code>--ex-*</code> 変数。<code>data-theme</code> 無しは OS 設定に従う</td></tr>
+      <tr><td><code>index.html</code></td><td>このページ。トークン CSS と表示データを生成スクリプトが埋め込む（単一ファイル・ネット不要）</td></tr>
+      <tr><td><code>tools/build-tokens.cjs</code></td><td>生成とドリフト検査（<code>--check</code>）。コントラストもここで計算</td></tr>
+      <tr><td><code>tools/verify.cjs</code></td><td>Headless Chrome で表示・操作・モックとの値一致・実描画コントラストを検査し、スクリーンショットを保存</td></tr>
+      <tr><td><code>DESIGN.md</code> / <code>GPUI.md</code></td><td>設計意図と境界 / Rust・GPUI への移し方</td></tr>
+    </tbody>
+  </table></div>
+  <div class="code"><div class="code-body" style="border-top:0"><pre id="cmd-pre">node docs/design/explorer-design-system/tools/build-tokens.cjs
+node docs/design/explorer-design-system/tools/build-tokens.cjs --check
+node docs/design/explorer-design-system/tools/verify.cjs</pre><button class="copy" data-copy-from="cmd-pre">コマンドをコピー</button></div></div>
+  <p id="gen-meta" style="font-size:12px;color:var(--ex-text-muted)"></p>
+</section>
+
+    </main>
+  </div>
+</div>
+
+<div class="toast ex-scope" id="toast" role="status" aria-live="polite" hidden></div>
+<dialog class="ex-dialog ex-scope copy-dialog" id="copy-dialog" aria-labelledby="copy-dialog-title" style="width:min(480px, calc(100vw - 32px))">
+  <div class="ex-dialog-head"><h3 id="copy-dialog-title">手動でコピーしてください</h3><button class="ex-ibtn sm" data-op="x" data-close aria-label="閉じる"></button></div>
+  <div class="ex-dialog-body"><p>このブラウザーではクリップボードへ書き込めませんでした（file:// で開いた場合などに起きます）。下の文字は選択済みです。<kbd>Ctrl</kbd>+<kbd>C</kbd>（macOS は <kbd>⌘</kbd>+<kbd>C</kbd>）でコピーしてください。</p><textarea id="copy-text" readonly aria-label="コピーする文字"></textarea></div>
+  <div class="ex-dialog-foot"><button class="ex-btn" data-close>閉じる</button></div>
+</dialog>
+
+<!-- 生成ブロック: tokens.json の内容とコントラスト計算結果 -->
+<script type="application/json" id="ex-token-data">{"meta":{"name":"Prism Canopy Compact — Explorer Design Tokens","version":"1.0.0","date":"2026-11-15","description":"採用済みモック concept-1.html / concept-1-dark.html（ガラス撤去・無彩色ダーク版）から抽出した意味ベースのトークン。このファイルが唯一の編集元。","source":["docs/design/explorer-directions/argon/concept-1.html","docs/design/explorer-directions/argon/concept-1-dark.html","docs/design/explorer-directions/argon/DESIGN.md（末尾「ガラス表現の整理（最新の本人レビュー）」まで）"],"generated":["tokens.css（node tools/build-tokens.cjs で生成）","index.html 内の \u003cstyle id=\"ex-tokens\"> と \u003cscript id=\"ex-token-data\">（同スクリプトで差し込み）"],"regenerate":"node docs/design/explorer-design-system/tools/build-tokens.cjs","check":"node docs/design/explorer-design-system/tools/build-tokens.cjs --check","cssPrefix":"--ex-","status":{"adopted":"採用済み。モックの値をそのまま抽出","derived":"採用済みモックの表現（filter等）を不透明値へ換算したもの。見た目は同等","proposed":"追加提案。モックに存在しない。本人承認前","placeholder":"仮素材専用。本番のOS取得アイコンには適用しない"}},"groups":{"color":[{"id":"surface.canvas","css":"--ex-surface-canvas","light":"#f5f7fa","dark":"#191919","status":"adopted","legacy":["--bg-ambient"],"probe":{"var":"--bg-ambient"},"use":"ウィンドウの地。タブバー背景・パネル間6pxの隙間"},{"id":"surface.content","css":"--ex-surface-content","light":"#ffffff","dark":"#191919","status":"adopted","legacy":["--bg-stage"],"probe":{"sel":".stage","prop":"background-color"},"use":"中央ファイル一覧面（最も長く見る面）"},{"id":"surface.chrome","css":"--ex-surface-chrome","light":"#fafbfd","dark":"#242424","status":"adopted","legacy":["--bg-glass","--bg-glass-strong"],"probe":{"sel":".sidebar","prop":"background-color"},"use":"ツールバー・サイドバー・インスペクタ・一覧ヘッダー"},{"id":"surface.statusbar","css":"--ex-surface-statusbar","light":"#fafbfd","dark":"#202020","status":"adopted","legacy":["--bg-glass（ライト）",".status-bar（ダーク上書き）"],"probe":{"sel":".status-bar","prop":"background-color"},"use":"下端の全幅情報バー"},{"id":"surface.field","css":"--ex-surface-field","light":"#f1f4f9","dark":"#1c1c1c","status":"adopted","legacy":["--bg-pill"],"probe":{"sel":".address","prop":"background-color"},"use":"アドレス・検索・ボタン群・セグメント・ドライブカード（1段沈む面）"},{"id":"surface.field-focus","css":"--ex-surface-field-focus","light":"#ffffff","dark":"#292929","status":"adopted","legacy":["--bg-pill-focus"],"probe":{"var":"--bg-pill-focus"},"use":"フォーカス中の検索欄"},{"id":"surface.card","css":"--ex-surface-card","light":"#ffffff","dark":"#1c1c1c","status":"adopted","legacy":["--bg-stage（ライト）",".hero/.props-card/.pre（ダーク上書き）"],"probe":{"sel":".props-card","prop":"background-color"},"use":"インスペクタ内のプレビュー・属性・コード枠"},{"id":"surface.chip-selected","css":"--ex-surface-chip-selected","light":"#ffffff","dark":"#353535","status":"adopted","legacy":["--bg-stage（ライト）",".crumb[aria-current] / .seg pressed（ダーク上書き）"],"probe":{"sel":".crumb[aria-current=\"page\"]","prop":"background-color"},"use":"現在のパンくず・押下中セグメント（沈んだ面から1段浮く）"},{"id":"surface.raised","css":"--ex-surface-raised","light":"#ffffff","dark":"#2c2c2c","status":"adopted","legacy":["--bg-elevated"],"probe":{"var":"--bg-elevated"},"use":"メニュー・ポップオーバー"},{"id":"surface.dialog","css":"--ex-surface-dialog","light":"#ffffff","dark":"#262626","status":"adopted","legacy":["--bg-stage（ライト）","dialog.spec（ダーク上書き）"],"probe":{"sel":"dialog.spec","prop":"background-color"},"use":"モーダルダイアログ"},{"id":"surface.backdrop","css":"--ex-surface-backdrop","light":"rgba(15, 23, 42, 0.24)","dark":"rgba(0, 0, 0, 0.62)","status":"adopted","legacy":["--backdrop"],"probe":{"var":"--backdrop"},"use":"モーダル背面の減光（ぼかし無し）"},{"id":"text.primary","css":"--ex-text-primary","light":"#0f172a","dark":"#f2f2f2","status":"adopted","legacy":["--text"],"probe":{"var":"--text"},"use":"ファイル名・本文・値"},{"id":"text.secondary","css":"--ex-text-secondary","light":"#475569","dark":"#cecece","status":"adopted","legacy":["--text-secondary"],"probe":{"var":"--text-secondary"},"use":"非現在タブ・パンくず・サイドバー項目・情報バー"},{"id":"text.muted","css":"--ex-text-muted","light":"#64748b","dark":"#adadad","status":"adopted","legacy":["--text-muted"],"probe":{"var":"--text-muted"},"use":"日時/種類/サイズ列・見出し・プレースホルダー・属性ラベル"},{"id":"text.disabled","css":"--ex-text-disabled","light":"#cbd5e1","dark":"#626262","status":"adopted","legacy":["--text-disabled"],"probe":{"var":"--text-disabled"},"use":"無効な操作アイコン・パンくず区切り（装飾/無効のためコントラスト基準対象外）"},{"id":"text.emphasis","css":"--ex-text-emphasis","light":"#0f172a","dark":"#fafafa","status":"adopted","legacy":["--text（ライト）",".tab-entry.active 等（ダーク上書き）"],"probe":{"sel":".tab-entry.active","prop":"color"},"use":"現在タブ・現在パンくずの文字"},{"id":"text.on-accent","css":"--ex-text-on-accent","light":"#ffffff","dark":"#ffffff","status":"adopted","legacy":["--text-nav-active","--text-on-menu"],"probe":{"var":"--text-nav-active"},"use":"青い塗り（現在の場所・主要ボタン・メニュー現在行）の上の文字"},{"id":"icon.default","css":"--ex-icon-default","light":"#475569","dark":"#bdbdbd","status":"adopted","legacy":["--icon"],"probe":{"var":"--icon"},"use":"操作アイコン（単色）"},{"id":"accent.fg","css":"--ex-accent-fg","light":"#2563eb","dark":"#76b8ff","status":"adopted","legacy":["--accent"],"probe":{"var":"--accent"},"use":"アクセント文字/アイコン：ソート中の列・押下トグル・選択数"},{"id":"accent.soft","css":"--ex-accent-soft","light":"rgba(37, 99, 235, 0.12)","dark":"rgba(59, 130, 246, 0.2)","status":"adopted","legacy":["--accent-soft"],"probe":{"var":"--accent-soft"},"use":"押下中トグル（aria-pressed）の塗り"},{"id":"focus.ring","css":"--ex-focus-ring","light":"#2563eb","dark":"#60a5fa","status":"adopted","legacy":["--focus"],"probe":{"var":"--focus"},"use":"キーボードフォーカスの2px線・検索欄フォーカス枠"},{"id":"focus.halo","css":"--ex-focus-halo","light":"rgba(37, 99, 235, 0.25)","dark":"rgba(96, 165, 250, 0.32)","status":"adopted","legacy":["--focus-ring"],"probe":{"var":"--focus-ring"},"use":"検索欄フォーカス時の外側3px"},{"id":"state.hover","css":"--ex-state-hover","light":"rgba(37, 99, 235, 0.055)","dark":"rgba(255, 255, 255, 0.06)","status":"adopted","legacy":["--bg-hover"],"probe":{"var":"--bg-hover"},"use":"行・ボタン・項目のホバー重ね色"},{"id":"state.pressed","css":"--ex-state-pressed","light":"rgba(37, 99, 235, 0.1)","dark":"rgba(255, 255, 255, 0.11)","status":"adopted","legacy":["--bg-pressed"],"probe":{"var":"--bg-pressed"},"use":"押下中・タブ閉じる/追加ボタンのホバー"},{"id":"nav.current.bg","css":"--ex-nav-current-bg","light":"#2864e8","dark":"#245cce","status":"adopted","legacy":["--bg-nav-active"],"probe":{"sel":".place[aria-current=\"page\"]","prop":"background-color"},"use":"サイドバーの現在の場所"},{"id":"nav.current.fg","css":"--ex-nav-current-fg","light":"#ffffff","dark":"#ffffff","status":"adopted","legacy":["--text-nav-active"],"probe":{"sel":".place[aria-current=\"page\"]","prop":"color"},"use":"現在の場所の文字"},{"id":"nav.current.caption","css":"--ex-nav-current-caption","light":"rgba(255, 255, 255, 0.85)","dark":"rgba(255, 255, 255, 0.85)","status":"adopted","legacy":[".place.drive[aria-current] .drive-free"],"use":"現在ドライブカードの空き容量文字"},{"id":"nav.current.meter-track","css":"--ex-nav-current-meter-track","light":"rgba(255, 255, 255, 0.25)","dark":"rgba(255, 255, 255, 0.25)","status":"adopted","legacy":[".place.drive[aria-current] .meter"],"use":"現在ドライブカードのメーター地"},{"id":"nav.current.meter-fill","css":"--ex-nav-current-meter-fill","light":"#ffffff","dark":"#ffffff","status":"adopted","legacy":[".place.drive[aria-current] .meter > span"],"use":"現在ドライブカードのメーター"},{"id":"selection.bg","css":"--ex-selection-bg","light":"#e8effc","dark":"#25344c","status":"adopted","legacy":["--bg-selected"],"probe":{"sel":".rows.focused .row.sel","prop":"background-color"},"use":"一覧にフォーカスがある時の選択行/タイル"},{"id":"selection.border","css":"--ex-selection-border","light":"rgba(37, 99, 235, 0.32)","dark":"rgba(96, 165, 250, 0.56)","status":"adopted","legacy":["--border-selected"],"probe":{"sel":".rows.focused .row.sel","prop":"border-top-color"},"use":"選択行の1px枠・試作ボタンの破線"},{"id":"selection.fg","css":"--ex-selection-fg","light":"#2563eb","dark":"#fafafa","status":"adopted","legacy":["--accent（ライト）",".rows.focused .row.sel .c-name（ダーク上書き）"],"probe":{"sel":".rows.focused .row.sel .c-name","prop":"color"},"use":"選択行のファイル名（太字600）"},{"id":"selection.fg-secondary","css":"--ex-selection-fg-secondary","light":"#64748b","dark":"#cecece","status":"adopted","legacy":["--text-muted（ライト）",".rows.focused .row.sel .c-mod（ダーク上書き）"],"probe":{"sel":".rows.focused .row.sel .c-mod","prop":"color"},"use":"選択行の日時/種類/サイズ"},{"id":"selection.inactive.bg","css":"--ex-selection-inactive-bg","light":"rgba(148, 163, 184, 0.14)","dark":"rgba(180, 180, 180, 0.14)","status":"adopted","legacy":["--bg-selected-inactive"],"probe":{"var":"--bg-selected-inactive"},"use":"一覧からフォーカスが外れた時の選択"},{"id":"selection.inactive.border","css":"--ex-selection-inactive-border","light":"transparent","dark":"rgba(180, 180, 180, 0.22)","status":"adopted","legacy":[".row.sel（ダークのみ）"],"use":"非アクティブ選択の枠（ダークのみ表示）"},{"id":"tab.bg","css":"--ex-tab-bg","light":"transparent","dark":"rgba(29, 29, 29, 0.54)","status":"adopted","legacy":[".tab-entry"],"probe":{"sel":".tab-entry:not(.active)","prop":"background-color"},"use":"非現在タブ"},{"id":"tab.border","css":"--ex-tab-border","light":"transparent","dark":"rgba(180, 180, 180, 0.1)","status":"adopted","legacy":[".tab-entry"],"probe":{"sel":".tab-entry:not(.active)","prop":"border-top-color"},"use":"非現在タブの枠"},{"id":"tab.fg","css":"--ex-tab-fg","light":"#475569","dark":"#cecece","status":"adopted","legacy":[".tab-entry → --text-secondary"],"probe":{"sel":".tab-entry:not(.active)","prop":"color"},"use":"非現在タブの文字"},{"id":"tab.hover.bg","css":"--ex-tab-hover-bg","light":"rgba(37, 99, 235, 0.055)","dark":"rgba(45, 45, 45, 0.76)","status":"adopted","legacy":[".tab-entry:hover"],"use":"非現在タブのホバー"},{"id":"tab.hover.border","css":"--ex-tab-hover-border","light":"transparent","dark":"rgba(180, 180, 180, 0.2)","status":"adopted","legacy":[".tab-entry:hover（ダーク）"],"use":"非現在タブのホバー枠"},{"id":"tab.hover.fg","css":"--ex-tab-hover-fg","light":"#475569","dark":"#f2f2f2","status":"adopted","legacy":[".tab-entry:hover（ダークのみ文字色変化）"],"use":"非現在タブのホバー文字"},{"id":"tab.active.bg","css":"--ex-tab-active-bg","light":"#ffffff","dark":"#343434","status":"adopted","legacy":[".tab-entry.active"],"probe":{"sel":".tab-entry.active","prop":"background-color"},"use":"現在タブ"},{"id":"tab.active.border","css":"--ex-tab-active-border","light":"rgba(15, 23, 42, 0.075)","dark":"rgba(255, 255, 255, 0.28)","status":"adopted","legacy":[".tab-entry.active"],"probe":{"sel":".tab-entry.active","prop":"border-top-color"},"use":"現在タブの枠"},{"id":"button.bg","css":"--ex-button-bg","light":"#ffffff","dark":"#333333","status":"adopted","legacy":[".btn"],"probe":{"sel":".btn:not(.primary)","prop":"background-color"},"use":"標準ボタン"},{"id":"button.border","css":"--ex-button-border","light":"rgba(15, 23, 42, 0.075)","dark":"rgba(180, 180, 180, 0.24)","status":"adopted","legacy":[".btn"],"probe":{"sel":".btn:not(.primary)","prop":"border-top-color"},"use":"標準ボタンの枠"},{"id":"button.fg","css":"--ex-button-fg","light":"#0f172a","dark":"#f2f2f2","status":"adopted","legacy":[".btn → --text"],"probe":{"sel":".btn:not(.primary)","prop":"color"},"use":"標準ボタンの文字（アイコンは icon.default）"},{"id":"button.hover.bg","css":"--ex-button-hover-bg","light":"#f7f7f7","dark":"#3e3e3e","status":"derived","legacy":[".btn:hover（ライトは filter: brightness(0.97) を換算）"],"use":"標準ボタンのホバー"},{"id":"button.hover.border","css":"--ex-button-hover-border","light":"rgba(15, 23, 42, 0.075)","dark":"rgba(180, 180, 180, 0.36)","status":"adopted","legacy":[".btn:hover"],"use":"標準ボタンのホバー枠"},{"id":"button.primary.bg","css":"--ex-button-primary-bg","light":"#2563eb","dark":"#2563eb","status":"adopted","legacy":[".btn.primary"],"probe":{"sel":".btn.primary","prop":"background-color"},"use":"主要ボタン（1画面1つまで）"},{"id":"button.primary.border","css":"--ex-button-primary-border","light":"transparent","dark":"rgba(147, 197, 253, 0.36)","status":"adopted","legacy":[".btn.primary"],"probe":{"sel":".btn.primary","prop":"border-top-color"},"use":"主要ボタンの枠"},{"id":"button.primary.hover.bg","css":"--ex-button-primary-hover-bg","light":"#2460e4","dark":"#3b82f6","status":"derived","legacy":[".btn.primary:hover（ライトは brightness(0.97) を換算）"],"use":"主要ボタンのホバー"},{"id":"menu.highlight.bg","css":"--ex-menu-highlight-bg","light":"#2563eb","dark":"#2563eb","status":"adopted","legacy":["--bg-menu-hover"],"probe":{"var":"--bg-menu-hover"},"use":"メニューの現在行（キーボード/ポインター）"},{"id":"menu.highlight.fg","css":"--ex-menu-highlight-fg","light":"#ffffff","dark":"#ffffff","status":"adopted","legacy":["--text-on-menu"],"probe":{"var":"--text-on-menu"},"use":"メニュー現在行の文字"},{"id":"menu.highlight.kbd","css":"--ex-menu-highlight-kbd","light":"rgba(255, 255, 255, 0.8)","dark":"rgba(255, 255, 255, 0.8)","status":"adopted","legacy":[".mi.cur .kbd"],"use":"メニュー現在行のショートカット表記"},{"id":"menu.hover.bg","css":"--ex-menu-hover-bg","light":"transparent","dark":"rgba(255, 255, 255, 0.06)","status":"adopted","legacy":[".mi:hover:not(.cur)（ダークのみ）"],"use":"現在行以外のホバー"},{"id":"badge.bg","css":"--ex-badge-bg","light":"rgba(37, 99, 235, 0.12)","dark":"rgba(255, 255, 255, 0.06)","status":"adopted","legacy":[".p-kind"],"probe":{"sel":".p-kind","prop":"background-color"},"use":"種類バッジ（インスペクタ）"},{"id":"badge.border","css":"--ex-badge-border","light":"transparent","dark":"rgba(255, 255, 255, 0.15)","status":"adopted","legacy":[".p-kind（ダーク）"],"use":"種類バッジの枠"},{"id":"badge.fg","css":"--ex-badge-fg","light":"#2563eb","dark":"#cecece","status":"adopted","legacy":[".p-kind"],"probe":{"sel":".p-kind","prop":"color"},"use":"種類バッジの文字"},{"id":"border.subtle","css":"--ex-border-subtle","light":"rgba(15, 23, 42, 0.06)","dark":"rgba(180, 180, 180, 0.12)","status":"adopted","legacy":["--border-subtle"],"probe":{"var":"--border-subtle"},"use":"面の内側の区切り・沈んだ面の縁・一覧ヘッダー下線"},{"id":"border.default","css":"--ex-border-default","light":"rgba(15, 23, 42, 0.075)","dark":"rgba(180, 180, 180, 0.16)","status":"adopted","legacy":["--border-outer"],"probe":{"var":"--border-outer"},"use":"パネル外周・メニュー・情報バー区切り"},{"id":"border.content","css":"--ex-border-content","light":"rgba(15, 23, 42, 0.075)","dark":"rgba(180, 180, 180, 0.18)","status":"adopted","legacy":[".stage（ダーク上書き）"],"probe":{"sel":".stage","prop":"border-top-color"},"use":"中央一覧パネルの外周"},{"id":"border.card","css":"--ex-border-card","light":"rgba(15, 23, 42, 0.06)","dark":"rgba(180, 180, 180, 0.14)","status":"adopted","legacy":[".hero/.props-card/.pre"],"probe":{"sel":".props-card","prop":"border-top-color"},"use":"インスペクタ内カードの枠"},{"id":"border.statusbar","css":"--ex-border-statusbar","light":"rgba(15, 23, 42, 0.06)","dark":"rgba(180, 180, 180, 0.15)","status":"adopted","legacy":[".status-bar border-top"],"probe":{"sel":".status-bar","prop":"border-top-color"},"use":"情報バー上端の線"},{"id":"border.dialog","css":"--ex-border-dialog","light":"rgba(15, 23, 42, 0.075)","dark":"rgba(180, 180, 180, 0.22)","status":"adopted","legacy":["dialog.spec"],"probe":{"sel":"dialog.spec","prop":"border-top-color"},"use":"ダイアログの枠"},{"id":"match.bg","css":"--ex-match-bg","light":"rgba(251, 191, 36, 0.38)","dark":"rgba(245, 158, 11, 0.34)","status":"adopted","legacy":["--match-bg"],"probe":{"var":"--match-bg"},"use":"検索一致部分のマーカー"},{"id":"match.fg","css":"--ex-match-fg","light":"currentColor","dark":"#fef3c7","status":"adopted","legacy":["mark（ライトは継承）"],"use":"検索一致部分の文字（ライトは周囲の色を継承）"},{"id":"meter.fill","css":"--ex-meter-fill","light":"#3b82f6","dark":"#3b82f6","status":"adopted","legacy":["--meter"],"probe":{"var":"--meter"},"use":"ドライブ使用量"},{"id":"meter.warn","css":"--ex-meter-warn","light":"#f59e0b","dark":"#f59e0b","status":"adopted","legacy":["--meter-warn"],"probe":{"var":"--meter-warn"},"use":"ドライブ使用量（残り少）"},{"id":"meter.track","css":"--ex-meter-track","light":"rgba(148, 163, 184, 0.22)","dark":"rgba(148, 163, 184, 0.22)","status":"adopted","legacy":[".meter"],"probe":{"sel":".meter","prop":"background-color"},"use":"メーターの地"},{"id":"scrollbar.thumb","css":"--ex-scrollbar-thumb","light":"rgba(100, 116, 139, 0.26)","dark":"rgba(180, 180, 180, 0.28)","status":"adopted","legacy":["--scroll-thumb"],"probe":{"var":"--scroll-thumb"},"use":"細いスクロールバー"},{"id":"danger.fg","css":"--ex-danger-fg","light":"#c8453b","dark":"#e5736b","status":"proposed","legacy":["apps/explorer/src/theme.rs danger（現行PoC）"],"use":"【提案】エラー文・破壊操作の文字"},{"id":"danger.solid","css":"--ex-danger-solid","light":"#c8453b","dark":"#c8453b","status":"proposed","legacy":["theme.rs danger（ライト値）"],"use":"【提案】破壊操作の確定ボタン塗り（白文字）"}],"shadow":[{"id":"shadow.popover","css":"--ex-shadow-popover","light":"0 6px 20px rgba(0, 0, 0, 0.14)","dark":"0 6px 20px rgba(0, 0, 0, 0.35)","status":"adopted","legacy":["--shadow-popover"],"probe":{"var":"--shadow-popover"},"use":"メニュー・ダイアログのみ（機能上の分離）。パネルには使わない"}],"placeholderIcon":[{"id":"obj.folder","css":"--ex-obj-folder","light":"#fbbf24","dark":"#fbbf24","mac":"#60a5fa","status":"placeholder","legacy":["--obj-folder"]},{"id":"obj.folder-back","css":"--ex-obj-folder-back","light":"#d97706","dark":"#d97706","mac":"#3b82f6","status":"placeholder","legacy":["--obj-folder-back"]},{"id":"obj.folder-glyph","css":"--ex-obj-folder-glyph","light":"#78350f","dark":"#78350f","mac":"#1d4ed8","status":"placeholder","legacy":["--obj-folder-glyph"]},{"id":"obj.page","css":"--ex-obj-page","light":"#ffffff","dark":"#e8e8e8","status":"placeholder","legacy":["--obj-page"]},{"id":"obj.page-fold","css":"--ex-obj-page-fold","light":"#e2e8f0","dark":"#a3a3a3","status":"placeholder","legacy":["--obj-page-fold"]},{"id":"obj.page-edge","css":"--ex-obj-page-edge","light":"#94a3b8","dark":"#737373","status":"placeholder","legacy":["--obj-page-edge"]},{"id":"obj.text-line","css":"--ex-obj-text-line","light":"#94a3b8","dark":"#737373","status":"placeholder","legacy":["--obj-text-line"]},{"id":"obj.xls","css":"--ex-obj-xls","light":"#10b981","dark":"#10b981","status":"placeholder","legacy":["--obj-xls"]},{"id":"obj.csv","css":"--ex-obj-csv","light":"#059669","dark":"#059669","status":"placeholder","legacy":["--obj-csv"]},{"id":"obj.doc","css":"--ex-obj-doc","light":"#2563eb","dark":"#2563eb","status":"placeholder","legacy":["--obj-doc"]},{"id":"obj.ppt","css":"--ex-obj-ppt","light":"#ea580c","dark":"#ea580c","status":"placeholder","legacy":["--obj-ppt"]},{"id":"obj.pdf","css":"--ex-obj-pdf","light":"#dc2626","dark":"#dc2626","status":"placeholder","legacy":["--obj-pdf"]},{"id":"obj.zip","css":"--ex-obj-zip","light":"#d97706","dark":"#d97706","status":"placeholder","legacy":["--obj-zip"]},{"id":"obj.exe","css":"--ex-obj-exe","light":"#475569","dark":"#475569","status":"placeholder","legacy":["--obj-exe"]},{"id":"obj.vid","css":"--ex-obj-vid","light":"#7c3aed","dark":"#7c3aed","status":"placeholder","legacy":["--obj-vid"]},{"id":"obj.code","css":"--ex-obj-code","light":"#0284c7","dark":"#0284c7","status":"placeholder","legacy":["--obj-code"]},{"id":"obj.img-sky","css":"--ex-obj-img-sky","light":"#bae6fd","dark":"#bae6fd","status":"placeholder","legacy":["--obj-img-sky"]},{"id":"obj.img-hill","css":"--ex-obj-img-hill","light":"#34d399","dark":"#34d399","status":"placeholder","legacy":["--obj-img-hill"]},{"id":"obj.img-sun","css":"--ex-obj-img-sun","light":"#fbbf24","dark":"#fbbf24","status":"placeholder","legacy":["--obj-img-sun"]},{"id":"obj.drive","css":"--ex-obj-drive","light":"#cbd5e1","dark":"#cbd5e1","status":"placeholder","legacy":["--obj-drive"]},{"id":"obj.drive-dark","css":"--ex-obj-drive-dark","light":"#64748b","dark":"#64748b","status":"placeholder","legacy":["--obj-drive-dark"]},{"id":"obj.drive-led","css":"--ex-obj-drive-led","light":"#22c55e","dark":"#22c55e","status":"placeholder","legacy":["--obj-drive-led"]},{"id":"obj.drive-mark","css":"--ex-obj-drive-mark","light":"#3b82f6","dark":"#3b82f6","status":"placeholder","legacy":["--obj-drive-mark"]},{"id":"obj.badge-text","css":"--ex-obj-badge-text","light":"#ffffff","dark":"#ffffff","status":"placeholder","legacy":["--obj-badge-text"]}],"font":[{"id":"font.ui","css":"--ex-font-ui","value":"\"Segoe UI Variable Display\", \"Segoe UI Variable Text\", \"Segoe UI\", \"Yu Gothic UI\", -apple-system, BlinkMacSystemFont, \"Hiragino Sans\", system-ui, sans-serif","status":"adopted","legacy":["--font-ui"],"use":"UI全般。OS標準UIフォントを優先し、OS間で字形が変わることは許容"},{"id":"font.mono","css":"--ex-font-mono","value":"\"Cascadia Mono\", Consolas, \"SF Mono\", Menlo, monospace","status":"adopted","legacy":["--font-mono"],"use":"インスペクタのテキストプレビュー・パス"},{"id":"font.size.caption","css":"--ex-font-size-caption","value":"11px","status":"adopted","legacy":["--fs-caption"],"use":"サイドバー見出し・情報バー・空き容量・バッジ・メニュー見出し"},{"id":"font.size.small","css":"--ex-font-size-small","value":"12px","status":"adopted","legacy":["--fs-small"],"use":"タブ・列ヘッダー・日時/種類/サイズ列・属性・ボタン"},{"id":"font.size.control","css":"--ex-font-size-control","value":"13px","status":"adopted","legacy":[".crumb / .search input / .mi"],"use":"パンくず・検索入力・メニュー項目"},{"id":"font.size.body","css":"--ex-font-size-body","value":"13.5px","status":"adopted","legacy":["--fs-body"],"use":"ファイル名・サイドバー項目（基準）"},{"id":"font.size.title","css":"--ex-font-size-title","value":"15px","status":"adopted","legacy":["--fs-title"],"use":"インスペクタの項目名・ダイアログ見出し"},{"id":"font.size.code","css":"--ex-font-size-code","value":"11.5px","status":"adopted","legacy":[".pre / .mi .kbd"],"use":"コードプレビュー・ショートカット表記"},{"id":"font.weight.regular","css":"--ex-font-weight-regular","value":"400","status":"adopted","legacy":[],"use":"補助列・本文"},{"id":"font.weight.medium","css":"--ex-font-weight-medium","value":"500","status":"adopted","legacy":["--fw-medium"],"use":"ファイル名・項目・パンくず"},{"id":"font.weight.strong","css":"--ex-font-weight-strong","value":"600","status":"adopted","legacy":["--fw-strong"],"use":"選択行名・現在項目・ボタン・列ヘッダー"},{"id":"font.weight.bold","css":"--ex-font-weight-bold","value":"700","status":"adopted","legacy":["--fw-bold"],"use":"セクション見出し・インスペクタ項目名"},{"id":"font.line.body","css":"--ex-font-line-body","value":"1.45","status":"adopted","legacy":["--lh-body"],"use":"UI基準行間"},{"id":"font.line.tight","css":"--ex-font-line-tight","value":"1.35","status":"adopted","legacy":[".tile .nm / .p-name"],"use":"タイル名（2行省略）・インスペクタ項目名"},{"id":"font.line.code","css":"--ex-font-line-code","value":"1.55","status":"adopted","legacy":[".pre"],"use":"コードプレビュー"},{"id":"font.tracking.heading","css":"--ex-font-tracking-heading","value":"0.04em","status":"adopted","legacy":[".side-h"],"use":"サイドバー見出しのみ"}],"space":[{"id":"space.2","css":"--ex-space-2","value":"2px","status":"adopted","use":"ボタン群内の間隔・パンくず間"},{"id":"space.3","css":"--ex-space-3","value":"3px","status":"adopted","use":"ボタン群/セグメントの内側余白・サイドバー項目間"},{"id":"space.4","css":"--ex-space-4","value":"4px","status":"adopted","use":"タブ間・タブバー左右"},{"id":"space.6","css":"--ex-space-6","value":"6px","status":"adopted","use":"パネル間隔・ウィンドウ外周・パネル内余白・行左右"},{"id":"space.8","css":"--ex-space-8","value":"8px","status":"adopted","use":"ボタン間・検索内アイコン間・タブ左右"},{"id":"space.10","css":"--ex-space-10","value":"10px","status":"adopted","use":"セル左右・行内アイコンと名前・タイル間"},{"id":"space.12","css":"--ex-space-12","value":"12px","status":"adopted","use":"ツールバー内要素間・左右余白"},{"id":"space.14","css":"--ex-space-14","value":"14px","status":"adopted","use":"ボタン左右・属性カード左右"},{"id":"space.16","css":"--ex-space-16","value":"16px","status":"adopted","use":"インスペクタ内ブロック間"},{"id":"space.18","css":"--ex-space-18","value":"18px","status":"adopted","use":"インスペクタ本文余白"},{"id":"space.20","css":"--ex-space-20","value":"20px","status":"adopted","use":"ダイアログ本文余白"},{"id":"layout.gap","css":"--ex-layout-gap","value":"6px","status":"adopted","use":"ウィンドウ外周とパネル間の唯一の間隔"}],"size":[{"id":"size.tabbar","css":"--ex-size-tabbar","value":"32px","status":"adopted","probe":{"sel":".tabbar","prop":"height"},"use":"タブバー高さ"},{"id":"size.tab","css":"--ex-size-tab","value":"30px","status":"adopted","probe":{"sel":".tab-entry.active","prop":"height"},"use":"タブ1枚の高さ"},{"id":"size.tab-width","css":"--ex-size-tab-width","value":"180px","status":"adopted","use":"タブ1枚の固定幅（超過は横スクロール）"},{"id":"size.tab-close","css":"--ex-size-tab-close","value":"22px","status":"adopted","use":"タブ閉じるボタン"},{"id":"size.tab-add","css":"--ex-size-tab-add","value":"28px","status":"adopted","use":"新しいタブボタン"},{"id":"size.toolbar","css":"--ex-size-toolbar","value":"44px","status":"adopted","legacy":["--h-canopy"],"probe":{"sel":".canopy","prop":"height"},"use":"ツールバー高さ"},{"id":"size.field","css":"--ex-size-field","value":"36px","status":"adopted","probe":{"sel":".search","prop":"height"},"use":"アドレス・検索の高さ"},{"id":"size.icon-button","css":"--ex-size-icon-button","value":"32px","status":"adopted","probe":{"sel":"#btn-back","prop":"width"},"use":"アイコンボタン"},{"id":"size.icon-button-sm","css":"--ex-size-icon-button-sm","value":"24px","status":"adopted","use":"小アイコンボタン（検索クリア・閉じる）"},{"id":"size.segment-item-w","css":"--ex-size-segment-item-w","value":"30px","status":"adopted","use":"セグメント項目幅"},{"id":"size.segment-item-h","css":"--ex-size-segment-item-h","value":"28px","status":"adopted","use":"セグメント項目高さ"},{"id":"size.crumb","css":"--ex-size-crumb","value":"26px","status":"adopted","use":"パンくず項目高さ"},{"id":"size.list-header","css":"--ex-size-list-header","value":"28px","status":"adopted","legacy":["--h-header"],"probe":{"sel":".lh","prop":"height"},"use":"一覧ヘッダー"},{"id":"size.row","css":"--ex-size-row","value":"28px","compact":"24px","status":"adopted","legacy":["--h-row"],"probe":{"sel":".row","prop":"height"},"use":"一覧の行高（標準28 / コンパクト24）"},{"id":"size.side-item","css":"--ex-size-side-item","value":"28px","status":"adopted","use":"サイドバー項目の最小高さ"},{"id":"size.statusbar","css":"--ex-size-statusbar","value":"28px","status":"adopted","probe":{"sel":".status-bar","prop":"height"},"use":"下端の全幅情報バー"},{"id":"size.status-button","css":"--ex-size-status-button","value":"24px","status":"adopted","use":"情報バー内のボタン"},{"id":"size.button","css":"--ex-size-button","value":"32px","status":"adopted","probe":{"sel":".btn.primary","prop":"height"},"use":"テキストボタン"},{"id":"size.menu-item","css":"--ex-size-menu-item","value":"30px","status":"adopted","use":"メニュー項目"},{"id":"size.menu-min","css":"--ex-size-menu-min","value":"224px","status":"adopted","use":"メニュー最小幅"},{"id":"size.pane-header","css":"--ex-size-pane-header","value":"44px","status":"adopted","use":"インスペクタ見出し"},{"id":"size.dialog-header","css":"--ex-size-dialog-header","value":"50px","status":"adopted","use":"ダイアログ見出し"},{"id":"size.dialog-max","css":"--ex-size-dialog-max","value":"760px","status":"adopted","use":"ダイアログ最大幅"},{"id":"size.sidebar","css":"--ex-size-sidebar","value":"200px","narrow":"196px","status":"adopted","legacy":["--w-sidebar"],"probe":{"sel":".sidebar","prop":"width"},"use":"サイドバー幅（ウィンドウ幅1140px以下で196px）"},{"id":"size.inspector","css":"--ex-size-inspector","value":"268px","status":"adopted","legacy":["--w-pane"],"probe":{"sel":".pane","prop":"width"},"use":"インスペクタ幅"},{"id":"size.col-name-min","css":"--ex-size-col-name-min","value":"200px","status":"adopted","use":"名前列の最小幅"},{"id":"size.col-modified","css":"--ex-size-col-modified","value":"144px","status":"adopted","legacy":["--w-col-mod"],"use":"更新日時列"},{"id":"size.col-kind","css":"--ex-size-col-kind","value":"136px","status":"adopted","legacy":["--w-col-kind"],"use":"種類列（一覧幅610px以下で非表示）"},{"id":"size.col-size","css":"--ex-size-col-size","value":"92px","status":"adopted","legacy":["--w-col-size"],"use":"サイズ列"},{"id":"size.tile-min","css":"--ex-size-tile-min","value":"118px","status":"adopted","legacy":["--w-tile"],"use":"グリッドタイル最小幅"},{"id":"size.tile-icon","css":"--ex-size-tile-icon","value":"52px","status":"adopted","use":"グリッドのファイルアイコン"},{"id":"size.file-icon","css":"--ex-size-file-icon","value":"18px","status":"adopted","use":"行のファイルアイコン"},{"id":"size.icon","css":"--ex-size-icon","value":"16px","status":"adopted","use":"操作アイコン・タブ/サイドバーアイコン"},{"id":"size.icon-sm","css":"--ex-size-icon-sm","value":"14px","status":"adopted","use":"小ボタン/ボタン内アイコン"},{"id":"size.icon-xs","css":"--ex-size-icon-xs","value":"12px","status":"adopted","use":"ソート矢印・パンくず区切り"},{"id":"size.preview","css":"--ex-size-preview","value":"156px","status":"adopted","use":"インスペクタのプレビュー高さ"},{"id":"size.preview-icon","css":"--ex-size-preview-icon","value":"68px","status":"adopted","use":"プレビュー内アイコン"},{"id":"size.meter","css":"--ex-size-meter","value":"5px","status":"adopted","use":"ドライブメーターの太さ"},{"id":"size.window-min-w","css":"--ex-size-window-min-w","value":"960px","status":"adopted","use":"ウィンドウ最小幅"},{"id":"size.window-min-h","css":"--ex-size-window-min-h","value":"600px","status":"adopted","use":"ウィンドウ最小高さ"}],"radius":[{"id":"radius.island","css":"--ex-radius-island","value":"10px","status":"adopted","legacy":["--r-island","--r-canopy"],"probe":{"sel":".stage","prop":"border-top-left-radius"},"use":"ツールバー・サイドバー・一覧・インスペクタ"},{"id":"radius.row","css":"--ex-radius-row","value":"6px","status":"adopted","legacy":["--r-row","--r-sm"],"use":"一覧の行・列ヘッダーボタン"},{"id":"radius.tab","css":"--ex-radius-tab","value":"8px","status":"adopted","legacy":[".tab-entry"],"use":"タブ・メニュー項目"},{"id":"radius.place","css":"--ex-radius-place","value":"10px","status":"adopted","legacy":[".place"],"use":"サイドバー項目・ドライブカード"},{"id":"radius.card","css":"--ex-radius-card","value":"12px","status":"adopted","legacy":[".hero / .props-card / .menu"],"use":"インスペクタ内カード・メニュー"},{"id":"radius.code","css":"--ex-radius-code","value":"10px","status":"adopted","legacy":[".pre"],"use":"コードプレビュー"},{"id":"radius.tile","css":"--ex-radius-tile","value":"14px","status":"adopted","legacy":[".tile"],"use":"グリッドタイル"},{"id":"radius.dialog","css":"--ex-radius-dialog","value":"16px","status":"adopted","legacy":["dialog.spec"],"use":"ダイアログ"},{"id":"radius.small","css":"--ex-radius-small","value":"5px","status":"adopted","legacy":[".tab-close / .tab-add"],"use":"タブの閉じる/追加"},{"id":"radius.mark","css":"--ex-radius-mark","value":"3px","status":"adopted","legacy":["mark"],"use":"検索一致マーカー"},{"id":"radius.pill","css":"--ex-radius-pill","value":"999px","status":"adopted","legacy":["--r-pill"],"use":"アドレス・検索・アイコンボタン・ボタン・バッジ・セグメント"}],"line":[{"id":"border.width","css":"--ex-border-width","value":"1px","status":"adopted","use":"すべての面の境界（ヘアライン）"},{"id":"focus.width","css":"--ex-focus-width","value":"2px","status":"adopted","use":":focus-visible の outline 幅"},{"id":"focus.offset","css":"--ex-focus-offset","value":"1px","status":"adopted","use":":focus-visible の outline-offset"},{"id":"focus.halo-width","css":"--ex-focus-halo-width","value":"3px","status":"adopted","use":"検索欄フォーカス時の外側ハロー"},{"id":"focus.row-width","css":"--ex-focus-row-width","value":"2px","status":"adopted","use":"キーボード操作中の現在行リング（box-shadow）"}],"motion":[{"id":"motion.row","css":"--ex-motion-row","value":"0.08s","status":"adopted","use":"行背景"},{"id":"motion.base","css":"--ex-motion-base","value":"0.12s","status":"adopted","use":"ボタン/サイドバー項目の背景・色"},{"id":"motion.field","css":"--ex-motion-field","value":"0.15s","status":"adopted","use":"検索欄フォーカス"},{"id":"motion.press-scale","css":"--ex-motion-press-scale","value":"0.96","status":"adopted","use":"アイコンボタン押下時の縮小（0.1s）"}]},"contrast":[{"id":"row-name","label":"通常行の名前","fg":"text.primary","bg":"surface.content","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":17.85,"fg":"#0f172a","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":15.71,"fg":"#f2f2f2","bg":"#191919","target":4.5,"pass":true}},{"id":"row-meta","label":"通常行の補助列","fg":"text.muted","bg":"surface.content","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":4.76,"fg":"#64748b","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":7.83,"fg":"#adadad","bg":"#191919","target":4.5,"pass":true}},{"id":"row-hover-name","label":"ホバー行の名前","fg":"text.primary","bg":"state.hover","over":["surface.content"],"kind":"text","note":"","fix":null,"light":{"ratio":16.56,"fg":"#0f172a","bg":"#f3f6fe","target":4.5,"pass":true},"dark":{"ratio":13.38,"fg":"#f2f2f2","bg":"#272727","target":4.5,"pass":true}},{"id":"sel-name","label":"選択行の名前（600）","fg":"selection.fg","bg":"selection.bg","over":[],"kind":"text","note":"","fix":{"token":"selection.fg","light":"#1d4ed8"},"light":{"ratio":4.48,"fg":"#2563eb","bg":"#e8effc","target":4.5,"pass":false,"fixed":5.8},"dark":{"ratio":12.02,"fg":"#fafafa","bg":"#25344c","target":4.5,"pass":true}},{"id":"sel-meta","label":"選択行の補助列","fg":"selection.fg-secondary","bg":"selection.bg","over":[],"kind":"text","note":"","fix":{"token":"selection.fg-secondary","light":"#475569"},"light":{"ratio":4.12,"fg":"#64748b","bg":"#e8effc","target":4.5,"pass":false,"fixed":6.56},"dark":{"ratio":7.97,"fg":"#cecece","bg":"#25344c","target":4.5,"pass":true}},{"id":"sel-inactive-name","label":"非アクティブ選択の名前","fg":"text.primary","bg":"selection.inactive.bg","over":["surface.content"],"kind":"text","note":"","fix":null,"light":{"ratio":15.93,"fg":"#0f172a","bg":"#f0f2f5","target":4.5,"pass":true},"dark":{"ratio":12.01,"fg":"#f2f2f2","bg":"#2f2f2f","target":4.5,"pass":true}},{"id":"sel-inactive-meta","label":"非アクティブ選択の補助列","fg":"text.muted","bg":"selection.inactive.bg","over":["surface.content"],"kind":"text","note":"","fix":{"token":"text.muted","light":"#5b6a7f"},"light":{"ratio":4.25,"fg":"#64748b","bg":"#f0f2f5","target":4.5,"pass":false,"fixed":4.91},"dark":{"ratio":5.99,"fg":"#adadad","bg":"#2f2f2f","target":4.5,"pass":true}},{"id":"match","label":"検索一致マーカー上の文字","fg":"match.fg","bg":"match.bg","over":["surface.content"],"kind":"text","note":"","fix":null,"light":{"ratio":14.61,"fg":"#0f172a","bg":"#fde7ac","target":4.5,"pass":true},"dark":{"ratio":7.76,"fg":"#fef3c7","bg":"#644614","target":4.5,"pass":true}},{"id":"header","label":"一覧ヘッダー","fg":"text.muted","bg":"surface.chrome","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":4.6,"fg":"#64748b","bg":"#fafbfd","target":4.5,"pass":true},"dark":{"ratio":6.92,"fg":"#adadad","bg":"#242424","target":4.5,"pass":true}},{"id":"header-sorted","label":"ソート中の列見出し","fg":"accent.fg","bg":"surface.chrome","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":4.99,"fg":"#2563eb","bg":"#fafbfd","target":4.5,"pass":true},"dark":{"ratio":7.44,"fg":"#76b8ff","bg":"#242424","target":4.5,"pass":true}},{"id":"side-heading","label":"サイドバー見出し（11px）","fg":"text.muted","bg":"surface.chrome","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":4.6,"fg":"#64748b","bg":"#fafbfd","target":4.5,"pass":true},"dark":{"ratio":6.92,"fg":"#adadad","bg":"#242424","target":4.5,"pass":true}},{"id":"side-item","label":"サイドバー項目","fg":"text.secondary","bg":"surface.chrome","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":7.32,"fg":"#475569","bg":"#fafbfd","target":4.5,"pass":true},"dark":{"ratio":9.86,"fg":"#cecece","bg":"#242424","target":4.5,"pass":true}},{"id":"nav-current","label":"現在の場所","fg":"nav.current.fg","bg":"nav.current.bg","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":5.15,"fg":"#ffffff","bg":"#2864e8","target":4.5,"pass":true},"dark":{"ratio":6,"fg":"#ffffff","bg":"#245cce","target":4.5,"pass":true}},{"id":"nav-current-caption","label":"現在ドライブの空き容量","fg":"nav.current.caption","bg":"nav.current.bg","over":[],"kind":"text","note":"","fix":{"token":"nav.current.caption","light":"rgba(255, 255, 255, 0.95)"},"light":{"ratio":4.18,"fg":"#dfe8fc","bg":"#2864e8","target":4.5,"pass":false,"fixed":4.81},"dark":{"ratio":4.82,"fg":"#dee7f8","bg":"#245cce","target":4.5,"pass":true}},{"id":"drive-caption","label":"ドライブカードの空き容量","fg":"text.muted","bg":"surface.field","over":[],"kind":"text","note":"","fix":{"token":"text.muted","light":"#5b6a7f"},"light":{"ratio":4.32,"fg":"#64748b","bg":"#f1f4f9","target":4.5,"pass":false,"fixed":5},"dark":{"ratio":7.59,"fg":"#adadad","bg":"#1c1c1c","target":4.5,"pass":true}},{"id":"tab-active","label":"現在タブ","fg":"text.emphasis","bg":"tab.active.bg","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":17.85,"fg":"#0f172a","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":11.93,"fg":"#fafafa","bg":"#343434","target":4.5,"pass":true}},{"id":"tab-inactive","label":"非現在タブ","fg":"tab.fg","bg":"tab.bg","over":["surface.canvas"],"kind":"text","note":"","fix":null,"light":{"ratio":7.06,"fg":"#475569","bg":"#f5f7fa","target":4.5,"pass":true},"dark":{"ratio":10.93,"fg":"#cecece","bg":"#1b1b1b","target":4.5,"pass":true}},{"id":"crumb","label":"パンくず","fg":"text.secondary","bg":"surface.field","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":6.87,"fg":"#475569","bg":"#f1f4f9","target":4.5,"pass":true},"dark":{"ratio":10.83,"fg":"#cecece","bg":"#1c1c1c","target":4.5,"pass":true}},{"id":"crumb-current","label":"現在のパンくず","fg":"text.emphasis","bg":"surface.chip-selected","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":17.85,"fg":"#0f172a","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":11.75,"fg":"#fafafa","bg":"#353535","target":4.5,"pass":true}},{"id":"search-placeholder","label":"検索プレースホルダー","fg":"text.muted","bg":"surface.field","over":[],"kind":"text","note":"","fix":{"token":"text.muted","light":"#5b6a7f"},"light":{"ratio":4.32,"fg":"#64748b","bg":"#f1f4f9","target":4.5,"pass":false,"fixed":5},"dark":{"ratio":7.59,"fg":"#adadad","bg":"#1c1c1c","target":4.5,"pass":true}},{"id":"search-input","label":"検索入力（フォーカス中）","fg":"text.primary","bg":"surface.field-focus","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":17.85,"fg":"#0f172a","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":13,"fg":"#f2f2f2","bg":"#292929","target":4.5,"pass":true}},{"id":"toggle-pressed","label":"押下中トグルのアイコン","fg":"accent.fg","bg":"accent.soft","over":["surface.field"],"kind":"nontext","note":"","fix":null,"light":{"ratio":3.99,"fg":"#2563eb","bg":"#d9e3f7","target":3,"pass":true},"dark":{"ratio":6.33,"fg":"#76b8ff","bg":"#223048","target":3,"pass":true}},{"id":"segment-pressed","label":"押下中セグメントのアイコン","fg":"accent.fg","bg":"surface.chip-selected","over":[],"kind":"nontext","note":"","fix":null,"light":{"ratio":5.17,"fg":"#2563eb","bg":"#ffffff","target":3,"pass":true},"dark":{"ratio":5.88,"fg":"#76b8ff","bg":"#353535","target":3,"pass":true}},{"id":"icon","label":"操作アイコン","fg":"icon.default","bg":"surface.field","over":[],"kind":"nontext","note":"","fix":null,"light":{"ratio":6.87,"fg":"#475569","bg":"#f1f4f9","target":3,"pass":true},"dark":{"ratio":9.07,"fg":"#bdbdbd","bg":"#1c1c1c","target":3,"pass":true}},{"id":"button","label":"標準ボタン","fg":"button.fg","bg":"button.bg","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":17.85,"fg":"#0f172a","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":11.29,"fg":"#f2f2f2","bg":"#333333","target":4.5,"pass":true}},{"id":"button-primary","label":"主要ボタン","fg":"text.on-accent","bg":"button.primary.bg","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":5.17,"fg":"#ffffff","bg":"#2563eb","target":4.5,"pass":true},"dark":{"ratio":5.17,"fg":"#ffffff","bg":"#2563eb","target":4.5,"pass":true}},{"id":"badge","label":"種類バッジ（11px/600）","fg":"badge.fg","bg":"badge.bg","over":["surface.chrome"],"kind":"text","note":"","fix":{"token":"badge.fg","light":"#1d4ed8"},"light":{"ratio":4.23,"fg":"#2563eb","bg":"#e0e9fb","target":4.5,"pass":false,"fixed":5.49},"dark":{"ratio":8.25,"fg":"#cecece","bg":"#313131","target":4.5,"pass":true}},{"id":"inspector-label","label":"属性ラベル","fg":"text.muted","bg":"surface.card","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":4.76,"fg":"#64748b","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":7.59,"fg":"#adadad","bg":"#1c1c1c","target":4.5,"pass":true}},{"id":"status-text","label":"情報バー（11px）","fg":"text.secondary","bg":"surface.statusbar","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":7.32,"fg":"#475569","bg":"#fafbfd","target":4.5,"pass":true},"dark":{"ratio":10.35,"fg":"#cecece","bg":"#202020","target":4.5,"pass":true}},{"id":"status-selected","label":"情報バーの選択数","fg":"accent.fg","bg":"surface.statusbar","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":4.99,"fg":"#2563eb","bg":"#fafbfd","target":4.5,"pass":true},"dark":{"ratio":7.81,"fg":"#76b8ff","bg":"#202020","target":4.5,"pass":true}},{"id":"menu-item","label":"メニュー項目","fg":"text.primary","bg":"surface.raised","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":17.85,"fg":"#0f172a","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":12.47,"fg":"#f2f2f2","bg":"#2c2c2c","target":4.5,"pass":true}},{"id":"menu-kbd","label":"メニューのショートカット","fg":"text.muted","bg":"surface.raised","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":4.76,"fg":"#64748b","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":6.22,"fg":"#adadad","bg":"#2c2c2c","target":4.5,"pass":true}},{"id":"menu-current","label":"メニュー現在行","fg":"menu.highlight.fg","bg":"menu.highlight.bg","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":5.17,"fg":"#ffffff","bg":"#2563eb","target":4.5,"pass":true},"dark":{"ratio":5.17,"fg":"#ffffff","bg":"#2563eb","target":4.5,"pass":true}},{"id":"menu-current-kbd","label":"メニュー現在行のショートカット","fg":"menu.highlight.kbd","bg":"menu.highlight.bg","over":[],"kind":"text","note":"","fix":{"token":"menu.highlight.kbd","light":"rgba(255, 255, 255, 0.95)","dark":"rgba(255, 255, 255, 0.95)"},"light":{"ratio":3.89,"fg":"#d3e0fb","bg":"#2563eb","target":4.5,"pass":false,"fixed":4.83},"dark":{"ratio":3.89,"fg":"#d3e0fb","bg":"#2563eb","target":4.5,"pass":false,"fixed":4.83}},{"id":"dialog-body","label":"ダイアログ本文","fg":"text.secondary","bg":"surface.dialog","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":7.58,"fg":"#475569","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":9.62,"fg":"#cecece","bg":"#262626","target":4.5,"pass":true}},{"id":"focus-on-content","label":"フォーカスリング（一覧面）","fg":"focus.ring","bg":"surface.content","over":[],"kind":"nontext","note":"","fix":null,"light":{"ratio":5.17,"fg":"#2563eb","bg":"#ffffff","target":3,"pass":true},"dark":{"ratio":6.92,"fg":"#60a5fa","bg":"#191919","target":3,"pass":true}},{"id":"focus-on-chrome","label":"フォーカスリング（ツールバー）","fg":"focus.ring","bg":"surface.chrome","over":[],"kind":"nontext","note":"","fix":null,"light":{"ratio":4.99,"fg":"#2563eb","bg":"#fafbfd","target":3,"pass":true},"dark":{"ratio":6.11,"fg":"#60a5fa","bg":"#242424","target":3,"pass":true}},{"id":"focus-on-selection","label":"フォーカスリング（選択行上）","fg":"focus.ring","bg":"selection.bg","over":[],"kind":"nontext","note":"","fix":null,"light":{"ratio":4.48,"fg":"#2563eb","bg":"#e8effc","target":3,"pass":true},"dark":{"ratio":4.93,"fg":"#60a5fa","bg":"#25344c","target":3,"pass":true}},{"id":"selection-border","label":"選択行の枠（塗りと併用）","fg":"selection.border","bg":"surface.content","over":[],"kind":"nontext","note":"選択は塗り・文字色/太さでも示すため、枠単独で3:1は必須としない","fix":null,"light":{"ratio":1.59,"fg":"#b9cdf9","bg":"#ffffff","target":3,"pass":false},"dark":{"ratio":3.04,"fg":"#416797","bg":"#191919","target":3,"pass":true}},{"id":"meter","label":"ドライブメーター","fg":"meter.fill","bg":"meter.track","over":["surface.field"],"kind":"nontext","note":"","fix":{"token":"meter.fill","light":"#2563eb"},"light":{"ratio":2.83,"fg":"#3b82f6","bg":"#dde2eb","target":3,"pass":false,"fixed":3.98},"dark":{"ratio":3.12,"fg":"#3b82f6","bg":"#363a3e","target":3,"pass":true}},{"id":"danger-text","label":"【提案】エラー文","fg":"danger.fg","bg":"surface.content","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":4.81,"fg":"#c8453b","bg":"#ffffff","target":4.5,"pass":true},"dark":{"ratio":5.86,"fg":"#e5736b","bg":"#191919","target":4.5,"pass":true}},{"id":"danger-button","label":"【提案】破壊操作ボタン","fg":"text.on-accent","bg":"danger.solid","over":[],"kind":"text","note":"","fix":null,"light":{"ratio":4.81,"fg":"#ffffff","bg":"#c8453b","target":4.5,"pass":true},"dark":{"ratio":4.81,"fg":"#ffffff","bg":"#c8453b","target":4.5,"pass":true}},{"id":"disabled","label":"無効アイコン（参考）","fg":"text.disabled","bg":"surface.field","over":[],"kind":"exempt","note":"","fix":null,"light":{"ratio":1.35,"fg":"#cbd5e1","bg":"#f1f4f9","target":0,"pass":null},"dark":{"ratio":2.79,"fg":"#626262","bg":"#1c1c1c","target":0,"pass":null}}],"legacyUnused":{"--bg-ambient-solid":"未使用（値は surface.canvas とほぼ同一）。廃止","--bg-well":"未使用。廃止（沈んだ面は surface.field に統一）","--bg-selected-solid":"未使用。廃止（selection.bg を使用）","--border-glass":"ガラス時代の白い内縁。廃止","--specular-inset":"ガラス時代の上端光沢（現値 none）。廃止","--shadow-canopy":"現値 none。廃止（パネルに影を付けない）","--shadow-island":"現値 none。廃止","--shadow-pill":"現値 none。廃止","--r-window":"未使用。廃止（ウィンドウ角はOS任せ）","--r-md":"未使用。radius.tab（8px）に相当","--fs-hero":"未使用。フォルダー大見出しは削除済み","--sample-*":"インスペクタのサンプル画像描画用。デザイントークンではない（モック専用）"},"cssBytes":14728}</script>
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const DATA = JSON.parse($('#ex-token-data').textContent);
+
+/* ---------- 操作アイコン（モック concept-1.html と同一の線画） ---------- */
+const OP = {
+  back: '<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>',
+  forward: '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+  up: '<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>',
+  x: '<path d="M17 7L7 17"/><path d="M7 7l10 10"/>',
+  list: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4.5 6h.01"/><path d="M4.5 12h.01"/><path d="M4.5 18h.01"/>',
+  grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+  panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>',
+  settings: '<path d="M4 7h9"/><path d="M19 7h1"/><circle cx="16" cy="7" r="2.5"/><path d="M4 17h1"/><path d="M11 17h9"/><circle cx="8" cy="17" r="2.5"/>',
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  sortUp: '<path d="M6 15l6-6 6 6"/>',
+  sortDown: '<path d="M6 9l6 6 6-6"/>',
+  eye: '<path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z"/><circle cx="12" cy="12" r="2.8"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H7a2 2 0 0 0-2 2v8"/>',
+  open: '<path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/>',
+};
+const DOC_OP = { menu: '<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>' }; // リファレンスの目次ボタン専用（システム外）
+const opSvg = (name) => `<svg class="ex-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${OP[name] || DOC_OP[name] || ''}</svg>`;
+
+/* ---------- 仮素材アイコン（モックと同じ描画。本番はOS取得アイコン） ---------- */
+const GLYPH = {
+  home: '<path d="M11 19.5l5-4.5 5 4.5"/><path d="M12.6 18.4v5.6h6.8v-5.6"/>',
+  desk: '<rect x="10.5" y="14.2" width="11" height="7.4" rx="1"/><path d="M14 24.6h4"/>',
+  docs: '<path d="M11.5 16h9"/><path d="M11.5 19.5h9"/><path d="M11.5 23h5.5"/>',
+  down: '<path d="M16 14v8.5"/><path d="M12.4 19.4L16 23l3.6-3.6"/>',
+  pics: '<path d="M10.5 24l4.2-4.6 3 3 2-2 2 3.6"/><circle cx="19.4" cy="15.6" r="1.2"/>',
+};
+const SVG32 = (inner) => `<svg viewBox="0 0 32 32" aria-hidden="true">${inner}</svg>`;
+function folderSvg(glyph) {
+  return SVG32('<path style="fill:var(--ex-obj-folder-back)" d="M3 8.5A2.5 2.5 0 0 1 5.5 6h6.2a2 2 0 0 1 1.45.62L15 8.5h11.5A2.5 2.5 0 0 1 29 11v13.5a2.5 2.5 0 0 1-2.5 2.5h-21A2.5 2.5 0 0 1 3 24.5z"/>' +
+    '<path style="fill:var(--ex-obj-folder)" d="M3 13a2.5 2.5 0 0 1 2.5-2.5h21A2.5 2.5 0 0 1 29 13v11.5a2.5 2.5 0 0 1-2.5 2.5h-21A2.5 2.5 0 0 1 3 24.5z"/>' +
+    (glyph ? `<g fill="none" style="stroke:var(--ex-obj-folder-glyph)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[glyph]}</g>` : ''));
+}
+const FT = { xlsx: ['xls', 'XLS'], csv: ['csv', 'CSV'], docx: ['doc', 'DOC'], pptx: ['ppt', 'PPT'], pdf: ['pdf', 'PDF'], zip: ['zip', 'ZIP'], exe: ['exe', 'EXE'], mp4: ['vid', 'MP4'], ps1: ['code', 'PS1'] };
+function fileSvg(ext, big) {
+  let inner = '<path style="fill:var(--ex-obj-page);stroke:var(--ex-obj-page-edge)" d="M8 3.5h10.8l6.7 6.7V27a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 27V5A1.5 1.5 0 0 1 8 3.5z"/>' +
+    '<path style="fill:var(--ex-obj-page-fold);stroke:var(--ex-obj-page-edge)" stroke-linejoin="round" d="M18.8 3.5v5.2a1.5 1.5 0 0 0 1.5 1.5h5.2"/>';
+  if (ext === 'png' || ext === 'jpg') {
+    inner += '<rect x="9.5" y="13" width="13" height="11" rx="1" style="fill:var(--ex-obj-img-sky)"/><path d="M9.5 22.6l4-4.4 3 3 2-2 4 4V24h-13z" style="fill:var(--ex-obj-img-hill)"/><circle cx="18.8" cy="16.2" r="1.5" style="fill:var(--ex-obj-img-sun)"/>';
+  } else if (FT[ext]) {
+    inner += `<rect x="3" y="15" width="18" height="9.5" rx="1.6" style="fill:var(--ex-obj-${FT[ext][0]})"/>`;
+    if (big) inner += `<text x="12" y="21.9" font-size="6.2" font-weight="700" text-anchor="middle" style="fill:var(--ex-obj-badge-text)" font-family="Segoe UI, sans-serif">${FT[ext][1]}</text>`;
+  } else if (['txt', 'md', 'ini'].includes(ext)) {
+    inner += '<g style="stroke:var(--ex-obj-text-line)" stroke-width="1.4" stroke-linecap="round"><path d="M10 14.5h12"/><path d="M10 18h12"/><path d="M10 21.5h12"/><path d="M10 25h7"/></g>';
+  }
+  return SVG32(inner);
+}
+function driveSvg(sys) {
+  return SVG32('<rect x="3" y="10" width="26" height="13" rx="3" style="fill:var(--ex-obj-drive)"/><path d="M3 17.5h26V20a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" style="fill:var(--ex-obj-drive-dark)"/><circle cx="24.6" cy="20.2" r="1.2" style="fill:var(--ex-obj-drive-led)"/>' +
+    (sys ? '<rect x="6.5" y="12.6" width="5" height="3" rx=".8" style="fill:var(--ex-obj-drive-mark)"/>' : ''));
+}
+function objSvg(spec) {
+  const [kind, a, b] = spec.split(':');
+  if (kind === 'folder') return folderSvg(a);
+  if (kind === 'drive') return driveSvg(a === 'sys');
+  return fileSvg(a, b === 'big');
+}
+function hydrateIcons(root = document) {
+  $$('[data-op]', root).forEach((el) => { if (!el.firstElementChild) el.innerHTML = opSvg(el.dataset.op); });
+  $$('[data-obj]', root).forEach((el) => { if (!el.firstElementChild) el.innerHTML = objSvg(el.dataset.obj); });
+}
+
+/* ---------- コピー（Clipboard API → execCommand → 手動ダイアログ） ---------- */
+let toastTimer = 0;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
+}
+function legacyCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
+}
+function manualCopy(text) {
+  const d = $('#copy-dialog'), ta = $('#copy-text');
+  ta.value = text;
+  if (!d.open) d.showModal();
+  ta.focus(); ta.select();
+}
+async function copyText(text) {
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard api');
+    await navigator.clipboard.writeText(text);
+    toast('コピーしました: ' + text);
+    return 'clipboard';
+  } catch (e) {
+    if (legacyCopy(text)) { toast('コピーしました: ' + text); return 'execCommand'; }
+    manualCopy(text);
+    return 'manual';
+  }
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-copy],[data-copy-from]');
+  if (!b) return;
+  const text = b.dataset.copy != null ? b.dataset.copy : $('#' + b.dataset.copyFrom).textContent;
+  copyText(text).then((how) => { b.dataset.copied = how; });
+});
+const copyBtn = (text, label) => `<button class="copy" data-copy="${esc(text)}" title="コピー: ${esc(text)}">${esc(label || text)}</button>`;
+$$('dialog').forEach((d) => d.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) d.close(); }));
+
+/* ---------- トークン表示（tokens.json 由来の埋め込みデータのみを使う） ---------- */
+const STATUS_LABEL = { adopted: '採用済み', derived: '換算', proposed: '追加提案', placeholder: '仮素材' };
+const tag = (s) => `<span class="tag ${s}">${STATUS_LABEL[s] || s}</span>`;
+const COLOR_GROUPS = [
+  ['surface', '面'], ['text', '文字'], ['icon', 'アイコン'], ['accent', 'アクセント'], ['focus', 'フォーカス'], ['state', '操作中の重ね色'],
+  ['nav', 'サイドバーの現在地'], ['selection', '選択'], ['tab', 'タブ'], ['button', 'ボタン'], ['menu', 'メニュー'], ['badge', 'バッジ'],
+  ['border', '境界線'], ['match', '検索一致'], ['meter', 'メーター'], ['scrollbar', 'スクロールバー'], ['danger', '危険（追加提案）'],
+];
+const chip = (v, cls) => `<div class="sw-chip ${cls}"><i style="background:${esc(v === 'currentColor' ? 'transparent' : v)}"></i><span>${esc(v)}</span></div>`;
+function swatchCard(t) {
+  const legacy = (t.legacy || []).join(' / ');
+  return `<div class="sw" data-token="${esc(t.id)}"><div class="sw-chips">${chip(t.light, 'l')}${chip(t.dark, 'd')}</div>` +
+    `<div class="sw-meta"><div class="row1"><b>${esc(t.id)}</b>${tag(t.status)}</div>` +
+    `<div class="row1">${copyBtn(`var(${t.css})`, t.css)}${copyBtn(t.light, 'L ' + t.light)}${copyBtn(t.dark, 'D ' + t.dark)}</div>` +
+    (t.use ? `<div class="use">${esc(t.use)}</div>` : '') + (legacy ? `<div class="legacy">モック: ${esc(legacy)}</div>` : '') + '</div></div>';
+}
+function renderColors() {
+  const colors = DATA.groups.color;
+  const used = new Set();
+  let html = '';
+  for (const [prefix, label] of COLOR_GROUPS) {
+    const list = colors.filter((t) => t.id.split('.')[0] === prefix);
+    if (!list.length) continue;
+    list.forEach((t) => used.add(t.id));
+    html += `<p class="grp-h">${esc(label)}</p><div class="swatches">${list.map(swatchCard).join('')}</div>`;
+  }
+  const rest = colors.filter((t) => !used.has(t.id));
+  if (rest.length) html += `<p class="grp-h">その他</p><div class="swatches">${rest.map(swatchCard).join('')}</div>`;
+  $('#color-groups').innerHTML = html;
+  $('#placeholder-swatches').innerHTML = DATA.groups.placeholderIcon.map((t) => swatchCard({ ...t, use: t.mac ? `macOS風の検証切替: ${t.mac}` : '' })).join('');
+}
+function staticTable(sel, group, cols) {
+  const head = ['トークン', 'CSS 変数', '値', ...cols.map((c) => c[1]), '状態', '用途'];
+  const rows = DATA.groups[group].map((t) => `<tr data-token="${esc(t.id)}"><td><b>${esc(t.id)}</b></td><td>${copyBtn(`var(${t.css})`, t.css)}</td><td class="num">${copyBtn(t.value, t.value.length > 34 ? t.value.slice(0, 32) + '…' : t.value)}</td>` +
+    cols.map(([k]) => `<td class="num">${esc(t[k] || '')}</td>`).join('') + `<td>${tag(t.status)}</td><td>${esc(t.use || '')}</td></tr>`).join('');
+  $(sel).innerHTML = `<thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody>`;
+}
+function renderType() {
+  const rows = DATA.groups.font.map((t) => {
+    let sample = '';
+    if (t.id.startsWith('font.size.')) sample = `<span style="font-size:${t.value}">ファイル名 Aa 123</span>`;
+    else if (t.id.startsWith('font.weight.')) sample = `<span style="font-weight:${t.value};font-size:13.5px">ファイル名 Aa</span>`;
+    else if (t.id === 'font.mono') sample = `<span style="font-family:${esc(t.value)};font-size:12px">C:\\Users\\aoi</span>`;
+    else if (t.id === 'font.ui') sample = `<span style="font-family:${esc(t.value)}">ドキュメント Documents</span>`;
+    return `<tr data-token="${esc(t.id)}"><td><b>${esc(t.id)}</b></td><td>${copyBtn(`var(${t.css})`, t.css)}</td><td class="num">${copyBtn(t.value, t.value.length > 30 ? t.value.slice(0, 28) + '…' : t.value)}</td><td>${sample}</td><td>${esc(t.use || '')}</td></tr>`;
+  }).join('');
+  $('#type-table').innerHTML = `<thead><tr><th>トークン</th><th>CSS 変数</th><th>値</th><th>見本</th><th>用途</th></tr></thead><tbody>${rows}</tbody>`;
+}
+function renderShadow() {
+  $('#shadow-table').innerHTML = '<thead><tr><th>トークン</th><th>CSS 変数</th><th>ライト</th><th>ダーク</th><th>用途</th></tr></thead><tbody>' +
+    DATA.groups.shadow.map((t) => `<tr data-token="${esc(t.id)}"><td><b>${esc(t.id)}</b></td><td>${copyBtn(`var(${t.css})`, t.css)}</td><td>${copyBtn(t.light)}</td><td>${copyBtn(t.dark)}</td><td>${esc(t.use)}</td></tr>`).join('') + '</tbody>';
+}
+function renderContrast() {
+  const cell = (c, th) => {
+    const r = c[th];
+    const badge = r.pass === null ? '<span class="tag pass">対象外</span>' : r.pass ? '<span class="tag pass">達成</span>' : '<span class="tag fail">未達</span>';
+    return `<td class="num"><span class="aa" style="background:${r.bg};color:${r.fg}">Aa</span> <span class="ratio">${r.ratio.toFixed(2)}</span>:1 ${badge}</td>`;
+  };
+  const rows = DATA.contrast.map((c) => {
+    let fix = c.note ? esc(c.note) : '';
+    if (c.fix) {
+      const parts = ['light', 'dark'].filter((th) => c.fix[th]).map((th) => `${th === 'light' ? 'ライト' : 'ダーク'}: <code>${esc(c.fix.token)}</code> → ${copyBtn(c.fix[th])}（${c[th].fixed.toFixed(2)}:1）`);
+      fix = parts.join('<br>') + (fix ? '<br>' + fix : '');
+    }
+    const pair = `<code>${esc(c.fg)}</code> / <code>${esc(c.bg)}</code>${c.over.length ? ' over ' + c.over.map((o) => `<code>${esc(o)}</code>`).join(' ') : ''}`;
+    const kind = { text: '文字 4.5', nontext: '非テキスト 3', exempt: '対象外' }[c.kind];
+    return `<tr data-contrast="${esc(c.id)}"><td><b>${esc(c.label)}</b><br><span style="font-size:11px;color:var(--ex-text-muted)">${pair}</span></td><td>${kind}</td>${cell(c, 'light')}${cell(c, 'dark')}<td>${fix}</td></tr>`;
+  }).join('');
+  $('#contrast-table').innerHTML = `<thead><tr><th>組み合わせ</th><th>目標</th><th>ライト</th><th>ダーク</th><th>修正案（未適用）・注記</th></tr></thead><tbody>${rows}</tbody>`;
+}
+function renderContrastSummary() {
+  const fails = (th) => DATA.contrast.filter((c) => c[th].pass === false && !c.note);
+  const names = (th) => fails(th).map((c) => c.label).join('、');
+  const l = fails('light'), d = fails('dark');
+  $('#contrast-summary').innerHTML = `<strong>未達: ライト ${l.length} 件、ダーク ${d.length} 件</strong>（注記付きの参考項目を除く）。ライト: ${esc(names('light')) || 'なし'}。ダーク: ${esc(names('dark')) || 'なし'}。採用済みの値は変えず、右端に修正案と修正後の比を載せました。採否は本人判断です。`;
+}
+function renderLegacy() {
+  const rows = [];
+  for (const g of ['color', 'shadow', 'font', 'size', 'radius']) {
+    for (const t of DATA.groups[g]) for (const l of (t.legacy || [])) rows.push([l, t.id, t.css, t.status]);
+  }
+  rows.sort((a, b) => (a[0].startsWith('--') === b[0].startsWith('--') ? a[0].localeCompare(b[0]) : a[0].startsWith('--') ? -1 : 1));
+  $('#legacy-table').innerHTML = '<thead><tr><th>モックでの名前・上書き箇所</th><th>意味トークン</th><th>CSS 変数</th><th>状態</th></tr></thead><tbody>' +
+    rows.map(([l, id, css, s]) => `<tr><td><code>${esc(l)}</code></td><td><b>${esc(id)}</b></td><td>${copyBtn(`var(${css})`, css)}</td><td>${tag(s)}</td></tr>`).join('') + '</tbody>';
+  $('#unused-table').innerHTML = '<thead><tr><th>旧変数</th><th>扱い</th></tr></thead><tbody>' +
+    Object.entries(DATA.legacyUnused).map(([k, v]) => `<tr><td><code>${esc(k)}</code></td><td>${esc(v)}</td></tr>`).join('') + '</tbody>';
+}
+function renderIcons() {
+  $('#op-icons').innerHTML = Object.keys(OP).map((n) => `<div class="icon-cell">${opSvg(n)}<span>${n}</span>${copyBtn(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${OP[n]}</svg>`, 'SVG')}</div>`).join('');
+  const objs = [['folder:', 'フォルダー'], ['folder:docs', 'ドキュメント'], ['folder:down', 'ダウンロード'], ['drive:sys', 'システムドライブ'], ['drive:', 'ドライブ'], ['file:xlsx:big', 'xlsx'], ['file:docx:big', 'docx'], ['file:pdf:big', 'pdf'], ['file:png', '画像'], ['file:md', 'テキスト']];
+  $('#obj-icons').innerHTML = objs.map(([s, l]) => `<div class="icon-cell"><span class="ex-oi" style="width:40px;height:40px" data-obj="${s}"></span><span>${l}</span></div>`).join('');
+}
+function renderAll() {
+  renderColors(); renderContrast(); renderContrastSummary(); renderType(); renderShadow(); renderLegacy(); renderIcons();
+  staticTable('#space-table', 'space', []);
+  staticTable('#size-table', 'size', [['compact', 'コンパクト'], ['narrow', '1140px以下']]);
+  staticTable('#radius-table', 'radius', []);
+  staticTable('#line-table', 'line', []);
+  staticTable('#motion-table', 'motion', []);
+  $('#gen-meta').textContent = `埋め込みトークン: ${DATA.meta.name} v${DATA.meta.version}（${DATA.meta.date}）／ 色 ${DATA.groups.color.length}・仮素材 ${DATA.groups.placeholderIcon.length}・寸法 ${DATA.groups.size.length}・コントラスト組 ${DATA.contrast.length}`;
+}
+
+/* ---------- テーマ ---------- */
+function applyTheme(mode) {
+  const root = document.documentElement;
+  root.dataset.themeMode = mode;
+  if (mode === 'system') root.removeAttribute('data-theme'); else root.dataset.theme = mode;
+  try { localStorage.setItem('ex-ds-theme', mode); } catch (e) {}
+  $$('[data-theme-opt]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeOpt === mode)));
+}
+$$('[data-theme-opt]').forEach((b) => b.addEventListener('click', () => applyTheme(b.dataset.themeOpt)));
+
+/* ---------- 明暗並列（状態見本だけを複製。複製は操作不可） ---------- */
+let pairBuilt = false;
+function buildPairs() {
+  $$('.demo-body.pairable').forEach((body) => {
+    const src = body.querySelector(':scope > .states');
+    if (!src) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'pair-wrap';
+    for (const th of ['light', 'dark']) {
+      const col = document.createElement('div');
+      col.className = 'pair-col' + (body.classList.contains('on-content') ? ' on-content' : '');
+      col.dataset.theme = th;
+      col.setAttribute('inert', '');
+      col.innerHTML = `<div class="pair-h">${th === 'light' ? 'ライト' : 'ダーク'}</div>`;
+      const clone = src.cloneNode(true);
+      clone.querySelectorAll('[id]').forEach((el) => el.removeAttribute('id'));
+      col.appendChild(clone);
+      wrap.appendChild(col);
+    }
+    body.after(wrap);
+  });
+  pairBuilt = true;
+}
+$('#pair-toggle').addEventListener('click', (e) => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  if (on && !pairBuilt) buildPairs();
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  document.body.classList.toggle('pair-on', on);
+});
+
+/* ---------- 目次（生成・絞り込み・現在位置・狭幅ドロワー） ---------- */
+const sections = $$('.doc-sec');
+function buildToc() {
+  let html = '', group = '';
+  for (const s of sections) {
+    if (s.dataset.group !== group) { group = s.dataset.group; html += `<h4 class="ex-side-h" data-toc-group="${esc(group)}">${esc(group)}</h4>`; }
+    html += `<a class="ex-place" href="#${s.id}" data-toc-link="${s.id}" data-group="${esc(group)}"><span class="lbl">${esc(s.dataset.toc)}</span></a>`;
+  }
+  $('#toc-list').innerHTML = html;
+}
+const norm = (s) => s.normalize('NFKC').toLowerCase();
+function filterToc() {
+  const q = norm($('#toc-filter').value.trim());
+  $('#toc-filter-clear').hidden = !q;
+  let shown = 0;
+  const groupsShown = new Set();
+  for (const s of sections) {
+    const link = $(`[data-toc-link="${s.id}"]`);
+    const hay = norm([s.dataset.toc, s.dataset.kw || '', s.dataset.group].join(' '));
+    const ok = !q || q.split(/\s+/).every((w) => hay.includes(w));
+    link.hidden = !ok;
+    if (ok) { shown++; groupsShown.add(s.dataset.group); }
+  }
+  $$('[data-toc-group]').forEach((h) => { h.hidden = !groupsShown.has(h.dataset.tocGroup); });
+  $('#toc-empty').hidden = shown > 0;
+}
+$('#toc-filter').addEventListener('input', filterToc);
+$('#toc-filter').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && e.target.value) { e.target.value = ''; filterToc(); e.stopPropagation(); }
+  if (e.key === 'Enter') { const first = $$('[data-toc-link]').find((a) => !a.hidden); if (first) { first.click(); } }
+});
+$('#toc-filter-clear').addEventListener('click', () => { $('#toc-filter').value = ''; filterToc(); $('#toc-filter').focus(); });
+function setToc(open) {
+  document.body.classList.toggle('toc-open', open);
+  $('#toc-toggle').setAttribute('aria-expanded', String(open));
+  $('#toc-toggle').setAttribute('aria-label', open ? '目次を閉じる' : '目次を開く');
+  if (open) { void $('#toc').offsetWidth; $('#toc-filter').focus({ preventScroll: true }); }
+}
+$('#toc-toggle').addEventListener('click', () => setToc(!document.body.classList.contains('toc-open')));
+$('#toc-list').addEventListener('click', (e) => { if (e.target.closest('a') && matchMedia('(max-width: 900px)').matches) setToc(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('toc-open')) { setToc(false); $('#toc-toggle').focus(); } });
+document.addEventListener('mousedown', (e) => { if (document.body.classList.contains('toc-open') && !e.target.closest('#toc,#toc-toggle')) setToc(false); });
+function trackActive() {
+  let current = sections[0];
+  for (const s of sections) { if (s.getBoundingClientRect().top < 120) current = s; }
+  $$('[data-toc-link]').forEach((a) => { if (a.dataset.tocLink === current.id) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current'); });
+}
+let raf = 0;
+window.addEventListener('scroll', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(trackActive); }, { passive: true });
+
+/* ---------- 展示：ボタン群のトグル ---------- */
+$$('[data-toggle]').forEach((b) => b.addEventListener('click', () => b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'))));
+
+/* ---------- 展示：タブ ---------- */
+const TAB_NAMES = [['ドキュメント', 'docs'], ['ダウンロード', 'down'], ['ピクチャ', 'pics'], ['デスクトップ', 'desk'], ['ホーム', 'home'], ['プロジェクト', ''], ['会議メモ', ''], ['請求書', ''], ['アーカイブ', '']];
+let tabs = [{ id: 1, n: 0 }, { id: 2, n: 1 }, { id: 3, n: 2 }], activeTab = 1, nextTab = 4;
+function renderTabs(focus) {
+  $('#live-tabs').innerHTML = tabs.map((t) => {
+    const [name, g] = TAB_NAMES[t.n % TAB_NAMES.length];
+    const a = t.id === activeTab;
+    return `<div class="ex-tab${a ? ' active' : ''}"><button class="ex-tab-select" role="tab" aria-selected="${a}" tabindex="${a ? 0 : -1}" data-tab="${t.id}"><span class="ex-oi">${folderSvg(g)}</span><span>${esc(name)}</span></button><button class="ex-tab-close" tabindex="-1" data-close-tab="${t.id}" aria-label="${esc(name)}のタブを閉じる" title="タブを閉じる">×</button></div>`;
+  }).join('');
+  const sel = $(`#live-tabs [data-tab="${activeTab}"]`);
+  if (sel) {
+    const strip = $('#live-tabs'), tab = sel.parentElement;
+    if (tab.offsetLeft < strip.scrollLeft) strip.scrollLeft = tab.offsetLeft;
+    else if (tab.offsetLeft + tab.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = tab.offsetLeft + tab.offsetWidth - strip.clientWidth;
+    if (focus) sel.focus({ preventScroll: true });
+  }
+}
+function closeLiveTab(id, focus) {
+  if (tabs.length === 1) { toast('最後のタブは閉じません'); return; }
+  const i = tabs.findIndex((t) => t.id === id);
+  tabs.splice(i, 1);
+  if (activeTab === id) activeTab = tabs[Math.min(i, tabs.length - 1)].id;
+  renderTabs(focus);
+}
+$('#live-tabs').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-close-tab]');
+  if (c) { closeLiveTab(Number(c.dataset.closeTab)); return; }
+  const t = e.target.closest('[data-tab]');
+  if (t) { activeTab = Number(t.dataset.tab); renderTabs(true); }
+});
+$('#live-tabs').addEventListener('keydown', (e) => {
+  let i = tabs.findIndex((t) => t.id === activeTab);
+  if (e.key === 'ArrowRight') i = (i + 1) % tabs.length;
+  else if (e.key === 'ArrowLeft') i = (i - 1 + tabs.length) % tabs.length;
+  else if (e.key === 'Home') i = 0;
+  else if (e.key === 'End') i = tabs.length - 1;
+  else if (e.key === 'Delete') { e.preventDefault(); closeLiveTab(activeTab, true); return; }
+  else return;
+  e.preventDefault(); activeTab = tabs[i].id; renderTabs(true);
+});
+$('#live-tab-add').addEventListener('click', () => { const id = nextTab++; tabs.push({ id, n: id - 1 }); activeTab = id; renderTabs(false); });
+
+/* ---------- 展示用データ ---------- */
+const FILES = [
+  { name: 'プロジェクト', obj: 'folder:', mtime: '2026/11/13 18:02', kind: 'フォルダー', size: -1 },
+  { name: '会議メモ', obj: 'folder:', mtime: '2026/11/12 16:30', kind: 'フォルダー', size: -1 },
+  { name: '2026年度_予算案.xlsx', obj: 'file:xlsx', mtime: '2026/11/14 9:41', kind: 'XLSX ファイル', size: 49357 },
+  { name: '企画書_v3.docx', obj: 'file:docx', mtime: '2026/11/13 21:07', kind: 'DOCX ファイル', size: 1300234 },
+  { name: 'キックオフ資料.pptx', obj: 'file:pptx', mtime: '2026/11/11 19:25', kind: 'PPTX ファイル', size: 7130317 },
+  { name: '契約書_署名済み.pdf', obj: 'file:pdf', mtime: '2026/11/08 12:14', kind: 'PDF ファイル', size: 862208 },
+  { name: '製品仕様書_v3.2.docx', obj: 'file:docx', mtime: '2026/11/05 10:12', kind: 'DOCX ファイル', size: 524288 },
+  { name: 'API設計書_2026Q4.pdf', obj: 'file:pdf', mtime: '2026/10/30 15:40', kind: 'PDF ファイル', size: 2202009 },
+  { name: 'README.md', obj: 'file:md', mtime: '2026/09/18 11:22', kind: 'MD ファイル', size: 3174 },
+  { name: 'ロゴ_最終版.png', obj: 'file:png', mtime: '2026/10/24 15:09', kind: 'PNG ファイル', size: 292864 },
+  { name: 'desktop.ini', obj: 'file:ini', mtime: '2026/04/01 9:00', kind: 'INI ファイル', size: 410, hidden: true },
+];
+const fmtSize = (b) => { if (b < 0) return '—'; if (b < 1024) return b + ' B'; const u = ['KB', 'MB', 'GB']; let v = b / 1024, i = 0; while (v >= 1024 && i < 2) { v /= 1024; i++; } return (v >= 100 ? Math.round(v) : v.toFixed(1)) + ' ' + u[i]; };
+function hl(name, q) {
+  if (!q) return esc(name);
+  const i = norm(name).indexOf(norm(q));
+  if (i < 0) return esc(name);
+  return esc(name.slice(0, i)) + '<mark>' + esc(name.slice(i, i + q.length)) + '</mark>' + esc(name.slice(i + q.length));
+}
+const rowHtml = (f, i, q, extra = '') => `<div class="ex-row${f.hidden ? ' hid' : ''}${extra}" role="option" data-i="${i}" aria-selected="false" id="lr-${i}"><div class="c c-name"><span class="ex-oi">${objSvg(f.obj)}</span><span class="nm">${hl(f.name, q)}</span></div><div class="c c-mod">${f.mtime}</div><div class="c c-kind">${f.kind}</div><div class="c c-size">${fmtSize(f.size)}</div></div>`;
+
+/* ---------- 展示：検索 ---------- */
+function renderSearch() {
+  const q = $('#live-search').value.trim();
+  $('#live-search-clear').hidden = !$('#live-search').value;
+  const list = FILES.filter((f) => !f.hidden && (!q || norm(f.name).includes(norm(q))));
+  $('#live-search-rows').innerHTML = list.length
+    ? list.slice(0, q ? 20 : 4).map((f, i) => rowHtml(f, i, q).replace(/ id="lr-\d+"/, '')).join('') + (q ? '' : '<div class="ex-empty" style="padding:8px;font-size:12px">（入力すると絞り込みます。例: 仕様）</div>')
+    : '<div class="ex-empty"><div>条件に一致する項目はありません</div><button class="ex-btn" data-clear-live-search>フィルターを解除</button></div>';
+}
+$('#live-search').addEventListener('input', renderSearch);
+$('#live-search').addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('#live-search').value = ''; renderSearch(); } });
+$('#live-search-clear').addEventListener('click', () => { $('#live-search').value = ''; renderSearch(); $('#live-search').focus(); });
+$('#live-search-rows').addEventListener('click', (e) => { if (e.target.closest('[data-clear-live-search]')) { $('#live-search').value = ''; renderSearch(); $('#live-search').focus(); } });
+
+/* ---------- 展示：一覧（選択・キーボード・ソート・表示・密度） ---------- */
+const L = { list: FILES.slice(), sel: new Set([3]), active: 3, anchor: 3, sort: { key: 'name', dir: 1 }, view: 'list' };
+const rowsEl = $('#live-rows');
+function sortFiles() {
+  const { key, dir } = L.sort;
+  const names = L.list.map((f) => f.name);
+  const selNames = new Set([...L.sel].map((i) => names[i]));
+  const activeName = names[L.active], anchorName = names[L.anchor];
+  L.list.sort((a, b) => {
+    const da = a.size < 0, db = b.size < 0;
+    if (da !== db) return da ? -1 : 1; // フォルダー優先（モック準拠）
+    let r = 0;
+    if (key === 'name') r = a.name.localeCompare(b.name, 'ja');
+    else if (key === 'mtime') r = a.mtime.localeCompare(b.mtime);
+    else if (key === 'kind') r = a.kind.localeCompare(b.kind, 'ja');
+    else r = a.size - b.size;
+    return r * dir;
+  });
+  const idx = (n) => L.list.findIndex((f) => f.name === n);
+  L.sel = new Set([...selNames].map(idx)); L.active = idx(activeName); L.anchor = idx(anchorName);
+}
+function renderList() {
+  const grid = L.view === 'grid';
+  rowsEl.classList.toggle('grid', grid);
+  $('#live-lh').hidden = grid;
+  rowsEl.innerHTML = L.list.map((f, i) => grid
+    ? `<div class="ex-tile${f.hidden ? ' hid' : ''}" role="option" data-i="${i}" aria-selected="false" id="lr-${i}"><span class="ex-oi">${objSvg(f.obj + ':big')}</span><span class="nm">${esc(f.name)}</span></div>`
+    : rowHtml(f, i, '')).join('');
+  $$('#live-lh [data-sort]').forEach((b) => {
+    const on = b.dataset.sort === L.sort.key;
+    if (on) b.setAttribute('data-active', ''); else b.removeAttribute('data-active');
+    b.innerHTML = b.textContent.trim() + (on ? opSvg(L.sort.dir > 0 ? 'sortUp' : 'sortDown') : '');
+    b.setAttribute('aria-sort', on ? (L.sort.dir > 0 ? 'ascending' : 'descending') : 'none');
+  });
+  refreshSel();
+}
+function refreshSel(scroll) {
+  $$('[data-i]', rowsEl).forEach((el) => {
+    const i = Number(el.dataset.i), s = L.sel.has(i);
+    el.classList.toggle('sel', s); el.setAttribute('aria-selected', String(s));
+    el.classList.toggle('active', i === L.active);
+  });
+  if (L.active >= 0) { rowsEl.setAttribute('aria-activedescendant', 'lr-' + L.active); const a = $('#lr-' + L.active); if (a && scroll) a.scrollIntoView({ block: 'nearest' }); }
+  $('#live-count').textContent = `${L.list.length} 項目`;
+  const total = [...L.sel].reduce((s, i) => s + Math.max(0, L.list[i].size), 0);
+  $('#live-sel').textContent = L.sel.size ? `${L.sel.size} 項目を選択${total ? `（${fmtSize(total)}）` : ''}` : '';
+  $('#live-focus').textContent = rowsEl.classList.contains('focused') ? (rowsEl.classList.contains('kbd') ? 'フォーカス中・キーボード' : 'フォーカス中') : '非アクティブ';
+}
+function selectRange(a, b) { L.sel = new Set(); for (let i = Math.min(a, b); i <= Math.max(a, b); i++) L.sel.add(i); }
+function moveTo(i, e) {
+  i = Math.max(0, Math.min(L.list.length - 1, i));
+  if (e.shiftKey) selectRange(L.anchor >= 0 ? L.anchor : i, i);
+  else if (!(e.ctrlKey || e.metaKey)) { L.sel = new Set([i]); L.anchor = i; }
+  L.active = i; refreshSel(true);
+}
+rowsEl.addEventListener('mousedown', (e) => {
+  rowsEl.classList.remove('kbd');
+  const it = e.target.closest('[data-i]');
+  if (!it) { if (!e.ctrlKey && !e.shiftKey) { L.sel.clear(); refreshSel(); } return; }
+  const i = Number(it.dataset.i);
+  if (e.shiftKey) selectRange(L.anchor >= 0 ? L.anchor : i, i);
+  else if (e.ctrlKey || e.metaKey) { if (L.sel.has(i)) L.sel.delete(i); else L.sel.add(i); L.anchor = i; }
+  else { L.sel = new Set([i]); L.anchor = i; }
+  L.active = i; refreshSel();
+});
+rowsEl.addEventListener('keydown', (e) => {
+  rowsEl.classList.add('kbd');
+  const k = e.key, ctrl = e.ctrlKey || e.metaKey, cols = L.view === 'grid' ? Math.max(1, Math.round(rowsEl.clientWidth / 128)) : 1;
+  let handled = true;
+  if (k === 'ArrowDown') moveTo(L.active + cols, e);
+  else if (k === 'ArrowUp') moveTo(L.active - cols, e);
+  else if (k === 'ArrowRight' && L.view === 'grid') moveTo(L.active + 1, e);
+  else if (k === 'ArrowLeft' && L.view === 'grid') moveTo(L.active - 1, e);
+  else if (k === 'Home') moveTo(0, e);
+  else if (k === 'End') moveTo(L.list.length - 1, e);
+  else if (k === 'a' && ctrl) { L.sel = new Set(L.list.map((_, i) => i)); refreshSel(); }
+  else if (k === 'Escape') { L.sel.clear(); refreshSel(); }
+  else if (k === ' ' && ctrl) { if (L.sel.has(L.active)) L.sel.delete(L.active); else L.sel.add(L.active); refreshSel(); }
+  else if (k === 'Enter') toast('展示のため開きません: ' + L.list[L.active].name);
+  else handled = false;
+  if (handled) e.preventDefault();
+});
+rowsEl.addEventListener('focus', () => { rowsEl.classList.add('focused'); refreshSel(); });
+rowsEl.addEventListener('blur', () => { rowsEl.classList.remove('focused', 'kbd'); refreshSel(); });
+$('#live-lh').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-sort]'); if (!b) return;
+  L.sort = { key: b.dataset.sort, dir: L.sort.key === b.dataset.sort ? -L.sort.dir : 1 };
+  sortFiles(); renderList();
+});
+function setView(v) { L.view = v; $('#live-view-list').setAttribute('aria-pressed', String(v === 'list')); $('#live-view-grid').setAttribute('aria-pressed', String(v === 'grid')); renderList(); }
+$('#live-view-list').addEventListener('click', () => setView('list'));
+$('#live-view-grid').addEventListener('click', () => setView('grid'));
+$$('[data-density-opt]').forEach((b) => b.addEventListener('click', () => {
+  $$('[data-density-opt]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  if (b.dataset.densityOpt === 'compact') $('#live-list').dataset.density = 'compact'; else delete $('#live-list').dataset.density;
+}));
+
+/* ---------- 展示：サイドバー ---------- */
+$('#live-sidebar').addEventListener('click', (e) => {
+  const b = e.target.closest('.ex-place'); if (!b) return;
+  $$('#live-sidebar .ex-place').forEach((x) => x.removeAttribute('aria-current'));
+  b.setAttribute('aria-current', 'page');
+});
+
+/* ---------- 展示：メニュー ---------- */
+const menuBtn = $('#live-menu-btn'), menu = $('#live-menu');
+const menuItems = () => $$('.ex-mi:not(:disabled)', menu);
+function setCur(el) { $$('.ex-mi', menu).forEach((m) => m.classList.toggle('cur', m === el)); if (el) el.focus(); }
+function openMenu() { menu.hidden = false; menuBtn.setAttribute('aria-expanded', 'true'); setCur(menuItems()[0]); }
+function closeMenu(focusBtn) { menu.hidden = true; menuBtn.setAttribute('aria-expanded', 'false'); if (focusBtn) menuBtn.focus(); }
+menuBtn.addEventListener('click', () => (menu.hidden ? openMenu() : closeMenu(true)));
+menuBtn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' && menu.hidden) { e.preventDefault(); openMenu(); } });
+function activate(mi) {
+  if (mi.getAttribute('role') === 'menuitemradio') $$(`[data-group="${mi.dataset.group}"]`, menu).forEach((m) => m.setAttribute('aria-checked', String(m === mi)));
+  else if (mi.getAttribute('role') === 'menuitemcheckbox') mi.setAttribute('aria-checked', String(mi.getAttribute('aria-checked') !== 'true'));
+  closeMenu(true);
+}
+menu.addEventListener('keydown', (e) => {
+  const items = menuItems(), i = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); setCur(items[(i + 1) % items.length]); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); setCur(items[(i - 1 + items.length) % items.length]); }
+  else if (e.key === 'Home') { e.preventDefault(); setCur(items[0]); }
+  else if (e.key === 'End') { e.preventDefault(); setCur(items[items.length - 1]); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(true); }
+  else if (e.key === 'Tab') closeMenu(false);
+  else if ((e.key === 'Enter' || e.key === ' ') && i >= 0) { e.preventDefault(); activate(items[i]); }
+});
+menu.addEventListener('mousemove', (e) => { const mi = e.target.closest('.ex-mi:not(:disabled)'); if (mi && !mi.classList.contains('cur')) setCur(mi); });
+menu.addEventListener('click', (e) => { const mi = e.target.closest('.ex-mi:not(:disabled)'); if (mi) activate(mi); });
+document.addEventListener('mousedown', (e) => { if (!menu.hidden && !e.target.closest('.menu-anchor')) closeMenu(false); });
+
+/* ---------- 展示：ダイアログ ---------- */
+$('#live-dialog-open').addEventListener('click', () => $('#live-dialog').showModal());
+
+/* ---------- 組み合わせ例の一覧 ---------- */
+$('#compose-list').innerHTML = '<div class="ex-lh"><div class="ex-hc c-name"><button class="ex-hbtn" data-active>名前' + opSvg('sortUp') + '</button></div><div class="ex-hc c-mod"><button class="ex-hbtn">更新日時</button></div><div class="ex-hc c-size"><button class="ex-hbtn">サイズ</button></div></div>' +
+  '<div class="ex-rows focused">' + FILES.filter((f) => !f.hidden).slice(0, 10).map((f, i) => rowHtml(f, i, '', f.name === '企画書_v3.docx' ? ' sel' : '').replace(/ id="lr-\d+"/, '')).join('') + '</div>';
+
+/* ---------- 起動 ---------- */
+renderAll();
+buildToc();
+applyTheme(document.documentElement.dataset.themeMode || 'light');
+renderTabs(false);
+renderSearch();
+sortFiles();
+renderList();
+hydrateIcons();
+filterToc();
+trackActive();
+</script>
+</body>
+</html>

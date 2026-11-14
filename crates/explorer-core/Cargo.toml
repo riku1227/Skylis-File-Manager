@@ -1,0 +1,12 @@
+[package]
+name = "explorer-core"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# GPUIには依存しない。ファイルシステム・ソート・履歴などUI非依存のロジック。
+[dependencies]
+chrono.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

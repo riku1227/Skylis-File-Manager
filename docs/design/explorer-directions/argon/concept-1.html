@@ -1,0 +1,1996 @@
+<!doctype html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ドキュメント — 案1: Prism Canopy</title>
+<script>
+  (function () {
+    var mode = 'light', icons = 'win';
+    try {
+      mode = localStorage.getItem('argon-c1-theme') || 'light';
+      icons = localStorage.getItem('argon-c1-icons') || 'win';
+    } catch (e) {}
+    var root = document.documentElement;
+    var dark = mode === 'dark' || (mode === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+    root.dataset.theme = dark ? 'dark' : 'light';
+    root.dataset.themeMode = mode;
+    root.dataset.icons = icons;
+  })();
+</script>
+<style>
+/* ==========================================================================
+   案1: Prism Canopy（プリズム・キャノピー）
+   「無彩色のグレー箱」を脱却し、暖かみのある明るい磁器（ポーセリン）キャンバス上に、
+   微細なスペキュラ境界を持つカプセル型フローティングガラス・キャノピーとアイランドを配置。
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  /* タイポグラフィ */
+  --font-ui: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI",
+             -apple-system, BlinkMacSystemFont, "Hiragino Sans", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  --fs-hero: 20px;
+  --fs-title: 15px;
+  --fs-body: 13.5px;
+  --fs-small: 12px;
+  --fs-caption: 11px;
+  --lh-body: 1.45;
+  --fw-medium: 500;
+  --fw-strong: 600;
+  --fw-bold: 700;
+
+  /* 空間・キャンバス（グレーを排除した明るく軽やかなウォームアイボリー＆スカイ） */
+  --bg-ambient: #f5f7fa;
+  --bg-ambient-solid: #f6f8fc;
+  --bg-stage: #ffffff;
+  --bg-glass: #fafbfd;
+  --bg-glass-strong: #fafbfd;
+  --bg-pill: #f1f4f9;
+  --bg-pill-focus: #ffffff;
+  --bg-well: #f5f7fb;
+  --bg-elevated: #ffffff;
+
+  /* インタラクション・選択状態（ルミナス・コバルトカプセル） */
+  --bg-hover: rgba(37, 99, 235, 0.055);
+  --bg-pressed: rgba(37, 99, 235, 0.10);
+  --bg-nav-active: #2864e8;
+  --text-nav-active: #ffffff;
+  --bg-selected: #e8effc;
+  --bg-selected-solid: #e8f0fe;
+  --border-selected: rgba(37, 99, 235, 0.32);
+  --bg-selected-inactive: rgba(148, 163, 184, 0.14);
+  --bg-menu-hover: #2563eb;
+  --text-on-menu: #ffffff;
+  --match-bg: rgba(251, 191, 36, 0.38);
+
+  /* 境界とスペキュラ（光沢）エッジ */
+  --border-subtle: rgba(15, 23, 42, 0.06);
+  --border-glass: rgba(255, 255, 255, 0.85);
+  --border-outer: rgba(15, 23, 42, 0.075);
+  --specular-inset: none;
+
+  /* テキストとアクセント */
+  --text: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-disabled: #cbd5e1;
+  --icon: #475569;
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --focus: #2563eb;
+  --focus-ring: rgba(37, 99, 235, 0.25);
+  --meter: #3b82f6;
+  --meter-warn: #f59e0b;
+
+  /* 奥行き・シャドウ */
+  --shadow-canopy: none;
+  --shadow-island: none;
+  --shadow-pill: none;
+  --shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.14);
+  --backdrop: rgba(15, 23, 42, 0.24);
+  --scroll-thumb: rgba(100, 116, 139, 0.26);
+
+  /* OSアイコン代用色（Windows標準風・鮮やかで視認性の高いカラー） */
+  --obj-folder: #fbbf24;
+  --obj-folder-back: #d97706;
+  --obj-folder-glyph: #78350f;
+  --obj-page: #ffffff;
+  --obj-page-fold: #e2e8f0;
+  --obj-page-edge: #94a3b8;
+  --obj-text-line: #94a3b8;
+  --obj-xls: #10b981;
+  --obj-csv: #059669;
+  --obj-doc: #2563eb;
+  --obj-ppt: #ea580c;
+  --obj-pdf: #dc2626;
+  --obj-zip: #d97706;
+  --obj-exe: #475569;
+  --obj-vid: #7c3aed;
+  --obj-code: #0284c7;
+  --obj-img-sky: #bae6fd;
+  --obj-img-hill: #34d399;
+  --obj-img-sun: #fbbf24;
+  --obj-drive: #cbd5e1;
+  --obj-drive-dark: #64748b;
+  --obj-drive-led: #22c55e;
+  --obj-drive-mark: #3b82f6;
+  --obj-badge-text: #ffffff;
+
+  /* サンプル画像カラー */
+  --sample-sky: #dbeafe;
+  --sample-sky-2: #ffedd5;
+  --sample-hill: #34d399;
+  --sample-hill-2: #059669;
+  --sample-sun: #fbbf24;
+  --sample-water: #38bdf8;
+  --sample-paper: #ffffff;
+  --sample-ui: #f1f5f9;
+  --sample-ui-2: #e2e8f0;
+  --sample-line: #cbd5e1;
+
+  /* 寸法・角丸（Concentric R設計） */
+  --r-window: 18px;
+  --r-island: 10px;
+  --r-canopy: 10px;
+  --r-row: 6px;
+  --r-pill: 999px;
+  --r-md: 8px;
+  --r-sm: 6px;
+
+  --h-canopy: 44px;
+  --h-row: 28px;
+  --h-header: 28px;
+  --w-sidebar: 200px;
+  --w-pane: 268px;
+  --w-tile: 118px;
+  --w-col-mod: 144px;
+  --w-col-kind: 136px;
+  --w-col-size: 92px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* 空間・キャンバス（単調な灰色や純黒を避けた、ニュートラルなチャコールの明度階層） */
+  --bg-ambient: #191919;
+  --bg-ambient-solid: #191919;
+  --bg-stage: #191919;
+  --bg-glass: #242424;
+  --bg-glass-strong: #242424;
+  --bg-pill: #1c1c1c;
+  --bg-pill-focus: #292929;
+  --bg-well: #141414;
+  --bg-elevated: #2c2c2c;
+
+  /* インタラクション・選択状態（暗面上で澄んで見えるルミナス・コバルトカプセル） */
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-pressed: rgba(255, 255, 255, 0.11);
+  --bg-nav-active: #245cce;
+  --text-nav-active: #ffffff;
+  --bg-selected: #25344c;
+  --bg-selected-solid: #1b2e52;
+  --border-selected: rgba(96, 165, 250, 0.56);
+  --bg-selected-inactive: rgba(180, 180, 180, 0.14);
+  --bg-menu-hover: #2563eb;
+  --text-on-menu: #ffffff;
+  --match-bg: rgba(245, 158, 11, 0.34);
+
+  /* 境界とスペキュラ（光学エッジ） */
+  --border-subtle: rgba(180, 180, 180, 0.12);
+  --border-glass: rgba(255, 255, 255, 0.14);
+  --border-outer: rgba(180, 180, 180, 0.16);
+  --specular-inset: none;
+
+  /* テキストとアクセント（通常・選択・補助文字すべて 4.5:1 以上、非テキスト 3:1 以上） */
+  --text: #f2f2f2;
+  --text-secondary: #cecece;
+  --text-muted: #adadad;
+  --text-disabled: #626262;
+  --icon: #bdbdbd;
+  --accent: #76b8ff;
+  --accent-soft: rgba(59, 130, 246, 0.20);
+  --focus: #60a5fa;
+  --focus-ring: rgba(96, 165, 250, 0.32);
+
+  /* 奥行き・シャドウ */
+  --shadow-canopy: none;
+  --shadow-island: none;
+  --shadow-pill: none;
+  --shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --scroll-thumb: rgba(180, 180, 180, 0.28);
+
+  /* 仮SVGの紙面色のみ調整。本番のOS取得アイコンには色変更を加えない。 */
+  --obj-page: #e8e8e8;
+  --obj-page-fold: #a3a3a3;
+  --obj-page-edge: #737373;
+  --obj-text-line: #737373;
+
+  /* サンプル画像プレビュー背景も暗面での眩しさを抑えつつ色彩を維持 */
+  --sample-paper: #292929;
+  --sample-ui: #414141;
+  --sample-ui-2: #555555;
+}
+
+:root[data-icons="mac"] {
+  --obj-folder: #60a5fa;
+  --obj-folder-back: #3b82f6;
+  --obj-folder-glyph: #1d4ed8;
+}
+
+:root[data-density="compact"] {
+  --h-row: 24px;
+}
+
+@media (max-width: 1140px) {
+  :root {
+    --w-sidebar: 196px;
+    --w-pane: 268px;
+  }
+}
+
+/* ==========================================================================
+   ベースレイアウト
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  min-width: 960px;
+  min-height: 600px;
+  background: var(--bg-ambient);
+  color: var(--text);
+  font: var(--fs-body)/var(--lh-body) var(--font-ui);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ico { width: 16px; height: 16px; flex: none; display: block; }
+.oi { width: 18px; height: 18px; flex: none; display: block; }
+.oi svg, .hero-icon svg { width: 100%; height: 100%; display: block; }
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+
+/* 初期PoCの密度に合わせた6px間隔の作業面と固定情報バー */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 6px 6px 0;
+  gap: 6px;
+}
+
+.tabbar { display: flex; align-items: center; gap: 4px; height: 32px; flex: none; padding: 0 4px; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; min-width: 0; scrollbar-width: thin; }
+.tab-entry { display: flex; align-items: center; flex: 0 0 180px; min-width: 0; height: 30px; border: 1px solid transparent; border-radius: 8px; color: var(--text-secondary); }
+.tab-entry.active { background: var(--bg-stage); border-color: var(--border-outer); color: var(--text); box-shadow: none; }
+.tab-entry:hover { background: var(--bg-hover); }
+.tab-entry.active:hover { background: var(--bg-stage); }
+.tab-select { display: flex; align-items: center; gap: 7px; background: transparent; border: 0; min-width: 0; flex: 1; height: 100%; padding: 0 8px; text-align: left; font-size: var(--fs-small); }
+.tab-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-select .oi { width: 16px; height: 16px; }
+.tab-close, .tab-add { display: grid; place-items: center; border: 0; background: transparent; color: var(--text-secondary); border-radius: 5px; flex: none; }
+.tab-close { width: 22px; height: 22px; margin-right: 4px; }
+.tab-add { width: 28px; height: 28px; font-size: 21px; }
+.tab-close:hover, .tab-add:hover { background: var(--bg-pressed); color: var(--text); }
+/* ---------- 上部：フローティング・ガラスキャノピー ---------- */
+.canopy {
+  flex: none;
+  height: var(--h-canopy);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: var(--bg-glass);
+  backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid var(--border-outer);
+  border-radius: var(--r-canopy);
+  box-shadow: none;
+}
+
+.nav-cluster {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-pill);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-subtle);
+}
+
+.ibtn {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--icon);
+  transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
+}
+.ibtn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.ibtn:active:not(:disabled) { background: var(--bg-pressed); transform: scale(0.96); }
+.ibtn:disabled { color: var(--text-disabled); cursor: default; }
+.ibtn[aria-pressed="true"], .ibtn[aria-expanded="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ibtn.sm { width: 24px; height: 24px; }
+.ibtn.sm .ico { width: 14px; height: 14px; }
+
+/* カプセル型パンくずバー */
+.address {
+  flex: 1 1 0;
+  min-width: 200px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  background: var(--bg-pill);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
+  box-shadow: none;
+  overflow: hidden;
+}
+.address > .oi { margin-right: 4px; }
+.crumbs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  gap: 2px;
+}
+.crumbs li { display: flex; align-items: center; flex: none; min-width: 0; }
+.crumbs li[hidden] { display: none; }
+.crumbs li.shrink { flex: 0 1 auto; }
+.crumb {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.crumb:hover { background: var(--bg-hover); color: var(--text); }
+.crumb[aria-current="page"] {
+  background: var(--bg-stage);
+  color: var(--text);
+  font-weight: var(--fw-strong);
+  box-shadow: none;
+}
+.crumb-sep { color: var(--text-disabled); display: flex; padding: 0 1px; }
+.crumb-sep .ico { width: 12px; height: 12px; }
+
+/* カプセル検索バー */
+.search {
+  flex: 0 1 256px;
+  min-width: 160px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 14px;
+  background: var(--bg-pill);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
+  color: var(--icon);
+  transition: all 0.15s ease;
+}
+.search:focus-within {
+  background: var(--bg-pill-focus);
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.search input::placeholder { color: var(--text-muted); }
+.search input::-webkit-search-cancel-button { display: none; }
+.search .ibtn[hidden] { display: none; }
+
+/* セグメントスイッチ */
+.seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-pill);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
+  flex: none;
+}
+.seg .ibtn { width: 30px; height: 28px; }
+.seg .ibtn[aria-pressed="true"] {
+  background: var(--bg-stage);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+/* ---------- ワークスペース本体（3つのアイランド構造） ---------- */
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 6px;
+}
+
+/* 左アイランド：ガラス・ナビゲーションドック */
+.sidebar {
+  flex: none;
+  width: var(--w-sidebar);
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--bg-glass);
+  backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid var(--border-outer);
+  border-radius: var(--r-island);
+  box-shadow: none;
+  overflow-y: auto;
+}
+.side-h {
+  margin: 0;
+  padding: 10px 10px 6px;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.side-h:first-child { padding-top: 2px; }
+.side-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.place {
+  position: relative;
+  width: 100%;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.place:hover { background: var(--bg-hover); color: var(--text); }
+.place[aria-current="page"] {
+  background: var(--bg-nav-active);
+  color: var(--text-nav-active);
+  font-weight: var(--fw-strong);
+  box-shadow: none;
+}
+.place .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ドライブカード */
+.place.drive {
+  align-items: flex-start;
+  padding: 6px 10px;
+  background: var(--bg-pill);
+  border: 1px solid var(--border-subtle);
+  margin-top: 4px;
+}
+.place.drive[aria-current="page"] {
+  background: var(--bg-nav-active);
+  border-color: transparent;
+}
+.place.drive[aria-current="page"] .drive-free { color: rgba(255, 255, 255, 0.85); }
+.place.drive[aria-current="page"] .meter { background: rgba(255, 255, 255, 0.25); }
+.place.drive[aria-current="page"] .meter > span { background: #ffffff; }
+.drive-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.meter { height: 5px; border-radius: 99px; background: rgba(148, 163, 184, 0.22); overflow: hidden; }
+.meter > span { display: block; height: 100%; border-radius: 99px; background: var(--meter); }
+.meter.warn > span { background: var(--meter-warn); }
+.drive-free { font-size: var(--fs-caption); color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+
+/* 中央アイランド：ピュアステージ（ファイル一覧が主役） */
+.stage {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-stage);
+  border: 1px solid var(--border-outer);
+  border-radius: var(--r-island);
+  box-shadow: none;
+  overflow: hidden;
+  position: relative;
+  container-type: inline-size;
+  container-name: main;
+}
+
+/* リストスクローラー */
+.scroller {
+  --cols: minmax(200px, 1fr) var(--w-col-mod) var(--w-col-kind) var(--w-col-size);
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+@container main (max-width: 610px) {
+  .scroller { --cols: minmax(160px, 1fr) var(--w-col-mod) var(--w-col-size); }
+  .c-kind { display: none !important; }
+}
+@container main (max-width: 440px) {
+  .scroller { --cols: minmax(140px, 1fr) var(--w-col-size); }
+  .c-mod { display: none !important; }
+}
+
+.lh {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: var(--h-header);
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  padding: 0 6px;
+  background: var(--bg-glass-strong);
+  backdrop-filter: none;
+  backdrop-filter: none;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--fs-small);
+}
+.lh[hidden] { display: none; }
+.hc { display: flex; min-width: 0; }
+.hbtn {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: var(--fw-strong);
+  white-space: nowrap;
+}
+.hbtn:hover { background: var(--bg-hover); color: var(--text); }
+.hbtn[data-active] { color: var(--accent); }
+.hbtn .ico { width: 12px; height: 12px; color: currentColor; }
+.hc.c-size .hbtn { justify-content: flex-end; }
+.hc.c-name .hbtn { padding-left: 38px; }
+
+.rows {
+  padding: 2px 6px 4px;
+  outline: none;
+  min-height: calc(100% - var(--h-header));
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.row {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  height: var(--h-row);
+  border-radius: var(--r-row);
+  border: 1px solid transparent;
+  color: var(--text);
+  transition: background 0.08s ease;
+}
+.c {
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.c-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: var(--fw-medium);
+}
+.nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.c-mod, .c-kind, .c-size {
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+.c-size { text-align: right; }
+
+.row:hover, .tile:hover { background: var(--bg-hover); }
+.row.sel, .tile.sel {
+  background: var(--bg-selected-inactive);
+}
+.rows.focused .row.sel, .rows.focused .tile.sel {
+  background: var(--bg-selected);
+  border-color: var(--border-selected);
+}
+.rows.focused .row.sel .c-name {
+  color: var(--accent);
+  font-weight: var(--fw-strong);
+}
+.rows.kbd.focused .active {
+  box-shadow: 0 0 0 2px var(--focus);
+}
+.row.hid .nm, .tile.hid .nm { color: var(--text-muted); }
+.row.hid .oi, .tile.hid .oi { opacity: 0.48; }
+mark { background: var(--match-bg); color: inherit; border-radius: 3px; padding: 0 2px; }
+
+/* グリッド表示 */
+.rows.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--w-tile), 1fr));
+  align-content: start;
+  gap: 10px;
+  padding: 8px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px 12px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  text-align: center;
+}
+.tile .oi { width: 52px; height: 52px; filter: none; }
+.tile .nm {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  position: absolute;
+  inset: 90px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  pointer-events: none;
+}
+.empty[hidden] { display: none; }
+.empty .btn { pointer-events: auto; }
+
+/* 下端に固定。リストへ重ならず、全幅で件数・選択情報を表示する。 */
+.status-bar {
+  flex: none;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-glass);
+  margin: 0 -6px;
+  padding: 0 10px;
+}
+.status-pill {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.status-pill:first-child { flex: 1; overflow: hidden; }
+.status-pill .notice { overflow: hidden; text-overflow: ellipsis; }.status-pill .sep { width: 1px; height: 12px; background: var(--border-outer); }
+.status-pill .sel-badge { color: var(--accent); font-weight: var(--fw-strong); }
+.status-pill .notice { color: var(--text); font-weight: var(--fw-medium); }
+
+.sbtn {
+  height: 24px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+}
+.sbtn:hover { background: var(--bg-hover); color: var(--text); }
+.sbtn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.sbtn .ico { width: 13px; height: 13px; }
+.sbtn.proto { border: 1px dashed var(--border-selected); color: var(--accent); }
+
+/* 右アイランド：インスペクタカード */
+.pane {
+  flex: none;
+  width: var(--w-pane);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-glass);
+  backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid var(--border-outer);
+  border-radius: var(--r-island);
+  box-shadow: none;
+  overflow: hidden;
+}
+.pane[hidden] { display: none; }
+.pane-head {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 18px;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.hero {
+  height: 156px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--bg-stage);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: none;
+  overflow: hidden;
+}
+.hero.image svg { width: 100%; height: 100%; display: block; }
+.hero-icon { width: 68px; height: 68px; filter: none; }
+.stack { position: relative; width: 88px; height: 74px; }
+.stack .hero-icon { position: absolute; width: 56px; height: 56px; }
+.p-name { margin: 0; font-size: var(--fs-title); font-weight: var(--fw-bold); line-height: 1.35; overflow-wrap: anywhere; }
+.p-kind {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-strong);
+}
+.props-card {
+  padding: 12px 14px;
+  background: var(--bg-stage);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+.props {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  margin: 0;
+  font-size: var(--fs-small);
+}
+.props dt { color: var(--text-muted); white-space: nowrap; }
+.props dd { margin: 0; color: var(--text); font-weight: var(--fw-medium); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.sec-h { margin: 0 0 8px; font-size: var(--fs-caption); font-weight: var(--fw-bold); color: var(--text-muted); }
+.pre {
+  margin: 0;
+  max-height: 190px;
+  overflow: auto;
+  padding: 12px;
+  font: 11.5px/1.55 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg-stage);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn {
+  height: 32px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-outer);
+  border-radius: var(--r-pill);
+  background: var(--bg-stage);
+  color: var(--text);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-strong);
+  box-shadow: none;
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #ffffff;
+}
+.btn.primary .ico { color: #ffffff; }
+.btn:hover { filter: brightness(0.97); }
+.btn .ico { width: 14px; height: 14px; color: var(--icon); }
+
+/* メニュー・ダイアログ */
+.menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 224px;
+  padding: 6px;
+  background: var(--bg-elevated);
+  backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid var(--border-outer);
+  border-radius: 12px;
+  box-shadow: var(--shadow-popover);
+  outline: none;
+}
+.menu[hidden] { display: none; }
+.mi {
+  width: 100%;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+.mi .chk { width: 14px; height: 14px; visibility: hidden; color: currentColor; }
+.mi[aria-checked="true"] .chk { visibility: visible; }
+.mi .kbd { margin-left: auto; padding-left: 18px; color: var(--text-muted); font-size: 11.5px; }
+.mi.cur { background: var(--bg-menu-hover); color: var(--text-on-menu); }
+.mi.cur .kbd { color: rgba(255, 255, 255, 0.8); }
+.msep { height: 1px; margin: 5px 6px; background: var(--border-subtle); }
+.mh { padding: 6px 10px 2px 32px; font-size: 11px; font-weight: var(--fw-bold); color: var(--text-muted); }
+
+dialog.spec {
+  width: min(760px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 1px solid var(--border-outer);
+  border-radius: 16px;
+  background: var(--bg-stage);
+  color: var(--text);
+  box-shadow: var(--shadow-popover);
+  user-select: text;
+}
+dialog.spec::backdrop { background: var(--backdrop); backdrop-filter: none; }
+dialog.spec[open] { display: flex; flex-direction: column; }
+.spec-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 50px;
+  padding: 0 14px 0 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.spec-head h2 { margin: 0; font-size: 15px; font-weight: var(--fw-bold); flex: 1; }
+.spec-body {
+  overflow: auto;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px 24px;
+  font-size: var(--fs-small);
+}
+.spec-body section.wide { grid-column: 1 / -1; }
+.spec-body h3 { margin: 0 0 8px; font-size: 12px; font-weight: var(--fw-bold); color: var(--accent); }
+.spec-body p { margin: 0 0 8px; line-height: 1.6; color: var(--text-secondary); }
+.seg.text { display: inline-flex; }
+.seg.text .opt {
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+}
+.seg.text .opt[aria-pressed="true"] {
+  background: var(--bg-stage);
+  color: var(--accent);
+  font-weight: var(--fw-strong);
+  box-shadow: none;
+}
+
+/* ---------- ダークテーマ専用：Prism Canopy 空間階層・質感・コントラスト調整 ---------- */
+:root[data-theme="dark"] .tab-entry {
+  background: rgba(29, 29, 29, 0.54);
+  border-color: rgba(180, 180, 180, 0.10);
+  color: var(--text-secondary);
+}
+:root[data-theme="dark"] .tab-entry:hover {
+  background: rgba(45, 45, 45, 0.76);
+  border-color: rgba(180, 180, 180, 0.20);
+  color: var(--text);
+}
+:root[data-theme="dark"] .tab-entry.active,
+:root[data-theme="dark"] .tab-entry.active:hover {
+  background: #343434;
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fafafa;
+  box-shadow: none;
+}
+:root[data-theme="dark"] .tab-entry.active .tab-select {
+  font-weight: var(--fw-strong);
+}
+:root[data-theme="dark"] .crumb[aria-current="page"] {
+  background: #353535;
+  color: #fafafa;
+  box-shadow: none;
+}
+:root[data-theme="dark"] .seg .ibtn[aria-pressed="true"],
+:root[data-theme="dark"] .seg.text .opt[aria-pressed="true"] {
+  background: #353535;
+  color: var(--accent);
+  box-shadow: none;
+}
+:root[data-theme="dark"] .place[aria-current="page"] {
+  box-shadow: none;
+}
+:root[data-theme="dark"] .stage {
+  border-color: rgba(180, 180, 180, 0.18);
+}
+:root[data-theme="dark"] .row.sel,
+:root[data-theme="dark"] .tile.sel {
+  border-color: rgba(180, 180, 180, 0.22);
+}
+:root[data-theme="dark"] .rows.focused .row.sel,
+:root[data-theme="dark"] .rows.focused .tile.sel {
+  background: var(--bg-selected);
+  border-color: var(--border-selected);
+  box-shadow: none;
+}
+:root[data-theme="dark"] .rows.focused .row.sel .c-name {
+  color: #fafafa;
+}
+:root[data-theme="dark"] .rows.focused .row.sel .c-mod,
+:root[data-theme="dark"] .rows.focused .row.sel .c-kind,
+:root[data-theme="dark"] .rows.focused .row.sel .c-size {
+  color: #cecece;
+}
+:root[data-theme="dark"] mark {
+  color: #fef3c7;
+}
+:root[data-theme="dark"] .tile .oi,
+:root[data-theme="dark"] .hero-icon {
+  filter: none;
+}
+:root[data-theme="dark"] .status-bar {
+  background: #202020;
+  border-top-color: rgba(180, 180, 180, 0.15);
+  box-shadow: none;
+}
+:root[data-theme="dark"] .hero,
+:root[data-theme="dark"] .props-card,
+:root[data-theme="dark"] .pre {
+  background: #1c1c1c;
+  border-color: rgba(180, 180, 180, 0.14);
+  box-shadow: none;
+}
+:root[data-theme="dark"] .p-kind {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-secondary);
+}
+:root[data-theme="dark"] .btn {
+  background: #333333;
+  border-color: rgba(180, 180, 180, 0.24);
+  color: var(--text);
+  box-shadow: none;
+}
+:root[data-theme="dark"] .btn:hover {
+  background: #3e3e3e;
+  border-color: rgba(180, 180, 180, 0.36);
+  filter: none;
+}
+:root[data-theme="dark"] .btn.primary {
+  background: #2563eb;
+  border-color: rgba(147, 197, 253, 0.36);
+  color: #ffffff;
+  box-shadow: none;
+}
+:root[data-theme="dark"] .btn.primary:hover {
+  background: #3b82f6;
+  filter: none;
+}
+:root[data-theme="dark"] .mi:hover:not(.cur) {
+  background: var(--bg-hover);
+}
+:root[data-theme="dark"] dialog.spec {
+  background: #262626;
+  border-color: rgba(180, 180, 180, 0.22);
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- 上部：フローティング・ガラスキャノピー -->
+  <div class="tabbar" aria-label="フォルダータブ">
+    <div class="tabs" id="tabs" role="tablist" aria-label="開いているフォルダー"></div>
+    <button class="tab-add" id="tab-add" aria-label="新しいタブ" title="新しいタブ (Ctrl+T)">+</button>
+  </div>
+  <header class="canopy">
+    <div class="nav-cluster" role="group" aria-label="履歴と階層移動">
+      <button class="ibtn" id="btn-back" data-icon="back" aria-label="戻る" title="戻る (Alt+←)"></button>
+      <button class="ibtn" id="btn-fwd" data-icon="forward" aria-label="進む" title="進む (Alt+→)"></button>
+      <button class="ibtn" id="btn-up" data-icon="up" aria-label="上の階層へ" title="上の階層へ (Alt+↑)"></button>
+      <button class="ibtn" id="btn-refresh" data-icon="refresh" aria-label="最新の情報に更新" title="最新の情報に更新 (F5)"></button>
+    </div>
+
+    <nav class="address" aria-label="現在の場所">
+      <span class="oi" id="addr-icon" aria-hidden="true"></span>
+      <ol class="crumbs" id="crumbs"></ol>
+    </nav>
+
+    <div class="search" role="search">
+      <span data-icon="search" aria-hidden="true"></span>
+      <input type="search" id="search" autocomplete="off" spellcheck="false" aria-label="現在のフォルダー内を検索">
+      <button class="ibtn sm" id="search-clear" data-icon="x" aria-label="検索をクリア" title="検索をクリア (Esc)" hidden></button>
+    </div>
+
+    <div class="seg" role="group" aria-label="表示方法">
+      <button class="ibtn" id="view-details" data-icon="list" aria-label="詳細リスト" title="詳細リスト" aria-pressed="true"></button>
+      <button class="ibtn" id="view-icons" data-icon="grid" aria-label="グリッドアイコン" title="グリッドアイコン" aria-pressed="false"></button>
+    </div>
+
+    <div class="nav-cluster">
+      <button class="ibtn" id="btn-theme" data-icon="sun" aria-label="テーマ切替" title="ライト / ダーク切替"></button>
+      <button class="ibtn" id="btn-pane" data-icon="panel" aria-label="詳細インスペクタ" title="詳細インスペクタ (Alt+P)" aria-pressed="true"></button>
+      <button class="ibtn" id="btn-settings" data-icon="settings" aria-label="表示と設定" title="表示と設定" aria-haspopup="menu" aria-expanded="false"></button>
+    </div>
+  </header>
+
+  <!-- 3つのアイランド -->
+  <div class="workspace" id="tab-workspace" role="tabpanel" tabindex="-1">
+    <!-- 左：ガラスドック -->
+    <aside class="sidebar" aria-label="ナビゲーション">
+      <nav id="sidenav" aria-label="場所">
+        <h2 class="side-h" id="h-places">よく使う場所</h2>
+        <ul class="side-list" id="places" aria-labelledby="h-places"></ul>
+        <h2 class="side-h" id="h-drives">ストレージ</h2>
+        <ul class="side-list" id="drives" aria-labelledby="h-drives"></ul>
+      </nav>
+    </aside>
+
+    <!-- 中央：ピュアステージ -->
+    <main class="stage" aria-label="ファイル一覧">
+      <div class="scroller" id="scroller">
+        <div class="lh" id="lh">
+          <div class="hc c-name"><button class="hbtn" data-key="name">名前</button></div>
+          <div class="hc c-mod"><button class="hbtn" data-key="mtime">更新日時</button></div>
+          <div class="hc c-kind"><button class="hbtn" data-key="kind">種類</button></div>
+          <div class="hc c-size"><button class="hbtn" data-key="size">サイズ</button></div>
+        </div>
+        <div class="rows focused" id="rows" role="listbox" tabindex="0" aria-multiselectable="true"></div>
+        <div class="empty" id="empty" hidden></div>
+      </div>
+
+    </main>
+
+    <!-- 右：インスペクタカード -->
+    <aside class="pane" id="pane" aria-label="詳細インスペクタ">
+      <div class="pane-head">
+        <span>インスペクタ</span>
+        <button class="ibtn sm" id="pane-close" data-icon="x" aria-label="閉じる" title="閉じる (Alt+P)"></button>
+      </div>
+      <div class="pane-body" id="pane-body"></div>
+    </aside>
+  </div>
+      <!-- 全幅の固定ステータスバー -->
+      <div class="status-bar" aria-label="項目数と選択情報">
+        <div class="status-pill">
+          <span id="st-count"></span>
+          <span class="sep" id="st-sep" hidden></span>
+          <span class="sel-badge" id="st-sel"></span>
+          <span class="notice" id="st-notice" role="status" aria-live="polite"></span>
+        </div>
+        <div class="status-pill">
+          <button class="sbtn" id="btn-hidden" aria-pressed="false" title="隠しファイルを表示 (Ctrl+H)">
+            <span data-icon="eye"></span>隠しファイル
+          </button>
+          <button class="sbtn proto" id="btn-spec" aria-haspopup="dialog">
+            <span data-icon="info"></span>試作メモ
+          </button>
+        </div>
+      </div>
+</div>
+
+<div class="menu" id="menu" role="menu" hidden tabindex="-1"></div>
+
+<!-- 試作メモダイアログ -->
+<dialog class="spec" id="spec" aria-labelledby="spec-title">
+  <div class="spec-head">
+    <h2 id="spec-title">試作メモ — 案1: Prism Canopy（プリズム・キャノピー）</h2>
+    <div class="seg text" role="group" aria-label="テーマ">
+      <button class="opt" data-theme-opt="light">ライト</button>
+      <button class="opt" data-theme-opt="dark">ダーク</button>
+      <button class="opt" data-theme-opt="system">システム</button>
+    </div>
+    <button class="ibtn sm" id="spec-close" data-icon="x" aria-label="閉じる"></button>
+  </div>
+  <div class="spec-body">
+    <section class="wide">
+      <h3>デザインの狙いと刷新ポイント</h3>
+      <p>前回の「四角いグレーの箱＋1px境界線」から脱却し、暖かみのある明るいポーセリン（磁器）と淡いスカイのアンビエント背景上に、<strong>カプセル型のフローティング・ガラスキャノピー</strong>と<strong>3つの独立アイランド</strong>を浮かべた明るく軽やかな案です。</p>
+      <p>ファイル・フォルダー・ドライブのカラーアイコンは、実装時にOSから取得するアイコンの<strong>代用として描いた仮素材</strong>です。操作アイコンは24pxグリッド・線幅1.75の統一単色SVGを使用しています。</p>
+    </section>
+    <section>
+      <h3>検証用切替：OSアイコン仮素材</h3>
+      <div class="seg text" role="group" aria-label="OSアイコン仮素材">
+        <button class="opt" data-icons-opt="win">Windows風（黄フォルダー）</button>
+        <button class="opt" data-icons-opt="mac">macOS風（青フォルダー）</button>
+      </div>
+    </section>
+    <section>
+      <h3>GPUI 実装代替と性能注意点</h3>
+      <p>キャノピー等の半透明ガラス効果は、GPUIではティント付き半透明塗り（<code>hsla</code>）＋内側上端1pxハイライト枠＋2段ソフトシャドウで高速に近似できます。スクロール領域（中央ステージ）は不透明面のため60/120fpsを維持します。</p>
+    </section>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const OP = {
+  back: '<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>',
+  forward: '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+  up: '<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>',
+  x: '<path d="M17 7L7 17"/><path d="M7 7l10 10"/>',
+  list: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4.5 6h.01"/><path d="M4.5 12h.01"/><path d="M4.5 18h.01"/>',
+  grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+  panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>',
+  settings: '<path d="M4 7h9"/><path d="M19 7h1"/><circle cx="16" cy="7" r="2.5"/><path d="M4 17h1"/><path d="M11 17h9"/><circle cx="8" cy="17" r="2.5"/>',
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  sortUp: '<path d="M6 15l6-6 6 6"/>',
+  sortDown: '<path d="M6 9l6 6 6-6"/>',
+  eye: '<path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z"/><circle cx="12" cy="12" r="2.8"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H7a2 2 0 0 0-2 2v8"/>',
+  open: '<path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/>',
+};
+const op = (name) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${OP[name]}</svg>`;
+
+const GLYPH = {
+  home: '<path d="M11 19.5l5-4.5 5 4.5"/><path d="M12.6 18.4v5.6h6.8v-5.6"/>',
+  desk: '<rect x="10.5" y="14.2" width="11" height="7.4" rx="1"/><path d="M14 24.6h4"/>',
+  docs: '<path d="M11.5 16h9"/><path d="M11.5 19.5h9"/><path d="M11.5 23h5.5"/>',
+  down: '<path d="M16 14v8.5"/><path d="M12.4 19.4L16 23l3.6-3.6"/>',
+  pics: '<path d="M10.5 24l4.2-4.6 3 3 2-2 2 3.6"/><circle cx="19.4" cy="15.6" r="1.2"/>',
+};
+const SVG32 = (inner) => `<svg viewBox="0 0 32 32" aria-hidden="true">${inner}</svg>`;
+function folderSvg(glyph) {
+  return SVG32(
+    '<path style="fill:var(--obj-folder-back)" d="M3 8.5A2.5 2.5 0 0 1 5.5 6h6.2a2 2 0 0 1 1.45.62L15 8.5h11.5A2.5 2.5 0 0 1 29 11v13.5a2.5 2.5 0 0 1-2.5 2.5h-21A2.5 2.5 0 0 1 3 24.5z"/>' +
+    '<path style="fill:var(--obj-folder)" d="M3 13a2.5 2.5 0 0 1 2.5-2.5h21A2.5 2.5 0 0 1 29 13v11.5a2.5 2.5 0 0 1-2.5 2.5h-21A2.5 2.5 0 0 1 3 24.5z"/>' +
+    (glyph ? `<g fill="none" style="stroke:var(--obj-folder-glyph)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[glyph]}</g>` : '')
+  );
+}
+const FT = {
+  xlsx: { c: '--obj-xls', l: 'XLS', cat: 'doc' }, csv: { c: '--obj-csv', l: 'CSV', cat: 'doc' },
+  docx: { c: '--obj-doc', l: 'DOC', cat: 'doc' }, pptx: { c: '--obj-ppt', l: 'PPT', cat: 'doc' },
+  pdf: { c: '--obj-pdf', l: 'PDF', cat: 'doc' }, zip: { c: '--obj-zip', l: 'ZIP', cat: 'other' },
+  exe: { c: '--obj-exe', l: 'EXE', cat: 'other' }, msi: { c: '--obj-exe', l: 'MSI', cat: 'other' },
+  mp4: { c: '--obj-vid', l: 'MP4', cat: 'media' }, ps1: { c: '--obj-code', l: 'PS1', cat: 'doc' },
+  png: { img: true, cat: 'media' }, jpg: { img: true, cat: 'media' },
+  txt: { text: true, cat: 'doc' }, md: { text: true, cat: 'doc' }, ini: { text: true, cat: 'other' }, dat: { cat: 'other' }, gitconfig: { text: true, cat: 'other' },
+};
+function fileSvg(ext, big) {
+  const t = FT[ext] || {};
+  let inner =
+    '<path style="fill:var(--obj-page);stroke:var(--obj-page-edge)" d="M8 3.5h10.8l6.7 6.7V27a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 27V5A1.5 1.5 0 0 1 8 3.5z"/>' +
+    '<path style="fill:var(--obj-page-fold);stroke:var(--obj-page-edge)" stroke-linejoin="round" d="M18.8 3.5v5.2a1.5 1.5 0 0 0 1.5 1.5h5.2"/>';
+  if (t.img) {
+    inner += '<rect x="9.5" y="13" width="13" height="11" rx="1" style="fill:var(--obj-img-sky)"/>' +
+             '<path d="M9.5 22.6l4-4.4 3 3 2-2 4 4V24h-13z" style="fill:var(--obj-img-hill)"/>' +
+             '<circle cx="18.8" cy="16.2" r="1.5" style="fill:var(--obj-img-sun)"/>';
+  } else if (t.c) {
+    inner += `<rect x="3" y="15" width="18" height="9.5" rx="1.6" style="fill:var(${t.c})"/>`;
+    if (big) inner += `<text x="12" y="21.9" font-size="6.2" font-weight="700" text-anchor="middle" style="fill:var(--obj-badge-text)" font-family="Segoe UI, sans-serif">${t.l}</text>`;
+  } else if (t.text) {
+    inner += '<g style="stroke:var(--obj-text-line)" stroke-width="1.4" stroke-linecap="round"><path d="M10 14.5h12"/><path d="M10 18h12"/><path d="M10 21.5h12"/><path d="M10 25h7"/></g>';
+  }
+  return SVG32(inner);
+}
+function driveSvg(sys) {
+  return SVG32(
+    '<rect x="3" y="10" width="26" height="13" rx="3" style="fill:var(--obj-drive)"/>' +
+    '<path d="M3 17.5h26V20a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" style="fill:var(--obj-drive-dark)"/>' +
+    '<circle cx="24.6" cy="20.2" r="1.2" style="fill:var(--obj-drive-led)"/>' +
+    (sys ? '<rect x="6.5" y="12.6" width="5" height="3" rx=".8" style="fill:var(--obj-drive-mark)"/>' : '')
+  );
+}
+function objSvg(n, big) {
+  if (n.drive) return driveSvg(n.sys);
+  if (n.type === 'dir') return folderSvg(n.glyph);
+  return fileSvg(n.ext, big);
+}
+
+/* 共通サンプルデータ */
+const T = (y, m, d, h, mi) => new Date(y, m - 1, d, h, mi).getTime();
+const KB = 1024, MB = KB * 1024, GB = MB * 1024;
+function dir(name, mtime, children = [], extra = {}) { return { name, type: 'dir', mtime, children, ...extra }; }
+function file(name, size, mtime, extra = {}) {
+  const dot = name.lastIndexOf('.');
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+  return { name, type: 'file', ext, size: Math.round(size), mtime, ...extra };
+}
+const README = `# 共有ドキュメント\n\nチームの共有資料はこのフォルダーにまとめます。\n\n- 会議メモ … 週次定例の議事録\n- 請求書 … 月ごとにPDFで保存\n- プロジェクト … 進行中の案件ごと\n\n古い資料は「アーカイブ」へ移動してください。`;
+const MEMO = `買い出し\n・付箋（黄）\n・単三電池 ×4\n・宅配用の箱\n\n来週の確認事項\n・請求書の送付先変更\n・キックオフ資料の最終版`;
+const PS1 = String.raw`# ドキュメントを D: へ同期する\n$src = "$env:USERPROFILE\Documents"\n$dst = "D:\バックアップ\Documents"\nrobocopy $src $dst /MIR /R:1 /W:1 /NP`;
+const MTG = (d) => `# ${d} 定例\n\n## 決定事項\n- リリース判定は来週水曜\n- 素材は「素材一式.zip」を正とする\n\n## 宿題\n- 見積の再確認`;
+
+const docs = dir('ドキュメント', T(2026, 11, 14, 9, 41), [
+  dir('プロジェクト', T(2026, 11, 13, 18, 2), [
+    dir('サイト改修', T(2026, 11, 10, 15, 20), [
+      file('要件定義.docx', 284 * KB, T(2026, 11, 6, 11, 3)),
+      file('ワイヤーフレーム.pdf', 3.4 * MB, T(2026, 11, 9, 17, 48)),
+      file('スケジュール.xlsx', 61.2 * KB, T(2026, 11, 10, 15, 20)),
+    ]),
+    dir('年次レポート 2026', T(2026, 10, 28, 10, 15), [
+      file('原稿.docx', 512 * KB, T(2026, 10, 28, 10, 15)),
+      file('グラフ素材.zip', 22.8 * MB, T(2026, 10, 27, 19, 40)),
+    ]),
+    file('進捗まとめ.md', 4.2 * KB, T(2026, 11, 13, 18, 2), { content: '# 進捗まとめ\n\n- サイト改修: 設計レビュー済み\n- 年次レポート: 原稿 80%\n- ロードマップ: 来週更新' }),
+    file('タスク一覧.csv', 18.6 * KB, T(2026, 11, 12, 9, 30)),
+    file('ロードマップ.pptx', 2.9 * MB, T(2026, 11, 4, 16, 12)),
+  ], { ctime: T(2026, 4, 1, 9, 0) }),
+  dir('会議メモ', T(2026, 11, 12, 16, 30), [
+    file('2026-10-29 定例.md', 2.1 * KB, T(2026, 10, 29, 16, 40), { content: MTG('2026-10-29') }),
+    file('2026-11-05 定例.md', 2.4 * KB, T(2026, 11, 5, 16, 35), { content: MTG('2026-11-05') }),
+    file('2026-11-12 定例.md', 2.6 * KB, T(2026, 11, 12, 16, 30), { content: MTG('2026-11-12') }),
+    file('テンプレート.md', 0.6 * KB, T(2026, 6, 2, 10, 0), { content: '# YYYY-MM-DD 定例\n\n## 決定事項\n- \n\n## 宿題\n- ' }),
+  ]),
+  dir('請求書', T(2026, 11, 1, 10, 5), [
+    file('請求書_2026-09.pdf', 188 * KB, T(2026, 9, 30, 17, 0)),
+    file('請求書_2026-10.pdf', 192 * KB, T(2026, 10, 31, 17, 2)),
+    file('請求書_2026-11.pdf', 190 * KB, T(2026, 11, 1, 10, 5)),
+  ]),
+  dir('設計資料', T(2026, 11, 2, 13, 0), []),
+  dir('アーカイブ', T(2026, 4, 3, 9, 20), [
+    file('2024年度.zip', 1.2 * GB, T(2025, 4, 2, 18, 30)),
+    file('2025年度.zip', 1.6 * GB, T(2026, 4, 3, 9, 20)),
+  ]),
+  file('2026年度_予算案.xlsx', 48.2 * KB, T(2026, 11, 14, 9, 41)),
+  file('企画書_v3.docx', 1.24 * MB, T(2026, 11, 13, 21, 7), { ctime: T(2026, 10, 20, 14, 2) }),
+  file('キックオフ資料.pptx', 6.8 * MB, T(2026, 11, 11, 19, 25)),
+  file('契約書_署名済み.pdf', 842 * KB, T(2026, 11, 8, 12, 14)),
+  file('議事録_2026-11-12.docx', 36.4 * KB, T(2026, 11, 12, 17, 3)),
+  file('売上データ_10月.csv', 214 * KB, T(2026, 11, 2, 8, 55)),
+  file('README.md', 3.1 * KB, T(2026, 9, 18, 11, 22), { content: README }),
+  file('メモ.txt', 1.4 * KB, T(2026, 11, 14, 8, 12), { content: MEMO }),
+  file('ロゴ_最終版.png', 286 * KB, T(2026, 10, 24, 15, 9), { pv: 0 }),
+  file('集合写真_秋合宿.jpg', 4.6 * MB, T(2026, 10, 19, 13, 47), { pv: 1 }),
+  file('素材一式.zip', 128 * MB, T(2026, 11, 6, 20, 33)),
+  file('デモ動画.mp4', 312 * MB, T(2026, 11, 10, 22, 15)),
+  file('setup-tool.exe', 18.4 * MB, T(2026, 10, 30, 9, 8)),
+  file('backup.ps1', 2.2 * KB, T(2026, 9, 2, 23, 40), { content: PS1 }),
+  file('desktop.ini', 0.4 * KB, T(2026, 4, 1, 9, 0), { hidden: true, content: '[.ShellClassInfo]\nLocalizedResourceName=@%SystemRoot%\\system32\\shell32.dll,-21770' }),
+], { fs: 'Documents', glyph: 'docs', ctime: T(2025, 3, 30, 10, 0) });
+
+const desk = dir('デスクトップ', T(2026, 11, 14, 9, 30), [
+  dir('一時フォルダー', T(2026, 11, 13, 12, 0), []),
+  file('ショートカット一覧.txt', 2.8 * KB, T(2026, 11, 1, 10, 0), { content: 'Ctrl+F … 検索\nAlt+P … 詳細ペイン\nAlt+↑ … 上の階層へ' }),
+  file('スクリーンショット 2026-11-14 093012.png', 512 * KB, T(2026, 11, 14, 9, 30), { pv: 2 }),
+  file('見積書_ドラフト.xlsx', 33.9 * KB, T(2026, 11, 12, 18, 44)),
+], { fs: 'Desktop', glyph: 'desk' });
+
+const dl = dir('ダウンロード', T(2026, 11, 14, 8, 50), [
+  dir('解凍済み', T(2026, 11, 7, 21, 0), []),
+  file('setup-installer.msi', 64.3 * MB, T(2026, 11, 14, 8, 50)),
+  file('manual_ja.pdf', 9.7 * MB, T(2026, 11, 13, 20, 11)),
+  file('font-pack.zip', 41.5 * MB, T(2026, 11, 7, 20, 58)),
+  file('wallpaper_4k.jpg', 7.9 * MB, T(2026, 11, 5, 22, 3), { pv: 3 }),
+  file('invoice_2611.pdf', 101 * KB, T(2026, 11, 4, 9, 12)),
+  file('sample-data.csv', 1.1 * MB, T(2026, 10, 31, 15, 40)),
+  file('presentation-template.pptx', 4.4 * MB, T(2026, 10, 22, 11, 5)),
+  file('driver_update.exe', 212 * MB, T(2026, 10, 18, 7, 30)),
+], { fs: 'Downloads', glyph: 'down' });
+
+const pics = dir('ピクチャ', T(2026, 11, 14, 9, 30), [
+  dir('スクリーンショット', T(2026, 11, 14, 9, 30), [
+    file('スクリーンショット 2026-11-12 141502.png', 384 * KB, T(2026, 11, 12, 14, 15), { pv: 2 }),
+    file('スクリーンショット 2026-11-13 101144.png', 455 * KB, T(2026, 11, 13, 10, 11), { pv: 0 }),
+    file('スクリーンショット 2026-11-14 093012.png', 512 * KB, T(2026, 11, 14, 9, 30), { pv: 2 }),
+  ]),
+  dir('2026 秋', T(2026, 10, 20, 8, 0), [
+    file('IMG_2101.jpg', 5.2 * MB, T(2026, 10, 19, 13, 40), { pv: 1 }),
+    file('IMG_2102.jpg', 4.9 * MB, T(2026, 10, 19, 13, 47), { pv: 3 }),
+  ]),
+  file('プロフィール.jpg', 1.3 * MB, T(2026, 9, 1, 12, 0), { pv: 0 }),
+  file('banner.png', 702 * KB, T(2026, 10, 2, 17, 31), { pv: 3 }),
+  file('IMG_2041.jpg', 3.8 * MB, T(2026, 8, 14, 18, 22), { pv: 1 }),
+  file('IMG_2042.jpg', 4.1 * MB, T(2026, 8, 14, 18, 25), { pv: 3 }),
+  file('スキャン_領収書.pdf', 640 * KB, T(2026, 11, 3, 10, 2)),
+], { fs: 'Pictures', glyph: 'pics' });
+
+const aoi = dir('aoi', T(2026, 11, 14, 9, 12), [
+  desk, docs, dl, pics,
+  dir('ミュージック', T(2026, 3, 30, 10, 0), [], { fs: 'Music' }),
+  dir('ビデオ', T(2026, 11, 10, 22, 20), [file('デモ録画.mp4', 486 * MB, T(2026, 11, 10, 22, 20))], { fs: 'Videos' }),
+  file('.gitconfig', 312, T(2026, 7, 9, 22, 1), { hidden: true, content: '[user]\n\tname = aoi\n[core]\n\tautocrlf = true' }),
+  file('NTUSER.DAT', 3.1 * MB, T(2026, 11, 14, 9, 12), { hidden: true }),
+], { glyph: 'home' });
+
+const ROOT = dir('PC', 0, [
+  dir('ローカル ディスク (C:)', T(2026, 11, 14, 9, 0), [
+    dir('Program Files', T(2026, 11, 2, 9, 0), []),
+    dir('ユーザー', T(2026, 3, 30, 10, 0), [aoi, dir('パブリック', T(2026, 3, 30, 10, 0), [], { fs: 'Public' })], { fs: 'Users' }),
+    dir('Windows', T(2026, 11, 12, 3, 0), []),
+  ], { drive: 'C:', sys: true, total: 476 * GB, free: 182 * GB }),
+  dir('データ (D:)', T(2026, 11, 13, 22, 0), [
+    dir('バックアップ', T(2026, 11, 13, 22, 0), [dir('Documents', T(2026, 11, 13, 22, 0), [])]),
+    dir('写真ライブラリ', T(2026, 9, 9, 20, 0), []),
+    dir('作業用', T(2026, 11, 1, 9, 0), []),
+    file('メモ_ドライブ移行.txt', 1.9 * KB, T(2026, 6, 20, 21, 30), { content: 'C: の空き容量対策として写真を D: へ移動済み。' }),
+  ], { drive: 'D:', total: 932 * GB, free: 74 * GB }),
+]);
+
+const P_HOME = ['ローカル ディスク (C:)', 'ユーザー', 'aoi'];
+const PLACES = [
+  { label: 'ホーム', path: P_HOME },
+  { label: 'デスクトップ', path: [...P_HOME, 'デスクトップ'] },
+  { label: 'ドキュメント', path: [...P_HOME, 'ドキュメント'] },
+  { label: 'ダウンロード', path: [...P_HOME, 'ダウンロード'] },
+  { label: 'ピクチャ', path: [...P_HOME, 'ピクチャ'] },
+];
+
+function fmtSize(b) {
+  if (b < 1024) return `${b} B`;
+  const u = ['KB', 'MB', 'GB', 'TB'];
+  let v = b / 1024, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${u[i]}`;
+}
+const pad = (n) => String(n).padStart(2, '0');
+function fmtDate(t) {
+  const d = new Date(t);
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${d.getHours()}:${pad(d.getMinutes())}`;
+}
+function kindLabel(n) {
+  if (n.drive) return 'ドライブ';
+  if (n.type === 'dir') return 'フォルダー';
+  if (n.ext === 'txt') return 'テキスト文書';
+  if (!n.ext || (n.name.startsWith('.') && n.name.indexOf('.', 1) < 0)) return 'ファイル';
+  return `${n.ext.toUpperCase()} ファイル`;
+}
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const norm = (s) => s.normalize('NFKC').toLowerCase();
+
+const S = {
+  path: [...P_HOME, 'ドキュメント'],
+  back: [], fwd: [],
+  sel: new Set(['企画書_v3.docx']),
+  active: '企画書_v3.docx',
+  anchor: '企画書_v3.docx',
+  sort: { key: 'name', dir: 1 },
+  query: '',
+  filter: 'all',
+  view: 'details',
+  pane: true,
+  showHidden: false,
+  themeMode: document.documentElement.dataset.themeMode || 'light',
+  icons: document.documentElement.dataset.icons || 'win',
+  density: 'normal',
+  list: [],
+};
+let noticeTimer = 0;
+
+function nodeAt(path) {
+  let n = ROOT;
+  for (const name of path) {
+    n = (n.children || []).find((c) => c.name === name);
+    if (!n) return null;
+  }
+  return n;
+}
+const cur = () => nodeAt(S.path);
+function realPath(path) {
+  if (!path.length) return 'PC';
+  const parts = [];
+  let n = ROOT;
+  for (const name of path) {
+    n = n.children.find((c) => c.name === name);
+    parts.push(n.drive || n.fs || n.name);
+  }
+  return parts.length === 1 ? parts[0] + '\\' : parts.join('\\');
+}
+const sameP = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+function cmp(a, b) {
+  if ((a.type === 'dir') !== (b.type === 'dir')) return a.type === 'dir' ? -1 : 1;
+  const byName = a.name.localeCompare(b.name, 'ja', { numeric: true, sensitivity: 'base' });
+  let r = 0;
+  switch (S.sort.key) {
+    case 'mtime': r = a.mtime - b.mtime; break;
+    case 'kind': r = kindLabel(a).localeCompare(kindLabel(b), 'ja'); break;
+    case 'size': r = (a.size || 0) - (b.size || 0); break;
+  }
+  return (r || byName) * S.sort.dir;
+}
+function visibleChildren(n = cur()) { return (n.children || []).filter((c) => S.showHidden || !c.hidden); }
+function computeList() {
+  let arr = visibleChildren();
+  if (S.filter === 'dir') arr = arr.filter((c) => c.type === 'dir');
+  else if (S.filter === 'doc') arr = arr.filter((c) => c.type === 'file' && FT[c.ext] && FT[c.ext].cat === 'doc');
+  else if (S.filter === 'media') arr = arr.filter((c) => c.type === 'file' && FT[c.ext] && FT[c.ext].cat === 'media');
+  const q = norm(S.query.trim());
+  if (q) arr = arr.filter((c) => norm(c.name).includes(q));
+  return arr.sort(cmp);
+}
+const idxOf = (name) => S.list.findIndex((n) => n.name === name);
+const selected = () => S.list.filter((n) => S.sel.has(n.name));
+
+const $ = (id) => document.getElementById(id);
+const els = {
+  rows: $('rows'), scroller: $('scroller'), lh: $('lh'), empty: $('empty'),
+  crumbs: $('crumbs'), addrIcon: $('addr-icon'), search: $('search'), searchClear: $('search-clear'),
+  pane: $('pane'), paneBody: $('pane-body'), menu: $('menu'), spec: $('spec'),
+};
+
+function hl(name) {
+  const q = S.query.trim();
+  if (!q) return esc(name);
+  const nq = norm(q);
+  const i = name.toLowerCase().indexOf(nq);
+  if (i < 0 || norm(name).length !== name.length) return esc(name);
+  return esc(name.slice(0, i)) + '<mark>' + esc(name.slice(i, i + nq.length)) + '</mark>' + esc(name.slice(i + nq.length));
+}
+
+function renderAll() {
+  renderTabs();
+  renderToolbar();
+  renderSidebar();
+  renderList();
+}
+
+function renderToolbar() {
+  const n = cur();
+  $('btn-back').disabled = !S.back.length;
+  $('btn-fwd').disabled = !S.fwd.length;
+  $('btn-up').disabled = S.path.length === 0;
+  els.addrIcon.innerHTML = n === ROOT ? driveSvg(false) : objSvg(n);
+  const items = [{ label: 'PC', path: [] }, ...S.path.map((name, i) => ({ label: name, path: S.path.slice(0, i + 1) }))];
+  els.crumbs.innerHTML =
+    '<li class="ell" hidden><button class="crumb" data-ell aria-label="上位の階層">…</button><span class="crumb-sep">' + op('chevron') + '</span></li>' +
+    items.map((it, i) => {
+      const last = i === items.length - 1;
+      return `<li data-i="${i}"><button class="crumb" data-path="${esc(JSON.stringify(it.path))}"${last ? ' aria-current="page"' : ''}>${esc(it.label)}</button>${last ? '' : '<span class="crumb-sep">' + op('chevron') + '</span>'}</li>`;
+    }).join('');
+  fitCrumbs();
+  const label = n === ROOT ? 'PC' : n.name;
+  els.search.placeholder = `${label}を検索…`;
+  els.searchClear.hidden = !S.query;
+  document.querySelector('.stage').setAttribute('aria-label', `${label}のファイル一覧`);
+}
+
+function fitCrumbs() {
+  const ol = els.crumbs;
+  const lis = [...ol.querySelectorAll('li[data-i]')];
+  const ell = ol.querySelector('li.ell');
+  if (!ell) return;
+  lis.forEach((li) => { li.hidden = false; li.classList.remove('shrink'); });
+  ell.hidden = true;
+  let k = 0;
+  while (ol.scrollWidth > ol.clientWidth + 1 && k < lis.length - 1) {
+    lis[k].hidden = true;
+    ell.hidden = false;
+    ell.dataset.target = lis[k].querySelector('.crumb').dataset.path;
+    k++;
+  }
+  if (ol.scrollWidth > ol.clientWidth + 1 && lis.length) lis[lis.length - 1].classList.add('shrink');
+}
+
+function renderSidebar() {
+  const mk = (n, path, label, extra = '') => {
+    const active = sameP(path, S.path);
+    return `<li><button class="place${n.drive ? ' drive' : ''}" data-path="${esc(JSON.stringify(path))}"${active ? ' aria-current="page"' : ''}>` +
+      `<span class="oi">${objSvg(n)}</span>${extra || `<span class="lbl">${esc(label)}</span>`}</button></li>`;
+  };
+  $('places').innerHTML = PLACES.map((p) => mk(nodeAt(p.path), p.path, p.label)).join('');
+  $('drives').innerHTML = ROOT.children.map((d) => {
+    const used = 1 - d.free / d.total;
+    const info = `<span class="drive-info"><span class="lbl">${esc(d.name)}</span>` +
+      `<span class="meter${used > 0.9 ? ' warn' : ''}" aria-hidden="true"><span style="width:${(used * 100).toFixed(1)}%"></span></span>` +
+      `<span class="drive-free">空き ${fmtSize(d.free)} / ${fmtSize(d.total)}</span></span>`;
+    return mk(d, [d.name], d.name, info);
+  }).join('');
+}
+
+function renderList() {
+  S.list = computeList();
+  const names = new Set(S.list.map((n) => n.name));
+  for (const s of [...S.sel]) if (!names.has(s)) S.sel.delete(s);
+  if (S.active && !names.has(S.active)) S.active = null;
+  if (S.anchor && !names.has(S.anchor)) S.anchor = null;
+
+  const grid = S.view === 'icons';
+  els.rows.classList.toggle('grid', grid);
+  els.lh.hidden = grid;
+  els.rows.innerHTML = S.list.map((n, i) => {
+    const cls = n.hidden ? ' hid' : '';
+    if (grid) {
+      return `<div class="tile${cls}" role="option" id="it-${i}" data-i="${i}" aria-selected="false"><span class="oi">${objSvg(n, true)}</span><span class="nm">${hl(n.name)}</span></div>`;
+    }
+    return `<div class="row${cls}" role="option" id="it-${i}" data-i="${i}" aria-selected="false">` +
+      `<div class="c c-name"><span class="oi">${objSvg(n)}</span><span class="nm">${hl(n.name)}</span></div>` +
+      `<div class="c c-mod">${fmtDate(n.mtime)}</div>` +
+      `<div class="c c-kind">${esc(kindLabel(n))}</div>` +
+      `<div class="c c-size">${n.type === 'file' ? fmtSize(n.size) : '—'}</div></div>`;
+  }).join('');
+
+  const total = visibleChildren().length;
+  let empty = '';
+  if (!S.list.length) {
+    if (S.query.trim() || S.filter !== 'all') empty = `<div>条件に一致する項目はありません</div><button class="btn" data-clear-search>フィルターを解除</button>`;
+    else empty = '<div>このフォルダーは空です</div>';
+  }
+  els.empty.innerHTML = empty;
+  els.empty.hidden = !empty;
+
+  renderHeader();
+  refreshSel();
+}
+
+function renderHeader() {
+  const labels = { name: '名前', mtime: '更新日時', kind: '種類', size: 'サイズ' };
+  els.lh.querySelectorAll('.hbtn').forEach((b) => {
+    const k = b.dataset.key;
+    const active = S.sort.key === k;
+    b.toggleAttribute('data-active', active);
+    b.innerHTML = esc(labels[k]) + (active ? op(S.sort.dir > 0 ? 'sortUp' : 'sortDown') : '');
+  });
+}
+
+function refreshSel() {
+  const kids = els.rows.children;
+  for (let i = 0; i < kids.length; i++) {
+    const n = S.list[i];
+    const s = S.sel.has(n.name);
+    const el = kids[i];
+    el.classList.toggle('sel', s);
+    el.setAttribute('aria-selected', s ? 'true' : 'false');
+    el.classList.toggle('active', n.name === S.active);
+  }
+  renderPane();
+  renderStatus();
+}
+
+function renderStatus() {
+  const total = visibleChildren().length;
+  const countTxt = (S.query.trim() || S.filter !== 'all') ? `${total} 項目中 ${S.list.length} 件を表示` : `${S.list.length} 項目`;
+  $('st-count').textContent = countTxt;
+  const sel = selected();
+  const bytes = sel.filter((n) => n.type === 'file').reduce((a, n) => a + n.size, 0);
+  const selTxt = sel.length ? `${sel.length} 項目を選択${bytes ? ' · ' + fmtSize(bytes) : ''}` : '';
+  $('st-sel').textContent = selTxt;
+  $('st-sep').hidden = !selTxt;
+  $('btn-hidden').setAttribute('aria-pressed', S.showHidden ? 'true' : 'false');
+}
+
+function samplePreview(n) {
+  const v = n.pv || 0;
+  const sky = v % 2 ? 'var(--sample-sky-2)' : 'var(--sample-sky)';
+  if (v === 2) {
+    return `<svg viewBox="0 0 160 120" preserveAspectRatio="xMidYMid slice"><rect width="160" height="120" style="fill:var(--sample-sky)"/><rect x="14" y="14" width="132" height="92" rx="6" style="fill:var(--sample-paper)"/><rect x="14" y="14" width="132" height="14" rx="6" style="fill:var(--sample-ui)"/><circle cx="62" cy="64" r="18" style="fill:var(--sample-water)"/></svg>`;
+  }
+  if (v === 0) {
+    return `<svg viewBox="0 0 160 120" preserveAspectRatio="xMidYMid slice"><rect width="160" height="120" style="fill:var(--sample-paper)"/><circle cx="62" cy="60" r="24" style="fill:var(--sample-water)"/><rect x="74" y="42" width="36" height="36" rx="10" style="fill:var(--sample-sun)" opacity=".9"/></svg>`;
+  }
+  return `<svg viewBox="0 0 160 120" preserveAspectRatio="xMidYMid slice"><rect width="160" height="120" style="fill:${sky}"/><circle cx="116" cy="34" r="13" style="fill:var(--sample-sun)"/><path d="M0 86 L38 52 L70 80 L104 44 L160 92 V120 H0z" style="fill:var(--sample-hill)"/><path d="M0 98 L52 74 L96 96 L132 80 L160 92 V120 H0z" style="fill:var(--sample-hill-2)"/></svg>`;
+}
+
+function renderPane() {
+  els.pane.hidden = !S.pane;
+  $('btn-pane').setAttribute('aria-pressed', S.pane ? 'true' : 'false');
+  if (!S.pane) return;
+  const sel = selected();
+  const n0 = cur();
+  let h = '';
+  const prop = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+  if (sel.length === 0) {
+    const kids = visibleChildren(n0);
+    const nd = kids.filter((c) => c.type === 'dir').length;
+    const nf = kids.length - nd;
+    const bytes = kids.filter((c) => c.type === 'file').reduce((a, c) => a + c.size, 0);
+    h += `<div class="hero"><span class="hero-icon">${n0 === ROOT ? driveSvg(false) : objSvg(n0, true)}</span></div>`;
+    h += `<div><h2 class="p-name">${esc(n0 === ROOT ? 'PC' : n0.name)}</h2><span class="p-kind">${n0.drive ? 'ストレージ' : '現在のフォルダー'}</span></div>`;
+    h += '<div class="props-card"><dl class="props">';
+    h += prop('構成', n0 === ROOT ? `${nd} ドライブ` : `${nf} ファイル / ${nd} フォルダー`);
+    if (bytes) h += prop('合計サイズ', fmtSize(bytes));
+    if (n0.mtime) h += prop('更新日時', fmtDate(n0.mtime));
+    h += prop('パス', esc(realPath(S.path)));
+    h += '</dl></div>';
+  } else if (sel.length === 1) {
+    const n = sel[0];
+    const path = [...S.path, n.name];
+    const isImg = n.type === 'file' && FT[n.ext] && FT[n.ext].img;
+    h += isImg ? `<div class="hero image">${samplePreview(n)}</div>` : `<div class="hero"><span class="hero-icon">${objSvg(n, true)}</span></div>`;
+    h += `<div><h2 class="p-name">${esc(n.name)}</h2><span class="p-kind">${esc(kindLabel(n))}</span></div>`;
+    h += '<div class="props-card"><dl class="props">';
+    if (n.type === 'file') h += prop('サイズ', `${fmtSize(n.size)} (${n.size.toLocaleString('ja-JP')} B)`);
+    else h += prop('内容', `${visibleChildren(n).length} 項目`);
+    h += prop('更新日時', fmtDate(n.mtime));
+    h += prop('作成日時', fmtDate(n.ctime || n.mtime - 86400000 * 3));
+    h += prop('場所', esc(realPath(S.path)));
+    h += '</dl></div>';
+    if (n.content) h += `<section><h3 class="sec-h">クイックプレビュー</h3><pre class="pre">${esc(n.content)}</pre></section>`;
+    h += `<div class="actions"><button class="btn primary" data-act="open">${op('open')}開く</button><button class="btn" data-act="copy" data-path="${esc(realPath(path))}">${op('copy')}パスをコピー</button></div>`;
+  } else {
+    const nd = sel.filter((c) => c.type === 'dir').length;
+    const files = sel.filter((c) => c.type === 'file');
+    const bytes = files.reduce((a, c) => a + c.size, 0);
+    const top = sel.slice(0, 3);
+    h += `<div class="hero"><div class="stack">${top.map((n, i) => `<span class="hero-icon" style="left:${i * 12}px;top:${i * 7}px">${objSvg(n, true)}</span>`).join('')}</div></div>`;
+    h += `<div><h2 class="p-name">${sel.length} 項目を選択中</h2><span class="p-kind">${files.length} ファイル / ${nd} フォルダー</span></div>`;
+    h += '<div class="props-card"><dl class="props">';
+    if (bytes) h += prop('合計サイズ', fmtSize(bytes));
+    h += prop('場所', esc(realPath(S.path)));
+    h += '</dl></div>';
+  }
+  els.paneBody.innerHTML = h;
+}
+
+function notice(msg) {
+  const el = $('st-notice');
+  el.textContent = msg;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (el.textContent = ''), 3500);
+}
+
+function navigate(path, { push = true, select = null } = {}) {
+  if (!nodeAt(path)) return;
+  if (push) {
+    if (sameP(path, S.path)) return;
+    S.back.push({ path: S.path, sel: S.active });
+    S.fwd = [];
+  }
+  S.path = path;
+  S.query = '';
+  els.search.value = '';
+  S.sel = new Set(select ? [select] : []);
+  S.active = select;
+  S.anchor = select;
+  renderAll();
+  els.scroller.scrollTop = 0;
+}
+function goBack() {
+  const e = S.back.pop(); if (!e) return;
+  S.fwd.push({ path: S.path, sel: S.active });
+  navigate(e.path, { push: false, select: e.sel });
+}
+function goForward() {
+  const e = S.fwd.pop(); if (!e) return;
+  S.back.push({ path: S.path, sel: S.active });
+  navigate(e.path, { push: false, select: e.sel });
+}
+function goUp() {
+  if (!S.path.length) return;
+  const from = S.path[S.path.length - 1];
+  S.back.push({ path: S.path, sel: S.active });
+  S.fwd = [];
+  navigate(S.path.slice(0, -1), { push: false, select: from });
+}
+function openItem(n) {
+  if (!n) return;
+  if (n.type === 'dir') navigate([...S.path, n.name]);
+  else notice(`「${n.name}」を開く操作（試作モック）`);
+}
+function setSort(key) {
+  S.sort = S.sort.key === key ? { key, dir: -S.sort.dir } : { key, dir: 1 };
+  renderList();
+}
+function setView(v) {
+  S.view = v;
+  $('view-details').setAttribute('aria-pressed', v === 'details');
+  $('view-icons').setAttribute('aria-pressed', v === 'icons');
+  renderList();
+}
+function setTheme(mode) {
+  S.themeMode = mode;
+  try { localStorage.setItem('argon-c1-theme', mode); } catch (e) {}
+  const dark = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.documentElement.dataset.themeMode = mode;
+  document.querySelectorAll('[data-theme-opt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.themeOpt === mode));
+}
+function setIcons(ic) {
+  S.icons = ic;
+  try { localStorage.setItem('argon-c1-icons', ic); } catch (e) {}
+  document.documentElement.dataset.icons = ic;
+  document.querySelectorAll('[data-icons-opt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.iconsOpt === ic));
+}
+
+function selectRange(a, b) {
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  S.sel = new Set(S.list.slice(lo, hi + 1).map((n) => n.name));
+}
+function moveTo(i, e) {
+  if (!S.list.length) return;
+  i = Math.max(0, Math.min(S.list.length - 1, i));
+  const name = S.list[i].name;
+  if (e.shiftKey) {
+    const ai = idxOf(S.anchor);
+    selectRange(ai >= 0 ? ai : i, i);
+  } else if (!(e.ctrlKey || e.metaKey)) {
+    S.sel = new Set([name]);
+    S.anchor = name;
+  }
+  S.active = name;
+  refreshSel();
+}
+
+/* イベント設定 */
+els.rows.addEventListener('keydown', (e) => {
+  const len = S.list.length;
+  const ai = idxOf(S.active);
+  const at = ai < 0 ? -1 : ai;
+  els.rows.classList.add('kbd');
+  const k = e.key;
+  const ctrl = e.ctrlKey || e.metaKey;
+  let handled = true;
+  if (k === 'ArrowDown') moveTo(at < 0 ? 0 : at + 1, e);
+  else if (k === 'ArrowUp') moveTo(at < 0 ? 0 : at - 1, e);
+  else if (k === 'Home') moveTo(0, e);
+  else if (k === 'End') moveTo(len - 1, e);
+  else if (k === 'Enter') { if (ai >= 0) openItem(S.list[ai]); }
+  else if (k === 'a' && ctrl) { S.sel = new Set(S.list.map((n) => n.name)); refreshSel(); }
+  else if (k === 'Escape') { S.sel.clear(); refreshSel(); }
+  else if (k === 'Backspace') goBack();
+  else handled = false;
+  if (handled) e.preventDefault();
+});
+
+els.rows.addEventListener('mousedown', (e) => {
+  els.rows.classList.remove('kbd');
+  const it = e.target.closest('[data-i]');
+  if (!it) { if (!e.ctrlKey && !e.shiftKey) { S.sel.clear(); refreshSel(); } return; }
+  const i = +it.dataset.i;
+  const name = S.list[i].name;
+  if (e.shiftKey) { const a = idxOf(S.anchor); selectRange(a >= 0 ? a : i, i); }
+  else if (e.ctrlKey || e.metaKey) { if (S.sel.has(name)) S.sel.delete(name); else S.sel.add(name); S.anchor = name; }
+  else { S.sel = new Set([name]); S.anchor = name; }
+  S.active = name;
+  refreshSel();
+});
+els.rows.addEventListener('dblclick', (e) => {
+  const it = e.target.closest('[data-i]');
+  if (it) openItem(S.list[+it.dataset.i]);
+});
+
+els.lh.addEventListener('click', (e) => { const b = e.target.closest('.hbtn'); if (b) setSort(b.dataset.key); });
+$('btn-back').addEventListener('click', goBack);
+$('btn-fwd').addEventListener('click', goForward);
+$('btn-up').addEventListener('click', goUp);
+$('btn-refresh').addEventListener('click', () => { renderAll(); notice('最新の情報に更新しました'); });
+$('view-details').addEventListener('click', () => setView('details'));
+$('view-icons').addEventListener('click', () => setView('icons'));
+$('btn-pane').addEventListener('click', () => { S.pane = !S.pane; renderPane(); });
+$('pane-close').addEventListener('click', () => { S.pane = false; renderPane(); });
+$('btn-hidden').addEventListener('click', () => { S.showHidden = !S.showHidden; renderList(); });
+$('btn-theme').addEventListener('click', () => {
+  const curTheme = document.documentElement.dataset.theme;
+  setTheme(curTheme === 'dark' ? 'light' : 'dark');
+});
+
+document.querySelectorAll('.fpill').forEach((b) => {
+  b.addEventListener('click', () => {
+    S.filter = b.dataset.filter;
+    document.querySelectorAll('.fpill').forEach((p) => p.setAttribute('aria-pressed', p === b));
+    renderList();
+  });
+});
+
+els.crumbs.addEventListener('click', (e) => {
+  const b = e.target.closest('.crumb'); if (!b) return;
+  const p = b.hasAttribute('data-ell') ? b.closest('li').dataset.target : b.dataset.path;
+  if (p) navigate(JSON.parse(p));
+});
+new ResizeObserver(() => fitCrumbs()).observe(document.querySelector('.address'));
+
+$('sidenav').addEventListener('click', (e) => {
+  const b = e.target.closest('.place');
+  if (b) navigate(JSON.parse(b.dataset.path));
+});
+
+els.search.addEventListener('input', () => { S.query = els.search.value; els.searchClear.hidden = !S.query; renderList(); });
+els.searchClear.addEventListener('click', () => { S.query = ''; els.search.value = ''; els.searchClear.hidden = true; renderList(); });
+els.empty.addEventListener('click', (e) => {
+  if (e.target.closest('[data-clear-search]')) {
+    S.query = ''; els.search.value = ''; S.filter = 'all';
+    document.querySelectorAll('.fpill').forEach((p) => p.setAttribute('aria-pressed', p.dataset.filter === 'all'));
+    renderList();
+  }
+});
+
+els.paneBody.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'open') openItem(selected()[0]);
+  if (b.dataset.act === 'copy') notice(`パスをコピーしました: ${b.dataset.path}`);
+});
+
+/* 設定メニュー */
+$('btn-settings').addEventListener('click', (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  els.menu.innerHTML = [
+    `<div class="mh">テーマ</div>`,
+    `<button class="mi" data-cmd="theme-light" aria-checked="${S.themeMode==='light'}"><span class="chk">${op('check')}</span>ライト</button>`,
+    `<button class="mi" data-cmd="theme-dark" aria-checked="${S.themeMode==='dark'}"><span class="chk">${op('check')}</span>ダーク</button>`,
+    `<div class="msep"></div>`,
+    `<div class="mh">OSアイコン仮素材</div>`,
+    `<button class="mi" data-cmd="ic-win" aria-checked="${S.icons==='win'}"><span class="chk">${op('check')}</span>Windows風</button>`,
+    `<button class="mi" data-cmd="ic-mac" aria-checked="${S.icons==='mac'}"><span class="chk">${op('check')}</span>macOS風</button>`,
+  ].join('');
+  els.menu.hidden = false;
+  els.menu.style.top = `${r.bottom + 6}px`;
+  els.menu.style.left = `${Math.min(window.innerWidth - 240, r.left - 160)}px`;
+});
+els.menu.addEventListener('click', (e) => {
+  const b = e.target.closest('.mi'); if (!b) return;
+  const cmd = b.dataset.cmd;
+  if (cmd === 'theme-light') setTheme('light');
+  if (cmd === 'theme-dark') setTheme('dark');
+  if (cmd === 'ic-win') setIcons('win');
+  if (cmd === 'ic-mac') setIcons('mac');
+  els.menu.hidden = true;
+});
+window.addEventListener('mousedown', (e) => {
+  if (!els.menu.hidden && !els.menu.contains(e.target) && !e.target.closest('#btn-settings')) els.menu.hidden = true;
+});
+
+$('btn-spec').addEventListener('click', () => {
+  setTheme(S.themeMode);
+  setIcons(S.icons);
+  els.spec.showModal();
+});
+$('spec-close').addEventListener('click', () => els.spec.close());
+els.spec.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-theme-opt]');
+  if (t) setTheme(t.dataset.themeOpt);
+  const ic = e.target.closest('[data-icons-opt]');
+  if (ic) setIcons(ic.dataset.iconsOpt);
+});
+
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); els.search.focus(); }
+  else if (e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); S.pane = !S.pane; renderPane(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') { e.preventDefault(); S.showHidden = !S.showHidden; renderList(); }
+});
+
+
+// フォルダー、履歴、検索、選択、並び順、表示とスクロールはタブごとに保持。
+// テーマ、密度、アイコン素材はウィンドウ共通。
+const tabKeys = ['path','back','fwd','sel','active','anchor','sort','query','filter','view','pane','showHidden'];
+const tabSnapshot = () => Object.fromEntries(tabKeys.map(key => [key, structuredClone(S[key])]));
+let nextTabId = 3, activeTabId = 1;
+const folderTabs = [
+  {id:1,state:tabSnapshot(),scrollTop:0},
+  {id:2,state:{...tabSnapshot(),path:[...P_HOME,'ダウンロード'],sel:new Set(),active:null,anchor:null},scrollTop:0}
+];
+function rememberTab() {
+  const tab = folderTabs.find(t => t.id === activeTabId);
+  if(tab) { tab.state=tabSnapshot(); tab.scrollTop=els.scroller.scrollTop; }
+}
+function renderTabs() {
+  const container=$('tabs'), focusedId=document.activeElement?.getAttribute('data-tab');
+  container.innerHTML=folderTabs.map(tab=>{
+    const path=tab.id===activeTabId?S.path:tab.state.path;
+    const node=nodeAt(path), label=node===ROOT?'PC':node.name;
+    return '<div class="tab-entry '+(tab.id===activeTabId?'active':'')+'"><button class="tab-select" role="tab" id="folder-tab-'+tab.id+'" data-tab="'+tab.id+'" aria-selected="'+(tab.id===activeTabId)+'" aria-controls="tab-workspace" tabindex="'+(tab.id===activeTabId?'0':'-1')+'" title="'+esc(realPath(path))+'"><i class="oi" aria-hidden="true">'+(node===ROOT?driveSvg(false):objSvg(node))+'</i><span>'+esc(label)+'</span></button><button class="tab-close" data-close-tab="'+tab.id+'" tabindex="-1" aria-label="'+esc(label)+'のタブを閉じる" title="タブを閉じる">×</button></div>';
+  }).join('');
+  $('tab-workspace').setAttribute('aria-labelledby','folder-tab-'+activeTabId);
+  if(focusedId) container.querySelector('[data-tab="'+focusedId+'"]')?.focus({preventScroll:true});
+}
+function activateTab(id) {
+  if(id===activeTabId)return;
+  rememberTab();
+  const tab=folderTabs.find(t=>t.id===id);if(!tab)return;
+  activeTabId=id;
+  Object.assign(S,structuredClone(tab.state));
+  els.search.value=S.query;
+  els.menu.hidden=true;
+  clearTimeout(noticeTimer);$('st-notice').textContent='';
+  renderAll();
+  els.scroller.scrollTop=tab.scrollTop;
+  $('folder-tab-'+id).focus({preventScroll:true});
+  $('folder-tab-'+id).scrollIntoView({block:'nearest',inline:'nearest'});
+}
+function addTab() {
+  rememberTab();
+  const state={...tabSnapshot(),back:[],fwd:[],sel:new Set(),active:null,anchor:null,query:'',filter:'all'};
+  const id=nextTabId++;
+  folderTabs.push({id,state,scrollTop:0});
+  activateTab(id);
+}
+function closeTab(id) {
+  const index=folderTabs.findIndex(t=>t.id===id);if(index<0)return;
+  if(folderTabs.length===1){notice('最後のタブは閉じられません');return;}
+  if(id===activeTabId)activateTab(folderTabs[index+1]?.id??folderTabs[index-1].id);
+  folderTabs.splice(folderTabs.findIndex(t=>t.id===id),1);
+  renderTabs();
+  $('folder-tab-'+activeTabId).focus({preventScroll:true});
+}
+$('tab-add').addEventListener('click',addTab);
+$('tabs').addEventListener('click',e=>{
+  const close=e.target.closest('[data-close-tab]'),tab=e.target.closest('[data-tab]');
+  if(close)closeTab(Number(close.dataset.closeTab));else if(tab)activateTab(Number(tab.dataset.tab));
+});
+$('tabs').addEventListener('auxclick',e=>{
+  const entry=e.target.closest('.tab-entry');if(e.button===1&&entry){e.preventDefault();closeTab(Number(entry.querySelector('[data-tab]').dataset.tab));}
+});
+$('tabs').addEventListener('keydown',e=>{
+  if(!e.target.matches('[data-tab]'))return;
+  let index=folderTabs.findIndex(t=>t.id===activeTabId);
+  if(e.key==='ArrowRight')index=(index+1)%folderTabs.length;
+  else if(e.key==='ArrowLeft')index=(index-1+folderTabs.length)%folderTabs.length;
+  else if(e.key==='Home')index=0;
+  else if(e.key==='End')index=folderTabs.length-1;
+  else if(e.key==='Delete'){e.preventDefault();closeTab(activeTabId);return;}
+  else return;
+  e.preventDefault();activateTab(folderTabs[index].id);
+});
+window.addEventListener('keydown',e=>{
+  if(els.spec.open||!(e.ctrlKey||e.metaKey))return;
+  if(e.key.toLowerCase()==='t'){e.preventDefault();addTab();}
+  else if(e.key.toLowerCase()==='w'){e.preventDefault();closeTab(activeTabId);}
+  else if(e.key==='Tab'){e.preventDefault();const i=folderTabs.findIndex(t=>t.id===activeTabId);activateTab(folderTabs[(i+(e.shiftKey?-1:1)+folderTabs.length)%folderTabs.length].id);}
+});
+
+document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = op(el.dataset.icon); });
+renderAll();
+</script>
+</body>
+</html>

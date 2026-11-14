@@ -1,0 +1,1429 @@
+use std::ops::Range;
+use std::path::{Path, PathBuf};
+
+use explorer_core::history::breadcrumbs;
+use explorer_core::platform::{self, DriveSpace, Place};
+use explorer_core::{
+    CancelToken, Entry, EntryKind, History, ListingEvent, ListingStats, SortKey, SortOrder, format,
+    list_dir,
+};
+use gpui::{
+    AnyElement, App, ClickEvent, Context, FocusHandle, Focusable, MouseButton, MouseDownEvent,
+    NavigationDirection, Pixels, ScrollStrategy, Task, UniformListScrollHandle, Window, div,
+    prelude::*, px, svg, uniform_list,
+};
+use std::collections::HashMap;
+
+use crate::actions::*;
+use crate::search::TextInput;
+use crate::shell_icons::ShellIcons;
+use crate::theme::{Theme, ThemeMode};
+use gpui::{ClipboardItem, Entity, img};
+
+const COL_MODIFIED: Pixels = px(144.);
+const COL_KIND: Pixels = px(136.);
+const COL_SIZE: Pixels = px(92.);
+const SIDEBAR_WIDTH: Pixels = px(200.);
+
+pub struct FolderView {
+    pub mode: ThemeMode,
+    pub pane: bool,
+    pub compact: bool,
+    search: Entity<TextInput>,
+    query: String,
+    icons: Entity<ShellIcons>,
+    focus: FocusHandle,
+    history: History,
+    /// 現在のフォルダーの全項目（隠しファイル含む）、常にソート済み
+    entries: Vec<Entry>,
+    /// 表示対象の entries インデックス（隠しファイルのフィルター後）
+    visible: Vec<usize>,
+    /// visible 上の選択位置
+    selected: Option<usize>,
+    /// 列挙中に現れたら選択したい項目名（戻る/上へ で元のフォルダーを選択するため）
+    pending_select: Option<String>,
+    sort: SortOrder,
+    show_hidden: bool,
+    scroll: UniformListScrollHandle,
+    loading: bool,
+    stats: Option<ListingStats>,
+    error: Option<String>,
+    notice: Option<String>,
+    cancel: CancelToken,
+    _listing: Option<Task<()>>,
+    favorites: Vec<Place>,
+    drives: Vec<Place>,
+    drive_space: HashMap<PathBuf, Option<DriveSpace>>,
+    title_dirty: bool,
+}
+
+impl FolderView {
+    pub fn new(
+        start: PathBuf,
+        mode: ThemeMode,
+        icons: Entity<ShellIcons>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let focus = cx.focus_handle();
+        window.focus(&focus, cx);
+        cx.on_focus(&focus, window, |_, _, cx| cx.notify()).detach();
+        cx.on_blur(&focus, window, |_, _, cx| cx.notify()).detach();
+        // OSのライト/ダーク切り替えに追従
+        cx.observe_window_appearance(window, |_, _, cx| cx.notify())
+            .detach();
+
+        let search = cx.new(TextInput::new);
+        cx.observe(&search, |this, search, cx| {
+            let query = search.read(cx).content.to_string();
+            if query != this.query {
+                this.query = query;
+                let keep = this.selected_entry().map(|e| e.path.clone());
+                this.rebuild_visible(keep.as_deref());
+                this.scroll.scroll_to_item(0, ScrollStrategy::Top);
+                cx.notify();
+            }
+        })
+        .detach();
+        cx.observe(&icons, |_, _, cx| cx.notify()).detach();
+        let mut this = Self {
+            mode,
+            pane: true,
+            compact: false,
+            search,
+            query: String::new(),
+            icons,
+            focus,
+            history: History::new(start.clone()),
+            entries: Vec::new(),
+            visible: Vec::new(),
+            selected: None,
+            pending_select: None,
+            sort: SortOrder::default(),
+            show_hidden: false,
+            scroll: UniformListScrollHandle::new(),
+            loading: false,
+            stats: None,
+            error: None,
+            notice: None,
+            cancel: CancelToken::new(),
+            _listing: None,
+            favorites: platform::favorite_places(),
+            drives: platform::drives(),
+            drive_space: HashMap::new(),
+            title_dirty: true,
+        };
+        let paths: Vec<_> = this.drives.iter().map(|p| p.path.clone()).collect();
+        let (tx, rx) = async_channel::bounded(paths.len().max(1));
+        let _ = std::thread::Builder::new()
+            .name("drive-space".into())
+            .spawn(move || {
+                for path in paths {
+                    let space = platform::drive_space(&path);
+                    if tx.send_blocking((path, space)).is_err() {
+                        break;
+                    }
+                }
+            });
+        cx.spawn(async move |view, cx| {
+            while let Ok((path, space)) = rx.recv().await {
+                if view
+                    .update(cx, |view, cx| {
+                        view.drive_space.insert(path, space.ok());
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        this.load(start, None, cx);
+        this
+    }
+
+    // ───────────── 読み込み ─────────────
+
+    fn load(&mut self, path: PathBuf, select: Option<String>, cx: &mut Context<Self>) {
+        // 前の列挙を止める（タスクをdropすると受信側も閉じ、列挙スレッドは次のsendで終了する）
+        self.cancel.cancel();
+        self.cancel = CancelToken::new();
+        self._listing = None;
+
+        self.entries.clear();
+        self.visible.clear();
+        self.selected = None;
+        self.pending_select = select;
+        self.loading = true;
+        self.stats = None;
+        self.error = None;
+        self.notice = None;
+        self.title_dirty = true;
+        self.scroll.scroll_to_item(0, ScrollStrategy::Top);
+
+        let (tx, rx) = async_channel::bounded::<ListingEvent>(16);
+        let token = self.cancel.clone();
+        let spawned = std::thread::Builder::new()
+            .name("list-dir".into())
+            .spawn(move || {
+                list_dir(&path, &token, |ev| tx.send_blocking(ev).is_ok());
+            });
+        if let Err(e) = spawned {
+            self.loading = false;
+            self.error = Some(format!("列挙スレッドを起動できません: {e}"));
+            return;
+        }
+
+        self._listing = Some(cx.spawn(async move |this, cx| {
+            while let Ok(ev) = rx.recv().await {
+                if this
+                    .update(cx, |this, cx| this.on_listing_event(ev, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        }));
+        cx.notify();
+    }
+
+    fn on_listing_event(&mut self, ev: ListingEvent, cx: &mut Context<Self>) {
+        match ev {
+            ListingEvent::Batch(mut batch) => {
+                let selected_path = self.selected_entry().map(|e| e.path.clone());
+                let sort = self.sort;
+                batch.sort_unstable_by(|a, b| sort.compare(a, b));
+                self.entries = merge_sorted(std::mem::take(&mut self.entries), batch, sort);
+                self.rebuild_visible(selected_path.as_deref());
+
+                if let Some(name) = &self.pending_select {
+                    if let Some(ix) = self
+                        .visible
+                        .iter()
+                        .position(|&i| &self.entries[i].name == name)
+                    {
+                        self.selected = Some(ix);
+                        self.scroll.scroll_to_item(ix, ScrollStrategy::Center);
+                        self.pending_select = None;
+                    }
+                }
+            }
+            ListingEvent::Done(stats) => {
+                self.loading = false;
+                self.stats = Some(stats);
+                self.pending_select = None;
+            }
+            ListingEvent::Failed(kind, msg) => {
+                self.loading = false;
+                self.error = Some(match kind {
+                    std::io::ErrorKind::PermissionDenied => {
+                        "このフォルダーにアクセスする権限がありません".into()
+                    }
+                    std::io::ErrorKind::NotFound => "フォルダーが見つかりません".into(),
+                    _ => format!("開けませんでした: {msg}"),
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    /// visible を作り直し、選択を同じパスの項目に合わせ直す
+    fn rebuild_visible(&mut self, keep: Option<&Path>) {
+        let show_hidden = self.show_hidden;
+        let query = self.query.to_lowercase();
+        self.visible = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| (show_hidden || !e.hidden) && e.name.to_lowercase().contains(&query))
+            .map(|(i, _)| i)
+            .collect();
+        self.selected =
+            keep.and_then(|p| self.visible.iter().position(|&i| self.entries[i].path == p));
+    }
+
+    fn selected_entry(&self) -> Option<&Entry> {
+        self.selected
+            .and_then(|ix| self.visible.get(ix))
+            .map(|&i| &self.entries[i])
+    }
+
+    fn selected_name(&self) -> Option<String> {
+        self.selected_entry().map(|e| e.name.clone())
+    }
+
+    // ───────────── ナビゲーション ─────────────
+
+    fn navigate_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if path == self.history.current() {
+            return;
+        }
+        self.history.push(path.clone(), self.selected_name());
+        self.load(path, None, cx);
+    }
+
+    fn open_entry(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let Some(&i) = self.visible.get(ix) else {
+            return;
+        };
+        let entry = &self.entries[i];
+        let path = entry.path.clone();
+        // リンクは開く瞬間だけ先を確認（一覧作成時には追わない）
+        let is_dir = match entry.kind {
+            EntryKind::Dir => true,
+            EntryKind::Symlink => path.is_dir(),
+            EntryKind::File => false,
+        };
+        if is_dir {
+            self.navigate_to(path, cx);
+        } else if let Err(e) = platform::open_with_default_app(&path) {
+            self.notice = Some(format!("開けませんでした: {e}"));
+            cx.notify();
+        }
+    }
+
+    fn go_back(&mut self, _: &GoBack, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some((path, sel)) = self.history.go_back(self.selected_name()) {
+            self.load(path, sel, cx);
+        }
+    }
+
+    fn go_forward(&mut self, _: &GoForward, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some((path, sel)) = self.history.go_forward(self.selected_name()) {
+            self.load(path, sel, cx);
+        }
+    }
+
+    fn go_up(&mut self, _: &GoUp, _: &mut Window, cx: &mut Context<Self>) {
+        let current = self.history.current().to_path_buf();
+        if let Some(parent) = current.parent() {
+            let came_from = current
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned());
+            self.history
+                .push(parent.to_path_buf(), self.selected_name());
+            self.load(parent.to_path_buf(), came_from, cx);
+        }
+    }
+
+    fn refresh(&mut self, _: &Refresh, _: &mut Window, cx: &mut Context<Self>) {
+        let path = self.history.current().to_path_buf();
+        let sel = self.selected_name();
+        self.load(path, sel, cx);
+    }
+
+    fn toggle_hidden(&mut self, _: &ToggleHidden, _: &mut Window, cx: &mut Context<Self>) {
+        self.show_hidden = !self.show_hidden;
+        let keep = self.selected_entry().map(|e| e.path.clone());
+        self.rebuild_visible(keep.as_deref());
+        cx.notify();
+    }
+
+    fn set_sort(&mut self, key: SortKey, cx: &mut Context<Self>) {
+        self.sort = self.sort.toggled(key);
+        let keep = self.selected_entry().map(|e| e.path.clone());
+        let sort = self.sort;
+        self.entries.sort_unstable_by(|a, b| sort.compare(a, b));
+        self.rebuild_visible(keep.as_deref());
+        if let Some(ix) = self.selected {
+            self.scroll.scroll_to_item(ix, ScrollStrategy::Center);
+        }
+        cx.notify();
+    }
+
+    // ───────────── 選択移動 ─────────────
+
+    fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
+        let len = self.visible.len();
+        if len == 0 {
+            return;
+        }
+        let next = match self.selected {
+            None => {
+                if delta >= 0 {
+                    0
+                } else {
+                    len - 1
+                }
+            }
+            Some(cur) => (cur as isize + delta).clamp(0, len as isize - 1) as usize,
+        };
+        self.select(next, cx);
+    }
+
+    fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
+        self.selected = Some(ix);
+        self.scroll.scroll_to_item(ix, ScrollStrategy::Nearest);
+        cx.notify();
+    }
+
+    fn page_rows(&self) -> isize {
+        let h = self.scroll.0.borrow().base_handle.bounds().size.height;
+        ((h / px(if self.compact { 24. } else { 28. })).floor() as isize - 1).max(1)
+    }
+
+    fn select_prev(&mut self, _: &SelectPrev, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search.focus_handle(cx).is_focused(window) {
+            return;
+        }
+        self.move_selection(-1, cx);
+    }
+    fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search.focus_handle(cx).is_focused(window) {
+            return;
+        }
+        self.move_selection(1, cx);
+    }
+    fn select_first(&mut self, _: &SelectFirst, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search.focus_handle(cx).is_focused(window) {
+            return;
+        }
+        if !self.visible.is_empty() {
+            self.select(0, cx);
+        }
+    }
+    fn select_last(&mut self, _: &SelectLast, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search.focus_handle(cx).is_focused(window) {
+            return;
+        }
+        if !self.visible.is_empty() {
+            self.select(self.visible.len() - 1, cx);
+        }
+    }
+    fn page_up(&mut self, _: &PageUp, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search.focus_handle(cx).is_focused(window) {
+            return;
+        }
+        let n = self.page_rows();
+        self.move_selection(-n, cx);
+    }
+    fn page_down(&mut self, _: &PageDown, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search.focus_handle(cx).is_focused(window) {
+            return;
+        }
+        let n = self.page_rows();
+        self.move_selection(n, cx);
+    }
+    fn open_selected(&mut self, _: &OpenSelected, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search.focus_handle(cx).is_focused(window) {
+            window.focus(&self.focus, cx);
+            cx.notify();
+            return;
+        }
+        if let Some(ix) = self.selected {
+            self.open_entry(ix, cx);
+        }
+    }
+
+    pub fn path(&self) -> &Path {
+        self.history.current()
+    }
+    pub fn label(&self) -> String {
+        self.path()
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| self.path().display().to_string())
+    }
+    fn theme(&self, window: &Window) -> Theme {
+        Theme::resolve(self.mode, window.appearance())
+    }
+    fn object_icon(
+        &self,
+        path: &Path,
+        dir: bool,
+        logical: f32,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let physical = (logical * window.scale_factor()).ceil() as u32;
+        let image = self
+            .icons
+            .update(cx, |icons, cx| icons.get(path, dir, physical, cx));
+        div()
+            .size(px(logical))
+            .flex_shrink_0()
+            .when_some(image, |d, image| d.child(img(image).size_full()))
+            .into_any_element()
+    }
+    fn render_toolbar(
+        &self,
+        t: Theme,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let all = breadcrumbs(self.path());
+        let n = all.len();
+        let crumbs: Vec<_> = all
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| n <= 5 || *i == 0 || *i >= n - 3)
+            .collect();
+        let mut address = div()
+            .id("breadcrumbs")
+            .flex()
+            .items_center()
+            .h(px(36.))
+            .flex_1()
+            .min_w_0()
+            .px(px(10.))
+            .bg(t.c("surface.field"))
+            .border_1()
+            .border_color(t.c("border.subtle"))
+            .rounded(px(18.))
+            .overflow_x_scroll();
+        address = address.child(self.object_icon(self.path(), true, 18., window, cx));
+        for (i, (label, path)) in crumbs {
+            let last = i + 1 == n;
+            address = address
+                .when(i > 0, |d| {
+                    d.child(
+                        svg()
+                            .path("icons/chevron-right.svg")
+                            .size(px(12.))
+                            .mx(px(3.))
+                            .text_color(t.c("text.disabled")),
+                    )
+                })
+                .child(
+                    div()
+                        .id(("crumb", i))
+                        .flex()
+                        .items_center()
+                        .h(px(26.))
+                        .px(px(10.))
+                        .max_w(px(180.))
+                        .flex_shrink_0()
+                        .rounded(px(13.))
+                        .when(last, |d| {
+                            d.bg(t.c("surface.chip-selected"))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                        })
+                        .text_color(t.c("text.secondary"))
+                        .hover(|s| s.bg(t.c("state.hover")))
+                        .cursor_pointer()
+                        .child(div().truncate().child(label))
+                        .on_click(
+                            cx.listener(move |this, _, _, cx| this.navigate_to(path.clone(), cx)),
+                        ),
+                );
+        }
+        div()
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .h(px(44.))
+            .flex_shrink_0()
+            .px(px(10.))
+            .bg(t.c("surface.chrome"))
+            .border_1()
+            .border_color(t.c("border.default"))
+            .rounded(px(10.))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(2.))
+                    .bg(t.c("surface.field"))
+                    .rounded(px(18.))
+                    .px(px(3.))
+                    .child(
+                        icon_button(
+                            "back",
+                            "icons/arrow-left.svg",
+                            self.history.can_go_back(),
+                            t,
+                        )
+                        .on_click(cx.listener(|this, _, w, cx| this.go_back(&GoBack, w, cx))),
+                    )
+                    .child(
+                        icon_button(
+                            "forward",
+                            "icons/arrow-right.svg",
+                            self.history.can_go_forward(),
+                            t,
+                        )
+                        .on_click(cx.listener(|this, _, w, cx| this.go_forward(&GoForward, w, cx))),
+                    )
+                    .child(
+                        icon_button(
+                            "up",
+                            "icons/arrow-up.svg",
+                            self.path().parent().is_some(),
+                            t,
+                        )
+                        .on_click(cx.listener(|this, _, w, cx| this.go_up(&GoUp, w, cx))),
+                    )
+                    .child(
+                        icon_button("refresh", "icons/refresh.svg", true, t)
+                            .on_click(cx.listener(|this, _, w, cx| this.refresh(&Refresh, w, cx))),
+                    ),
+            )
+            .child(address)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .w(px(if window.viewport_size().width < px(1150.) {
+                        190.
+                    } else {
+                        256.
+                    }))
+                    .flex_shrink_0()
+                    .h(px(36.))
+                    .px(px(12.))
+                    .rounded(px(18.))
+                    .bg(t.c("surface.field"))
+                    .border_1()
+                    .border_color(if self.search.focus_handle(cx).is_focused(window) {
+                        t.c("focus.ring")
+                    } else {
+                        t.c("border.subtle")
+                    })
+                    .child(
+                        svg()
+                            .path("icons/search.svg")
+                            .size(px(14.))
+                            .flex_shrink_0()
+                            .text_color(t.c("icon.default")),
+                    )
+                    .child(self.search.clone())
+                    .when(!self.query.is_empty(), |d| {
+                        d.child(
+                            icon_button("clear-search", "icons/x.svg", true, t)
+                                .size(px(20.))
+                                .on_click(cx.listener(|this, _, w, cx| {
+                                    this.search.update(cx, |input, cx| input.reset(w, cx));
+                                })),
+                        )
+                    }),
+            )
+            .child(
+                icon_button("theme", "icons/sun.svg", true, t)
+                    .tooltip({
+                        let text = format!("テーマ: {}（クリックで切替）", self.mode.label());
+                        move |_, cx| {
+                            cx.new(|_| Tip {
+                                text: text.clone(),
+                                theme: t,
+                            })
+                            .into()
+                        }
+                    })
+                    .on_click(|_, w, cx| w.dispatch_action(Box::new(CycleTheme), cx)),
+            )
+            .child(
+                icon_button("pane", "icons/panel.svg", true, t)
+                    .when(self.pane, |d| d.bg(t.c("accent.soft")))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.pane = !this.pane;
+                        cx.notify()
+                    })),
+            )
+    }
+    fn render_sidebar(
+        &self,
+        t: Theme,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let mut panel = div()
+            .id("sidebar")
+            .flex()
+            .flex_col()
+            .w(SIDEBAR_WIDTH)
+            .h_full()
+            .flex_shrink_0()
+            .p(px(6.))
+            .bg(t.c("surface.chrome"))
+            .border_1()
+            .border_color(t.c("border.default"))
+            .rounded(px(10.))
+            .overflow_y_scroll();
+        for (title, places) in [
+            ("よく使う場所", &self.favorites),
+            ("ストレージ", &self.drives),
+        ] {
+            panel = panel.child(
+                div()
+                    .px(px(10.))
+                    .pt(px(if title == "ストレージ" { 20. } else { 2. }))
+                    .pb(px(8.))
+                    .text_size(px(11.))
+                    .text_color(t.c("text.muted"))
+                    .child(title),
+            );
+            for (i, place) in places.iter().enumerate() {
+                let path = place.path.clone();
+                let active = path == self.path();
+                let drive = title == "ストレージ";
+                let space = self.drive_space.get(&path);
+                let mut label = div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(5.))
+                    .child(div().truncate().child(place.label.clone()));
+                if drive {
+                    if let Some(Some(space)) = space {
+                        let used = if space.total == 0 {
+                            0.
+                        } else {
+                            1.0 - space.available as f32 / space.total as f32
+                        };
+                        label = label
+                            .child(
+                                div()
+                                    .h(px(5.))
+                                    .w_full()
+                                    .rounded(px(3.))
+                                    .overflow_hidden()
+                                    .bg(t.c(if active {
+                                        "nav.current.meter-track"
+                                    } else {
+                                        "meter.track"
+                                    }))
+                                    .child(
+                                        div()
+                                            .h_full()
+                                            .w(gpui::relative(used.clamp(0., 1.)))
+                                            .rounded(px(3.))
+                                            .bg(t.c(if active {
+                                                "nav.current.meter-fill"
+                                            } else if used > 0.9 {
+                                                "meter.warn"
+                                            } else {
+                                                "meter.fill"
+                                            })),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(t.c(if active {
+                                        "nav.current.caption"
+                                    } else {
+                                        "text.muted"
+                                    }))
+                                    .child(format!(
+                                        "空き {} / {}",
+                                        format::size(space.available),
+                                        format::size(space.total)
+                                    )),
+                            );
+                    } else {
+                        label = label.child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(t.c("text.muted"))
+                                .child(if space.is_some() {
+                                    "容量を取得できません"
+                                } else {
+                                    "容量を取得中…"
+                                }),
+                        );
+                    }
+                }
+                panel = panel.child(
+                    div()
+                        .id((if drive { "drive" } else { "fav" }, i))
+                        .flex()
+                        .items_start()
+                        .gap(px(10.))
+                        .px(px(10.))
+                        .py(px(if drive { 8. } else { 4. }))
+                        .mb(px(if drive { 6. } else { 3. }))
+                        .rounded(px(10.))
+                        .text_color(if active {
+                            t.c("nav.current.fg")
+                        } else {
+                            t.c("text.secondary")
+                        })
+                        .when(drive && !active, |d| {
+                            d.bg(t.c("surface.field"))
+                                .border_1()
+                                .border_color(t.c("border.subtle"))
+                        })
+                        .when(active, |d| d.bg(t.c("nav.current.bg")))
+                        .when(!active, |d| d.hover(|s| s.bg(t.c("state.hover"))))
+                        .cursor_pointer()
+                        .child(self.object_icon(&path, true, 18., window, cx))
+                        .child(label)
+                        .on_click(
+                            cx.listener(move |this, _, _, cx| this.navigate_to(path.clone(), cx)),
+                        ),
+                );
+            }
+        }
+        panel
+    }
+    fn render_header(&self, t: Theme, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let col = |id: &'static str, label: &'static str, key: SortKey, cx: &mut Context<Self>| {
+            let active = self.sort.key == key;
+            div()
+                .id(id)
+                .flex()
+                .items_center()
+                .gap(px(3.))
+                .h_full()
+                .px(px(8.))
+                .cursor_pointer()
+                .text_color(if active {
+                    t.c("accent.fg")
+                } else {
+                    t.c("text.muted")
+                })
+                .child(label)
+                .when(active, |d| {
+                    d.child(
+                        svg()
+                            .path(if self.sort.ascending {
+                                "icons/chevron-up.svg"
+                            } else {
+                                "icons/chevron-down.svg"
+                            })
+                            .size(px(11.)),
+                    )
+                })
+                .on_click(cx.listener(move |this, _, _, cx| this.set_sort(key, cx)))
+        };
+        div()
+            .flex()
+            .items_center()
+            .h(px(28.))
+            .flex_shrink_0()
+            .px(px(6.))
+            .bg(t.c("surface.chrome"))
+            .border_b_1()
+            .border_color(t.c("border.subtle"))
+            .text_size(px(12.))
+            .child(div().flex_1().min_w_0().h_full().pl(px(24.)).child(col(
+                "h-name",
+                "名前",
+                SortKey::Name,
+                cx,
+            )))
+            .child(div().w(COL_MODIFIED).flex_shrink_0().h_full().child(col(
+                "h-mod",
+                "更新日時",
+                SortKey::Modified,
+                cx,
+            )))
+            .when(!narrow, |d| {
+                d.child(div().w(COL_KIND).flex_shrink_0().h_full().child(col(
+                    "h-kind",
+                    "種類",
+                    SortKey::Kind,
+                    cx,
+                )))
+            })
+            .child(
+                div()
+                    .w(COL_SIZE)
+                    .flex_shrink_0()
+                    .h_full()
+                    .flex()
+                    .justify_end()
+                    .child(col("h-size", "サイズ", SortKey::Size, cx)),
+            )
+    }
+    fn narrow(&self, window: &Window) -> bool {
+        self.pane && window.viewport_size().width < px(1200.)
+    }
+    fn render_rows(
+        &mut self,
+        range: Range<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let t = self.theme(window);
+        let focused = self.focus.is_focused(window);
+        let narrow = self.narrow(window);
+        range
+            .filter_map(|ix| {
+                let &i = self.visible.get(ix)?;
+                let e = &self.entries[i];
+                let selected = self.selected == Some(ix);
+                let name_color = if selected && focused {
+                    t.c("selection.fg")
+                } else {
+                    t.c("text.primary")
+                };
+                let meta_color = if selected && focused {
+                    t.c("selection.fg-secondary")
+                } else {
+                    t.c("text.muted")
+                };
+                let row = div()
+                    .flex()
+                    .items_center()
+                    .w_full()
+                    .h_full()
+                    .px(px(10.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(if selected {
+                        if focused {
+                            t.c("selection.border")
+                        } else {
+                            t.c("selection.inactive.border")
+                        }
+                    } else {
+                        gpui::transparent_black().into()
+                    })
+                    .when(selected, |d| {
+                        d.bg(t.c(if focused {
+                            "selection.bg"
+                        } else {
+                            "selection.inactive.bg"
+                        }))
+                    })
+                    .when(!selected, |d| d.hover(|s| s.bg(t.c("state.hover"))))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .flex_1()
+                            .min_w_0()
+                            .child(self.object_icon(
+                                &e.path,
+                                e.kind == EntryKind::Dir,
+                                18.,
+                                window,
+                                cx,
+                            ))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_color(name_color)
+                                    .when(selected, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
+                                    .when(e.hidden, |d| d.opacity(0.55))
+                                    .child(e.name.clone()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .w(COL_MODIFIED)
+                            .flex_shrink_0()
+                            .px(px(8.))
+                            .text_size(px(12.))
+                            .text_color(meta_color)
+                            .truncate()
+                            .child(e.modified.map(format::modified).unwrap_or_default()),
+                    )
+                    .when(!narrow, |d| {
+                        d.child(
+                            div()
+                                .w(COL_KIND)
+                                .flex_shrink_0()
+                                .px(px(8.))
+                                .text_size(px(12.))
+                                .text_color(meta_color)
+                                .truncate()
+                                .child(e.kind_label()),
+                        )
+                    })
+                    .child(
+                        div()
+                            .w(COL_SIZE)
+                            .flex_shrink_0()
+                            .px(px(8.))
+                            .flex()
+                            .justify_end()
+                            .text_size(px(12.))
+                            .text_color(meta_color)
+                            .child(e.size.map(format::size).unwrap_or_else(|| "—".into())),
+                    );
+                Some(
+                    div()
+                        .id(ix)
+                        .w_full()
+                        .h(px(if self.compact { 24. } else { 28. }))
+                        .px(px(6.))
+                        .child(row)
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _: &MouseDownEvent, w, cx| {
+                                w.focus(&this.focus, cx);
+                                this.selected = Some(ix);
+                                cx.notify();
+                            }),
+                        )
+                        .on_click(cx.listener(move |this, e: &ClickEvent, _, cx| {
+                            if e.click_count() == 2 {
+                                this.open_entry(ix, cx)
+                            }
+                        }))
+                        .into_any_element(),
+                )
+            })
+            .collect()
+    }
+    fn render_list(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
+        if let Some(err) = &self.error {
+            return empty_state(err.clone(), t.c("danger.fg")).into_any_element();
+        }
+        if self.visible.is_empty() {
+            return empty_state(
+                if self.loading {
+                    "読み込み中…"
+                } else if !self.query.is_empty() {
+                    "一致する項目はありません"
+                } else {
+                    "空のフォルダー"
+                }
+                .into(),
+                t.c("text.muted"),
+            )
+            .into_any_element();
+        }
+        uniform_list(
+            "entries",
+            self.visible.len(),
+            cx.processor(Self::render_rows),
+        )
+        .flex_1()
+        .min_h_0()
+        .py(px(2.))
+        .track_scroll(&self.scroll)
+        .into_any_element()
+    }
+    fn render_inspector(
+        &self,
+        t: Theme,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let mut panel = div()
+            .id("inspector")
+            .w(px(268.))
+            .flex_shrink_0()
+            .h_full()
+            .flex()
+            .flex_col()
+            .bg(t.c("surface.chrome"))
+            .border_1()
+            .border_color(t.c("border.default"))
+            .rounded(px(10.))
+            .overflow_hidden()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .h(px(44.))
+                    .flex_shrink_0()
+                    .px(px(18.))
+                    .border_b_1()
+                    .border_color(t.c("border.subtle"))
+                    .text_size(px(12.))
+                    .text_color(t.c("text.muted"))
+                    .child("インスペクタ")
+                    .child(
+                        icon_button("close-pane", "icons/x.svg", true, t)
+                            .size(px(22.))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.pane = false;
+                                cx.notify()
+                            })),
+                    ),
+            );
+        let mut body = div()
+            .id("inspector-body")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .p(px(18.))
+            .flex()
+            .flex_col()
+            .gap(px(16.));
+        if let Some(e) = self.selected_entry() {
+            body = body
+                .child(
+                    div()
+                        .h(px(156.))
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(t.c("surface.card"))
+                        .border_1()
+                        .border_color(t.c("border.card"))
+                        .rounded(px(12.))
+                        .child(self.object_icon(
+                            &e.path,
+                            e.kind == EntryKind::Dir,
+                            68.,
+                            window,
+                            cx,
+                        )),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.))
+                        .child(
+                            div()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_size(px(15.))
+                                .child(e.name.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(t.c("badge.fg"))
+                                .child(e.kind_label()),
+                        ),
+                );
+            let metadata = vec![
+                (
+                    "サイズ",
+                    e.size.map(format::size).unwrap_or_else(|| "—".into()),
+                ),
+                (
+                    "更新日時",
+                    e.modified
+                        .map(format::modified)
+                        .unwrap_or_else(|| "—".into()),
+                ),
+                (
+                    "場所",
+                    e.path
+                        .parent()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default(),
+                ),
+            ];
+            body = body
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(12.))
+                        .p(px(14.))
+                        .bg(t.c("surface.card"))
+                        .border_1()
+                        .border_color(t.c("border.card"))
+                        .rounded(px(12.))
+                        .children(metadata.into_iter().map(|(k, v)| {
+                            div()
+                                .flex()
+                                .gap(px(12.))
+                                .text_size(px(12.))
+                                .child(
+                                    div()
+                                        .w(px(50.))
+                                        .flex_shrink_0()
+                                        .text_color(t.c("text.muted"))
+                                        .child(k),
+                                )
+                                .child(div().flex_1().min_w_0().truncate().child(v))
+                        })),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(8.))
+                        .child(
+                            div()
+                                .id("open-inspector")
+                                .h(px(32.))
+                                .px(px(16.))
+                                .flex()
+                                .items_center()
+                                .rounded(px(16.))
+                                .bg(t.c("button.primary.bg"))
+                                .text_color(t.c("text.on-accent"))
+                                .cursor_pointer()
+                                .child("開く")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(ix) = this.selected {
+                                        this.open_entry(ix, cx)
+                                    }
+                                })),
+                        )
+                        .child(
+                            div()
+                                .id("copy-path")
+                                .h(px(32.))
+                                .px(px(12.))
+                                .flex()
+                                .items_center()
+                                .rounded(px(16.))
+                                .bg(t.c("button.bg"))
+                                .border_1()
+                                .border_color(t.c("button.border"))
+                                .text_size(px(12.))
+                                .cursor_pointer()
+                                .child("パスをコピー")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(e) = this.selected_entry() {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            e.path.display().to_string(),
+                                        ));
+                                        this.notice = Some("パスをコピーしました".into());
+                                        cx.notify()
+                                    }
+                                })),
+                        ),
+                );
+        } else {
+            body = body.child(
+                div()
+                    .mt(px(52.))
+                    .text_size(px(12.))
+                    .text_color(t.c("text.muted"))
+                    .child("項目を選択すると詳細を表示します"),
+            );
+        }
+        panel = panel.child(body);
+        panel
+    }
+    fn render_status(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .h(px(28.))
+            .flex_shrink_0()
+            .px(px(10.))
+            .bg(t.c("surface.statusbar"))
+            .border_t_1()
+            .border_color(t.c("border.statusbar"))
+            .text_size(px(11.))
+            .text_color(t.c("text.secondary"))
+            .child(format!(
+                "{} 項目{}",
+                format::count(self.visible.len()),
+                if self.loading {
+                    " · 読み込み中…"
+                } else {
+                    ""
+                }
+            ))
+            .when_some(self.selected_entry(), |d, e| {
+                d.child(div().text_color(t.c("accent.fg")).child(format!(
+                        "1 項目を選択{}",
+                        e.size
+                            .map(|s| format!(" · {}", format::size(s)))
+                            .unwrap_or_default()
+                    )))
+            })
+            .when_some(self.notice.clone(), |d, n| {
+                d.child(div().truncate().child(n))
+            })
+            .child(div().flex_1())
+            .child(
+                div()
+                    .id("density")
+                    .cursor_pointer()
+                    .child(if self.compact {
+                        "コンパクト"
+                    } else {
+                        "標準"
+                    })
+                    .on_click(|_, w, cx| w.dispatch_action(Box::new(ToggleDensity), cx)),
+            )
+            .child(
+                div()
+                    .id("toggle-hidden")
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .cursor_pointer()
+                    .text_color(if self.show_hidden {
+                        t.c("accent.fg")
+                    } else {
+                        t.c("text.secondary")
+                    })
+                    .child(svg().path("icons/eye.svg").size(px(13.)))
+                    .child("隠しファイル")
+                    .on_click(
+                        cx.listener(|this, _, w, cx| this.toggle_hidden(&ToggleHidden, w, cx)),
+                    ),
+            )
+    }
+}
+impl Drop for FolderView {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+    }
+}
+impl Focusable for FolderView {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus.clone()
+    }
+}
+impl Render for FolderView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = self.theme(window);
+        self.search.update(cx, |input, _| input.theme = t);
+        div()
+            .key_context("Explorer")
+            .track_focus(&self.focus)
+            .on_action(cx.listener(Self::select_prev))
+            .on_action(cx.listener(Self::select_next))
+            .on_action(cx.listener(Self::select_first))
+            .on_action(cx.listener(Self::select_last))
+            .on_action(cx.listener(Self::page_up))
+            .on_action(cx.listener(Self::page_down))
+            .on_action(cx.listener(Self::open_selected))
+            .on_action(cx.listener(Self::go_back))
+            .on_action(cx.listener(Self::go_forward))
+            .on_action(cx.listener(Self::go_up))
+            .on_action(cx.listener(Self::refresh))
+            .on_action(cx.listener(Self::toggle_hidden))
+            .on_action(cx.listener(|this, _: &FocusSearch, w, cx| {
+                w.focus(&this.search.focus_handle(cx), cx);
+                cx.notify()
+            }))
+            .on_action(cx.listener(|this, _: &ClearSearch, w, cx| {
+                this.search.update(cx, |input, cx| input.reset(w, cx));
+                w.focus(&this.focus, cx);
+                cx.notify()
+            }))
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Back),
+                cx.listener(|this, _: &MouseDownEvent, w, cx| this.go_back(&GoBack, w, cx)),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Forward),
+                cx.listener(|this, _: &MouseDownEvent, w, cx| this.go_forward(&GoForward, w, cx)),
+            )
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(t.c("surface.canvas"))
+            .text_color(t.c("text.primary"))
+            .font_family("Segoe UI")
+            .text_size(px(13.5))
+            .child(
+                div()
+                    .px(px(6.))
+                    .pb(px(6.))
+                    .flex_shrink_0()
+                    .child(self.render_toolbar(t, window, cx)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .gap(px(6.))
+                    .px(px(6.))
+                    .pb(px(6.))
+                    .child(self.render_sidebar(t, window, cx))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .flex()
+                            .flex_col()
+                            .bg(t.c("surface.content"))
+                            .border_1()
+                            .border_color(t.c("border.content"))
+                            .rounded(px(10.))
+                            .overflow_hidden()
+                            .child(self.render_header(t, self.narrow(window), cx))
+                            .child(self.render_list(t, cx)),
+                    )
+                    .when(self.pane, |d| d.child(self.render_inspector(t, window, cx))),
+            )
+            .child(self.render_status(t, cx))
+    }
+}
+pub fn icon_button(
+    id: &'static str,
+    icon: &'static str,
+    enabled: bool,
+    t: Theme,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(32.))
+        .flex_shrink_0()
+        .rounded(px(16.))
+        .child(
+            svg()
+                .path(icon)
+                .size(px(16.))
+                .text_color(t.c("icon.default")),
+        )
+        .when(enabled, |d| {
+            d.cursor_pointer().hover(|s| s.bg(t.c("state.hover")))
+        })
+        .when(!enabled, |d| d.opacity(0.35))
+        .tooltip(move |_, cx| {
+            cx.new(|_| Tip {
+                text: match id {
+                    "back" => "戻る（Alt+←）",
+                    "forward" => "進む（Alt+→）",
+                    "up" => "上へ（Alt+↑）",
+                    "refresh" => "更新（F5）",
+                    "pane" => "詳細ペイン",
+                    "close-pane" => "詳細ペインを閉じる",
+                    "clear-search" => "検索をクリア（Esc）",
+                    "new-tab" => "新しいタブ（Ctrl+T）",
+                    _ => "テーマ切替",
+                }
+                .into(),
+                theme: t,
+            })
+            .into()
+        })
+}
+fn empty_state(msg: String, color: gpui::Rgba) -> impl IntoElement {
+    div()
+        .flex_1()
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_size(px(13.))
+        .text_color(color)
+        .child(msg)
+}
+fn merge_sorted(a: Vec<Entry>, b: Vec<Entry>, sort: SortOrder) -> Vec<Entry> {
+    if a.is_empty() {
+        return b;
+    }
+    let mut out = Vec::with_capacity(a.len() + b.len());
+    let mut a = a.into_iter().peekable();
+    let mut b = b.into_iter().peekable();
+    while let (Some(x), Some(y)) = (a.peek(), b.peek()) {
+        if sort.compare(x, y) != std::cmp::Ordering::Greater {
+            out.push(a.next().unwrap())
+        } else {
+            out.push(b.next().unwrap())
+        }
+    }
+    out.extend(a);
+    out.extend(b);
+    out
+}
+
+struct Tip {
+    text: String,
+    theme: Theme,
+}
+impl Render for Tip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(10.))
+            .py(px(6.))
+            .rounded(px(6.))
+            .bg(self.theme.c("surface.raised"))
+            .border_1()
+            .border_color(self.theme.c("border.default"))
+            .text_color(self.theme.c("text.primary"))
+            .text_size(px(12.))
+            .child(self.text.clone())
+    }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "explorer"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+explorer-core.workspace = true
+gpui.workspace = true
+gpui_platform.workspace = true
+async-channel.workspace = true
+anyhow.workspace = true
+image = { version = "0.25", default-features = false }
+unicode-segmentation = "1.12"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

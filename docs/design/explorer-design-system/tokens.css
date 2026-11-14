@@ -1,0 +1,436 @@
+/*
+ * Prism Canopy Compact — Explorer design tokens
+ * GENERATED FILE. 直接編集しない。編集元: tokens.json
+ * 再生成: node docs/design/explorer-design-system/tools/build-tokens.cjs
+ * テーマ: <html data-theme="light|dark">。属性なしはOS設定（prefers-color-scheme）に従う。
+ *         任意の要素に data-theme を付けると、その中だけテーマを固定できる。
+ * 密度:   data-density="compact" で行高24px。
+ */
+:root {
+  /* font */
+  --ex-font-ui: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", -apple-system, BlinkMacSystemFont, "Hiragino Sans", system-ui, sans-serif;
+  --ex-font-mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  --ex-font-size-caption: 11px;
+  --ex-font-size-small: 12px;
+  --ex-font-size-control: 13px;
+  --ex-font-size-body: 13.5px;
+  --ex-font-size-title: 15px;
+  --ex-font-size-code: 11.5px;
+  --ex-font-weight-regular: 400;
+  --ex-font-weight-medium: 500;
+  --ex-font-weight-strong: 600;
+  --ex-font-weight-bold: 700;
+  --ex-font-line-body: 1.45;
+  --ex-font-line-tight: 1.35;
+  --ex-font-line-code: 1.55;
+  --ex-font-tracking-heading: 0.04em;
+  /* space */
+  --ex-space-2: 2px;
+  --ex-space-3: 3px;
+  --ex-space-4: 4px;
+  --ex-space-6: 6px;
+  --ex-space-8: 8px;
+  --ex-space-10: 10px;
+  --ex-space-12: 12px;
+  --ex-space-14: 14px;
+  --ex-space-16: 16px;
+  --ex-space-18: 18px;
+  --ex-space-20: 20px;
+  --ex-layout-gap: 6px;
+  /* size */
+  --ex-size-tabbar: 32px;
+  --ex-size-tab: 30px;
+  --ex-size-tab-width: 180px;
+  --ex-size-tab-close: 22px;
+  --ex-size-tab-add: 28px;
+  --ex-size-toolbar: 44px;
+  --ex-size-field: 36px;
+  --ex-size-icon-button: 32px;
+  --ex-size-icon-button-sm: 24px;
+  --ex-size-segment-item-w: 30px;
+  --ex-size-segment-item-h: 28px;
+  --ex-size-crumb: 26px;
+  --ex-size-list-header: 28px;
+  --ex-size-row: 28px;
+  --ex-size-side-item: 28px;
+  --ex-size-statusbar: 28px;
+  --ex-size-status-button: 24px;
+  --ex-size-button: 32px;
+  --ex-size-menu-item: 30px;
+  --ex-size-menu-min: 224px;
+  --ex-size-pane-header: 44px;
+  --ex-size-dialog-header: 50px;
+  --ex-size-dialog-max: 760px;
+  --ex-size-sidebar: 200px;
+  --ex-size-inspector: 268px;
+  --ex-size-col-name-min: 200px;
+  --ex-size-col-modified: 144px;
+  --ex-size-col-kind: 136px;
+  --ex-size-col-size: 92px;
+  --ex-size-tile-min: 118px;
+  --ex-size-tile-icon: 52px;
+  --ex-size-file-icon: 18px;
+  --ex-size-icon: 16px;
+  --ex-size-icon-sm: 14px;
+  --ex-size-icon-xs: 12px;
+  --ex-size-preview: 156px;
+  --ex-size-preview-icon: 68px;
+  --ex-size-meter: 5px;
+  --ex-size-window-min-w: 960px;
+  --ex-size-window-min-h: 600px;
+  /* radius */
+  --ex-radius-island: 10px;
+  --ex-radius-row: 6px;
+  --ex-radius-tab: 8px;
+  --ex-radius-place: 10px;
+  --ex-radius-card: 12px;
+  --ex-radius-code: 10px;
+  --ex-radius-tile: 14px;
+  --ex-radius-dialog: 16px;
+  --ex-radius-small: 5px;
+  --ex-radius-mark: 3px;
+  --ex-radius-pill: 999px;
+  /* line */
+  --ex-border-width: 1px;
+  --ex-focus-width: 2px;
+  --ex-focus-offset: 1px;
+  --ex-focus-halo-width: 3px;
+  --ex-focus-row-width: 2px;
+  /* motion */
+  --ex-motion-row: 0.08s;
+  --ex-motion-base: 0.12s;
+  --ex-motion-field: 0.15s;
+  --ex-motion-press-scale: 0.96;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  /* color */
+  --ex-surface-canvas: #f5f7fa;
+  --ex-surface-content: #ffffff;
+  --ex-surface-chrome: #fafbfd;
+  --ex-surface-statusbar: #fafbfd;
+  --ex-surface-field: #f1f4f9;
+  --ex-surface-field-focus: #ffffff;
+  --ex-surface-card: #ffffff;
+  --ex-surface-chip-selected: #ffffff;
+  --ex-surface-raised: #ffffff;
+  --ex-surface-dialog: #ffffff;
+  --ex-surface-backdrop: rgba(15, 23, 42, 0.24);
+  --ex-text-primary: #0f172a;
+  --ex-text-secondary: #475569;
+  --ex-text-muted: #64748b;
+  --ex-text-disabled: #cbd5e1;
+  --ex-text-emphasis: #0f172a;
+  --ex-text-on-accent: #ffffff;
+  --ex-icon-default: #475569;
+  --ex-accent-fg: #2563eb;
+  --ex-accent-soft: rgba(37, 99, 235, 0.12);
+  --ex-focus-ring: #2563eb;
+  --ex-focus-halo: rgba(37, 99, 235, 0.25);
+  --ex-state-hover: rgba(37, 99, 235, 0.055);
+  --ex-state-pressed: rgba(37, 99, 235, 0.1);
+  --ex-nav-current-bg: #2864e8;
+  --ex-nav-current-fg: #ffffff;
+  --ex-nav-current-caption: rgba(255, 255, 255, 0.85);
+  --ex-nav-current-meter-track: rgba(255, 255, 255, 0.25);
+  --ex-nav-current-meter-fill: #ffffff;
+  --ex-selection-bg: #e8effc;
+  --ex-selection-border: rgba(37, 99, 235, 0.32);
+  --ex-selection-fg: #2563eb;
+  --ex-selection-fg-secondary: #64748b;
+  --ex-selection-inactive-bg: rgba(148, 163, 184, 0.14);
+  --ex-selection-inactive-border: transparent;
+  --ex-tab-bg: transparent;
+  --ex-tab-border: transparent;
+  --ex-tab-fg: #475569;
+  --ex-tab-hover-bg: rgba(37, 99, 235, 0.055);
+  --ex-tab-hover-border: transparent;
+  --ex-tab-hover-fg: #475569;
+  --ex-tab-active-bg: #ffffff;
+  --ex-tab-active-border: rgba(15, 23, 42, 0.075);
+  --ex-button-bg: #ffffff;
+  --ex-button-border: rgba(15, 23, 42, 0.075);
+  --ex-button-fg: #0f172a;
+  --ex-button-hover-bg: #f7f7f7;
+  --ex-button-hover-border: rgba(15, 23, 42, 0.075);
+  --ex-button-primary-bg: #2563eb;
+  --ex-button-primary-border: transparent;
+  --ex-button-primary-hover-bg: #2460e4;
+  --ex-menu-highlight-bg: #2563eb;
+  --ex-menu-highlight-fg: #ffffff;
+  --ex-menu-highlight-kbd: rgba(255, 255, 255, 0.8);
+  --ex-menu-hover-bg: transparent;
+  --ex-badge-bg: rgba(37, 99, 235, 0.12);
+  --ex-badge-border: transparent;
+  --ex-badge-fg: #2563eb;
+  --ex-border-subtle: rgba(15, 23, 42, 0.06);
+  --ex-border-default: rgba(15, 23, 42, 0.075);
+  --ex-border-content: rgba(15, 23, 42, 0.075);
+  --ex-border-card: rgba(15, 23, 42, 0.06);
+  --ex-border-statusbar: rgba(15, 23, 42, 0.06);
+  --ex-border-dialog: rgba(15, 23, 42, 0.075);
+  --ex-match-bg: rgba(251, 191, 36, 0.38);
+  --ex-match-fg: currentColor;
+  --ex-meter-fill: #3b82f6;
+  --ex-meter-warn: #f59e0b;
+  --ex-meter-track: rgba(148, 163, 184, 0.22);
+  --ex-scrollbar-thumb: rgba(100, 116, 139, 0.26);
+  --ex-danger-fg: #c8453b;
+  --ex-danger-solid: #c8453b;
+  /* shadow */
+  --ex-shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.14);
+  /* placeholderIcon */
+  --ex-obj-folder: #fbbf24;
+  --ex-obj-folder-back: #d97706;
+  --ex-obj-folder-glyph: #78350f;
+  --ex-obj-page: #ffffff;
+  --ex-obj-page-fold: #e2e8f0;
+  --ex-obj-page-edge: #94a3b8;
+  --ex-obj-text-line: #94a3b8;
+  --ex-obj-xls: #10b981;
+  --ex-obj-csv: #059669;
+  --ex-obj-doc: #2563eb;
+  --ex-obj-ppt: #ea580c;
+  --ex-obj-pdf: #dc2626;
+  --ex-obj-zip: #d97706;
+  --ex-obj-exe: #475569;
+  --ex-obj-vid: #7c3aed;
+  --ex-obj-code: #0284c7;
+  --ex-obj-img-sky: #bae6fd;
+  --ex-obj-img-hill: #34d399;
+  --ex-obj-img-sun: #fbbf24;
+  --ex-obj-drive: #cbd5e1;
+  --ex-obj-drive-dark: #64748b;
+  --ex-obj-drive-led: #22c55e;
+  --ex-obj-drive-mark: #3b82f6;
+  --ex-obj-badge-text: #ffffff;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  /* color */
+  --ex-surface-canvas: #191919;
+  --ex-surface-content: #191919;
+  --ex-surface-chrome: #242424;
+  --ex-surface-statusbar: #202020;
+  --ex-surface-field: #1c1c1c;
+  --ex-surface-field-focus: #292929;
+  --ex-surface-card: #1c1c1c;
+  --ex-surface-chip-selected: #353535;
+  --ex-surface-raised: #2c2c2c;
+  --ex-surface-dialog: #262626;
+  --ex-surface-backdrop: rgba(0, 0, 0, 0.62);
+  --ex-text-primary: #f2f2f2;
+  --ex-text-secondary: #cecece;
+  --ex-text-muted: #adadad;
+  --ex-text-disabled: #626262;
+  --ex-text-emphasis: #fafafa;
+  --ex-text-on-accent: #ffffff;
+  --ex-icon-default: #bdbdbd;
+  --ex-accent-fg: #76b8ff;
+  --ex-accent-soft: rgba(59, 130, 246, 0.2);
+  --ex-focus-ring: #60a5fa;
+  --ex-focus-halo: rgba(96, 165, 250, 0.32);
+  --ex-state-hover: rgba(255, 255, 255, 0.06);
+  --ex-state-pressed: rgba(255, 255, 255, 0.11);
+  --ex-nav-current-bg: #245cce;
+  --ex-nav-current-fg: #ffffff;
+  --ex-nav-current-caption: rgba(255, 255, 255, 0.85);
+  --ex-nav-current-meter-track: rgba(255, 255, 255, 0.25);
+  --ex-nav-current-meter-fill: #ffffff;
+  --ex-selection-bg: #25344c;
+  --ex-selection-border: rgba(96, 165, 250, 0.56);
+  --ex-selection-fg: #fafafa;
+  --ex-selection-fg-secondary: #cecece;
+  --ex-selection-inactive-bg: rgba(180, 180, 180, 0.14);
+  --ex-selection-inactive-border: rgba(180, 180, 180, 0.22);
+  --ex-tab-bg: rgba(29, 29, 29, 0.54);
+  --ex-tab-border: rgba(180, 180, 180, 0.1);
+  --ex-tab-fg: #cecece;
+  --ex-tab-hover-bg: rgba(45, 45, 45, 0.76);
+  --ex-tab-hover-border: rgba(180, 180, 180, 0.2);
+  --ex-tab-hover-fg: #f2f2f2;
+  --ex-tab-active-bg: #343434;
+  --ex-tab-active-border: rgba(255, 255, 255, 0.28);
+  --ex-button-bg: #333333;
+  --ex-button-border: rgba(180, 180, 180, 0.24);
+  --ex-button-fg: #f2f2f2;
+  --ex-button-hover-bg: #3e3e3e;
+  --ex-button-hover-border: rgba(180, 180, 180, 0.36);
+  --ex-button-primary-bg: #2563eb;
+  --ex-button-primary-border: rgba(147, 197, 253, 0.36);
+  --ex-button-primary-hover-bg: #3b82f6;
+  --ex-menu-highlight-bg: #2563eb;
+  --ex-menu-highlight-fg: #ffffff;
+  --ex-menu-highlight-kbd: rgba(255, 255, 255, 0.8);
+  --ex-menu-hover-bg: rgba(255, 255, 255, 0.06);
+  --ex-badge-bg: rgba(255, 255, 255, 0.06);
+  --ex-badge-border: rgba(255, 255, 255, 0.15);
+  --ex-badge-fg: #cecece;
+  --ex-border-subtle: rgba(180, 180, 180, 0.12);
+  --ex-border-default: rgba(180, 180, 180, 0.16);
+  --ex-border-content: rgba(180, 180, 180, 0.18);
+  --ex-border-card: rgba(180, 180, 180, 0.14);
+  --ex-border-statusbar: rgba(180, 180, 180, 0.15);
+  --ex-border-dialog: rgba(180, 180, 180, 0.22);
+  --ex-match-bg: rgba(245, 158, 11, 0.34);
+  --ex-match-fg: #fef3c7;
+  --ex-meter-fill: #3b82f6;
+  --ex-meter-warn: #f59e0b;
+  --ex-meter-track: rgba(148, 163, 184, 0.22);
+  --ex-scrollbar-thumb: rgba(180, 180, 180, 0.28);
+  --ex-danger-fg: #e5736b;
+  --ex-danger-solid: #c8453b;
+  /* shadow */
+  --ex-shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.35);
+  /* placeholderIcon */
+  --ex-obj-folder: #fbbf24;
+  --ex-obj-folder-back: #d97706;
+  --ex-obj-folder-glyph: #78350f;
+  --ex-obj-page: #e8e8e8;
+  --ex-obj-page-fold: #a3a3a3;
+  --ex-obj-page-edge: #737373;
+  --ex-obj-text-line: #737373;
+  --ex-obj-xls: #10b981;
+  --ex-obj-csv: #059669;
+  --ex-obj-doc: #2563eb;
+  --ex-obj-ppt: #ea580c;
+  --ex-obj-pdf: #dc2626;
+  --ex-obj-zip: #d97706;
+  --ex-obj-exe: #475569;
+  --ex-obj-vid: #7c3aed;
+  --ex-obj-code: #0284c7;
+  --ex-obj-img-sky: #bae6fd;
+  --ex-obj-img-hill: #34d399;
+  --ex-obj-img-sun: #fbbf24;
+  --ex-obj-drive: #cbd5e1;
+  --ex-obj-drive-dark: #64748b;
+  --ex-obj-drive-led: #22c55e;
+  --ex-obj-drive-mark: #3b82f6;
+  --ex-obj-badge-text: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    /* color */
+    --ex-surface-canvas: #191919;
+    --ex-surface-content: #191919;
+    --ex-surface-chrome: #242424;
+    --ex-surface-statusbar: #202020;
+    --ex-surface-field: #1c1c1c;
+    --ex-surface-field-focus: #292929;
+    --ex-surface-card: #1c1c1c;
+    --ex-surface-chip-selected: #353535;
+    --ex-surface-raised: #2c2c2c;
+    --ex-surface-dialog: #262626;
+    --ex-surface-backdrop: rgba(0, 0, 0, 0.62);
+    --ex-text-primary: #f2f2f2;
+    --ex-text-secondary: #cecece;
+    --ex-text-muted: #adadad;
+    --ex-text-disabled: #626262;
+    --ex-text-emphasis: #fafafa;
+    --ex-text-on-accent: #ffffff;
+    --ex-icon-default: #bdbdbd;
+    --ex-accent-fg: #76b8ff;
+    --ex-accent-soft: rgba(59, 130, 246, 0.2);
+    --ex-focus-ring: #60a5fa;
+    --ex-focus-halo: rgba(96, 165, 250, 0.32);
+    --ex-state-hover: rgba(255, 255, 255, 0.06);
+    --ex-state-pressed: rgba(255, 255, 255, 0.11);
+    --ex-nav-current-bg: #245cce;
+    --ex-nav-current-fg: #ffffff;
+    --ex-nav-current-caption: rgba(255, 255, 255, 0.85);
+    --ex-nav-current-meter-track: rgba(255, 255, 255, 0.25);
+    --ex-nav-current-meter-fill: #ffffff;
+    --ex-selection-bg: #25344c;
+    --ex-selection-border: rgba(96, 165, 250, 0.56);
+    --ex-selection-fg: #fafafa;
+    --ex-selection-fg-secondary: #cecece;
+    --ex-selection-inactive-bg: rgba(180, 180, 180, 0.14);
+    --ex-selection-inactive-border: rgba(180, 180, 180, 0.22);
+    --ex-tab-bg: rgba(29, 29, 29, 0.54);
+    --ex-tab-border: rgba(180, 180, 180, 0.1);
+    --ex-tab-fg: #cecece;
+    --ex-tab-hover-bg: rgba(45, 45, 45, 0.76);
+    --ex-tab-hover-border: rgba(180, 180, 180, 0.2);
+    --ex-tab-hover-fg: #f2f2f2;
+    --ex-tab-active-bg: #343434;
+    --ex-tab-active-border: rgba(255, 255, 255, 0.28);
+    --ex-button-bg: #333333;
+    --ex-button-border: rgba(180, 180, 180, 0.24);
+    --ex-button-fg: #f2f2f2;
+    --ex-button-hover-bg: #3e3e3e;
+    --ex-button-hover-border: rgba(180, 180, 180, 0.36);
+    --ex-button-primary-bg: #2563eb;
+    --ex-button-primary-border: rgba(147, 197, 253, 0.36);
+    --ex-button-primary-hover-bg: #3b82f6;
+    --ex-menu-highlight-bg: #2563eb;
+    --ex-menu-highlight-fg: #ffffff;
+    --ex-menu-highlight-kbd: rgba(255, 255, 255, 0.8);
+    --ex-menu-hover-bg: rgba(255, 255, 255, 0.06);
+    --ex-badge-bg: rgba(255, 255, 255, 0.06);
+    --ex-badge-border: rgba(255, 255, 255, 0.15);
+    --ex-badge-fg: #cecece;
+    --ex-border-subtle: rgba(180, 180, 180, 0.12);
+    --ex-border-default: rgba(180, 180, 180, 0.16);
+    --ex-border-content: rgba(180, 180, 180, 0.18);
+    --ex-border-card: rgba(180, 180, 180, 0.14);
+    --ex-border-statusbar: rgba(180, 180, 180, 0.15);
+    --ex-border-dialog: rgba(180, 180, 180, 0.22);
+    --ex-match-bg: rgba(245, 158, 11, 0.34);
+    --ex-match-fg: #fef3c7;
+    --ex-meter-fill: #3b82f6;
+    --ex-meter-warn: #f59e0b;
+    --ex-meter-track: rgba(148, 163, 184, 0.22);
+    --ex-scrollbar-thumb: rgba(180, 180, 180, 0.28);
+    --ex-danger-fg: #e5736b;
+    --ex-danger-solid: #c8453b;
+    /* shadow */
+    --ex-shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.35);
+    /* placeholderIcon */
+    --ex-obj-folder: #fbbf24;
+    --ex-obj-folder-back: #d97706;
+    --ex-obj-folder-glyph: #78350f;
+    --ex-obj-page: #e8e8e8;
+    --ex-obj-page-fold: #a3a3a3;
+    --ex-obj-page-edge: #737373;
+    --ex-obj-text-line: #737373;
+    --ex-obj-xls: #10b981;
+    --ex-obj-csv: #059669;
+    --ex-obj-doc: #2563eb;
+    --ex-obj-ppt: #ea580c;
+    --ex-obj-pdf: #dc2626;
+    --ex-obj-zip: #d97706;
+    --ex-obj-exe: #475569;
+    --ex-obj-vid: #7c3aed;
+    --ex-obj-code: #0284c7;
+    --ex-obj-img-sky: #bae6fd;
+    --ex-obj-img-hill: #34d399;
+    --ex-obj-img-sun: #fbbf24;
+    --ex-obj-drive: #cbd5e1;
+    --ex-obj-drive-dark: #64748b;
+    --ex-obj-drive-led: #22c55e;
+    --ex-obj-drive-mark: #3b82f6;
+    --ex-obj-badge-text: #ffffff;
+  }
+}
+
+/* 仮素材アイコンの macOS 風切替（検証用。本番はOS取得アイコンをそのまま使う） */
+[data-icons="mac"] {
+  --ex-obj-folder: #60a5fa;
+  --ex-obj-folder-back: #3b82f6;
+  --ex-obj-folder-glyph: #1d4ed8;
+}
+
+[data-density="compact"] {
+  --ex-size-row: 24px;
+}
+
+@media (max-width: 1140px) {
+  :root {
+    --ex-size-sidebar: 196px;
+  }
+}
