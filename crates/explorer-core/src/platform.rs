@@ -54,6 +54,17 @@ pub fn open_with_default_app(path: &Path) -> std::io::Result<()> {
     imp::open_with_default_app(path)
 }
 
+/// Open the virtual recycle bin through the OS shell, never as a filesystem directory.
+pub fn open_recycle_bin() -> std::io::Result<()> {
+    #[cfg(windows)]
+    return imp::open_with_default_app(Path::new("shell:RecycleBinFolder"));
+    #[cfg(not(windows))]
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "recycle bin is not implemented on this platform",
+    ))
+}
+
 #[cfg(windows)]
 mod imp {
     use super::*;

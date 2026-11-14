@@ -336,6 +336,13 @@ impl FolderView {
 
     fn open_entry(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_home() {
+            if self.recycle_bin_index() == Some(ix) {
+                if let Err(error) = platform::open_recycle_bin() {
+                    self.notice = Some(format!("ゴミ箱を開けませんでした: {error}"));
+                    cx.notify();
+                }
+                return;
+            }
             if let Some(place) = self.home_places().get(ix) {
                 self.navigate_to(place.path.clone(), window, cx);
             }
@@ -524,7 +531,7 @@ impl FolderView {
     }
     fn item_count(&self) -> usize {
         if self.is_home() {
-            self.home_places().len()
+            self.home_places().len() + usize::from(self.recycle_bin_index().is_some())
         } else {
             self.visible.len()
         }

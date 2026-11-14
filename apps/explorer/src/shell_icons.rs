@@ -8,7 +8,8 @@ use std::{
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct Key {
-    path: PathBuf,
+    // None is the shell's virtual recycle bin, not a fake directory path.
+    path: Option<PathBuf>,
     is_dir: bool,
     size: u32,
 }
@@ -37,7 +38,7 @@ impl ShellIcons {
                     )
                 } >= 0;
                 while let Ok(key) = rx.recv_blocking() {
-                    let pixels = extract(&key.path, key.is_dir, key.size);
+                    let pixels = extract(key.path.as_deref(), key.is_dir, key.size);
                     if results_tx.send_blocking((key, pixels)).is_err() {
                         break;
                     }
@@ -91,10 +92,26 @@ impl ShellIcons {
         _cx: &mut Context<Self>,
     ) -> Option<Arc<RenderImage>> {
         let key = Key {
-            path: path.to_path_buf(),
+            path: Some(path.to_path_buf()),
             is_dir,
             size: size.clamp(16, 256),
         };
+        self.get_key(key)
+    }
+
+    pub fn get_recycle_bin(
+        &mut self,
+        size: u32,
+        _cx: &mut Context<Self>,
+    ) -> Option<Arc<RenderImage>> {
+        self.get_key(Key {
+            path: None,
+            is_dir: true,
+            size: size.clamp(16, 256),
+        })
+    }
+
+    fn get_key(&mut self, key: Key) -> Option<Arc<RenderImage>> {
         if let Some(image) = self.cache.get(&key) {
             return image.clone();
         }
@@ -106,12 +123,12 @@ impl ShellIcons {
 }
 
 #[cfg(not(windows))]
-fn extract(_: &Path, _: bool, _: u32) -> Option<Vec<u8>> {
+fn extract(_: Option<&Path>, _: bool, _: u32) -> Option<Vec<u8>> {
     None
 }
 
 #[cfg(windows)]
-fn extract(path: &Path, is_dir: bool, size: u32) -> Option<Vec<u8>> {
+fn extract(path: Option<&Path>, is_dir: bool, size: u32) -> Option<Vec<u8>> {
     use std::{
         mem::{size_of, zeroed},
         os::windows::ffi::OsStrExt,
@@ -122,7 +139,13 @@ fn extract(path: &Path, is_dir: bool, size: u32) -> Option<Vec<u8>> {
         Storage::FileSystem::{FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL},
         UI::{Shell::*, WindowsAndMessaging::*},
     };
-    let path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let recycle_bin = path.is_none();
+    let path: Vec<u16> = path
+        .unwrap_or_else(|| Path::new(""))
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
     // SAFETY: all handles are thread-local, owned and released below. Shell writes only
     // the supplied SHFILEINFOW. DIB buffers have size*size*4 bytes and size <= 256.
     unsafe {
@@ -133,14 +156,38 @@ fn extract(path: &Path, is_dir: bool, size: u32) -> Option<Vec<u8>> {
             } else {
                 SHGFI_LARGEICON
             };
-        let mut ok = SHGetFileInfoW(
-            path.as_ptr(),
-            0,
-            &mut info,
-            size_of::<SHFILEINFOW>() as u32,
-            flags,
-        );
-        if ok == 0 {
+        let mut ok = if recycle_bin {
+            let mut stock: SHSTOCKICONINFO = zeroed();
+            stock.cbSize = size_of::<SHSTOCKICONINFO>() as u32;
+            let mut bin: SHQUERYRBINFO = zeroed();
+            bin.cbSize = size_of::<SHQUERYRBINFO>() as u32;
+            let full = SHQueryRecycleBinW(std::ptr::null(), &mut bin) >= 0 && bin.i64NumItems > 0;
+            let result = SHGetStockIconInfo(
+                if full {
+                    SIID_RECYCLERFULL
+                } else {
+                    SIID_RECYCLER
+                },
+                SHGSI_ICON
+                    | if size <= 20 {
+                        SHGSI_SMALLICON
+                    } else {
+                        SHGSI_LARGEICON
+                    },
+                &mut stock,
+            );
+            info.hIcon = stock.hIcon;
+            usize::from(result >= 0)
+        } else {
+            SHGetFileInfoW(
+                path.as_ptr(),
+                0,
+                &mut info,
+                size_of::<SHFILEINFOW>() as u32,
+                flags,
+            )
+        };
+        if ok == 0 && !recycle_bin {
             ok = SHGetFileInfoW(
                 path.as_ptr(),
                 if is_dir {
@@ -254,7 +301,14 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_folder_icon_has_visible_pixels() {
-        let bytes = extract(&std::env::temp_dir(), true, 32).expect("Windows folder icon");
+        let bytes = extract(Some(&std::env::temp_dir()), true, 32).expect("Windows folder icon");
+        assert_eq!(bytes.len(), 32 * 32 * 4);
+        assert!(bytes.chunks_exact(4).any(|pixel| pixel[3] > 0));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_recycle_bin_uses_a_visible_shell_icon() {
+        let bytes = extract(None, true, 32).expect("Windows recycle bin icon");
         assert_eq!(bytes.len(), 32 * 32 * 4);
         assert!(bytes.chunks_exact(4).any(|pixel| pixel[3] > 0));
     }

@@ -65,6 +65,30 @@ fn home_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderView> 
     })
 }
 
+#[cfg(windows)]
+#[gpui::test]
+fn recycle_bin_participates_in_home_search_count_and_keyboard_selection(
+    cx: &mut gpui::TestAppContext,
+) {
+    let window = home_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            let normal_places = view.home_places().len();
+            assert_eq!(view.item_count(), normal_places + 1);
+            assert_eq!(view.recycle_bin_index(), Some(normal_places));
+            view.query = "ゴミ箱".into();
+            assert_eq!(view.item_count(), 1);
+            assert_eq!(view.recycle_bin_index(), Some(0));
+            view.move_selection(1, cx);
+            assert_eq!(view.selected, Some(0));
+            assert!(view.is_home());
+            view.query = "__no_matching_place__".into();
+            assert_eq!(view.item_count(), 0);
+            assert_eq!(view.recycle_bin_index(), None);
+        })
+        .unwrap();
+}
+
 #[gpui::test]
 fn home_does_not_list_a_directory_and_is_reachable_in_history(cx: &mut gpui::TestAppContext) {
     let window = home_window(cx);

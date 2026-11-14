@@ -31,6 +31,8 @@ cargo run --release -p explorer -- --theme dark --path "C:\Users"
 
 直接入力は絶対パス、相対パス、UNCパス、`~`、引用符で囲まれたパスに対応します。Windowsの `D:` は `D:\` として扱います。コマンド実行やURLの起動は行いません。
 
+Windowsではホームに「ゴミ箱」カードがあります。ダブルクリックまたは選択後のEnterでWindows標準のゴミ箱を開きます。復元や空にする操作は、開いたWindows側の画面で行います。
+
 ## 設計と開発
 
 - [デザインリファレンス](docs/design/explorer-design-system/index.html)

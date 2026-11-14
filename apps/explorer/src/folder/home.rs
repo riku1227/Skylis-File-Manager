@@ -1,6 +1,13 @@
 use super::*;
 
 impl FolderView {
+    pub(super) fn recycle_bin_index(&self) -> Option<usize> {
+        (cfg!(windows)
+            && ("ゴミ箱".contains(&self.query)
+                || "recycle bin trash".contains(&self.query.to_lowercase())))
+        .then(|| self.home_places().len())
+    }
+
     pub(super) fn home_places(&self) -> Vec<Place> {
         let query = self.query.to_lowercase();
         self.drives
@@ -35,7 +42,7 @@ impl FolderView {
             .flex()
             .flex_col()
             .gap(px(24.));
-        for (title, drives) in [("ドライブ", true), ("フォルダー", false)] {
+        for (title, drives) in [("ドライブ", true), ("フォルダーと場所", false)] {
             let mut cards = div().flex().flex_wrap().gap(px(12.));
             let mut count = 0;
             for (index, place) in places.iter().enumerate() {
@@ -157,6 +164,76 @@ impl FolderView {
                         })),
                 );
             }
+            if !drives && let Some(index) = self.recycle_bin_index() {
+                count += 1;
+                let selected = self.selected == Some(index);
+                let image = self.icons.update(cx, |icons, cx| {
+                    icons.get_recycle_bin((32. * window.scale_factor()).ceil() as u32, cx)
+                });
+                cards = cards.child(
+                    div()
+                        .id(("home-card", index))
+                        .w(width)
+                        .h(px(72.))
+                        .flex()
+                        .items_center()
+                        .gap(px(14.))
+                        .px(px(16.))
+                        .rounded(px(10.))
+                        .border_1()
+                        .border_color(t.c(if selected && focused {
+                            "selection.border"
+                        } else {
+                            "border.subtle"
+                        }))
+                        .bg(t.c(if selected && focused {
+                            "selection.bg"
+                        } else if selected {
+                            "selection.inactive.bg"
+                        } else {
+                            "surface.card"
+                        }))
+                        .when(!selected, |d| d.hover(|s| s.bg(t.c("state.hover"))))
+                        .child(
+                            div()
+                                .size(px(32.))
+                                .flex_shrink_0()
+                                .when_some(image, |d, image| d.child(img(image).size_full())),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .gap(px(6.))
+                                .child(
+                                    div()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .child("ゴミ箱"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(t.c("text.muted"))
+                                        .child("Windowsのゴミ箱を開く"),
+                                ),
+                        )
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _, w, cx| {
+                                w.focus(&this.focus, cx);
+                                this.selected = Some(index);
+                                cx.notify();
+                            }),
+                        )
+                        .on_click(cx.listener(move |this, event: &ClickEvent, w, cx| {
+                            if event.click_count() == 2 {
+                                this.open_entry(index, w, cx);
+                            }
+                        })),
+                );
+            }
             if count > 0 {
                 page = page.child(
                     div()
@@ -173,7 +250,7 @@ impl FolderView {
                 );
             }
         }
-        if places.is_empty() {
+        if places.is_empty() && self.recycle_bin_index().is_none() {
             page = page.child(empty_state(
                 "一致する場所はありません".into(),
                 t.c("text.muted"),

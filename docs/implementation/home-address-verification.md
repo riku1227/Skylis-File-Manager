@@ -32,3 +32,11 @@ The latest release executable is left open on Home at the initial 1280×800 size
 - Network-share metadata validation is off the UI thread, but the OS call itself cannot be forcibly interrupted. Cancelling discards its result.
 - Drive discovery refreshes on startup/new tab and F5; hotplug notifications are not implemented.
 - Recent files, favorites editing, path completion and persistent startup settings are not part of this change.
+
+## Windows recycle bin follow-up — 2026-11-15
+- Home includes a recycle bin card with a native Windows shell icon, fetched on the existing icon worker. Its empty/full appearance is sampled when first cached.
+- Double-click or selected-card Enter opens the Windows shell recycle bin. Restore/empty operations remain in that shell window; Skylis does not treat this virtual location as a filesystem directory.
+- Home search, item counts and keyboard selection include the card. No recycle bin card is shown on other platforms.
+- `cargo test --workspace --locked`: 22 passed (13 app, 9 core), including Home search/count/selection and a visible native recycle icon check.
+- Workspace check, release build, formatting and diff checks passed.
+- Windows UI: verified the card and native icon at 1280×800; double-click opened a Windows Explorer window titled `ごみ箱 - エクスプローラー`.
