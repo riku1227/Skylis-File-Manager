@@ -291,8 +291,22 @@ impl TextInput {
     }
 
     pub fn reset(&mut self, window: &Window, cx: &mut Context<Self>) {
-        self.content = "".into();
-        self.selected_range = 0..0;
+        self.set_text("".into(), false, window, cx);
+    }
+
+    pub fn set_text(
+        &mut self,
+        text: String,
+        select_all: bool,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.content = text.into();
+        self.selected_range = if select_all {
+            0..self.content.len()
+        } else {
+            self.content.len()..self.content.len()
+        };
         self.selection_reversed = false;
         self.marked_range = None;
         self.last_layout = None;
@@ -301,6 +315,10 @@ impl TextInput {
         self.is_selecting = false;
         window.notify_text_input_changed(&self.focus_handle);
         cx.notify();
+    }
+
+    pub fn is_composing(&self) -> bool {
+        self.marked_range.is_some()
     }
 }
 

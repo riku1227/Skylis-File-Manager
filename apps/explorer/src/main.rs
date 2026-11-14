@@ -30,6 +30,7 @@ mod actions {
             CycleTheme,
             ToggleDensity,
             FocusSearch,
+            EditAddress,
             ClearSearch
         ]
     );
@@ -59,6 +60,9 @@ fn main() {
                 KeyBinding::new("ctrl-r", Refresh, ctx),
                 KeyBinding::new("ctrl-h", ToggleHidden, ctx),
                 KeyBinding::new("ctrl-f", FocusSearch, ctx),
+                KeyBinding::new("ctrl-l", EditAddress, ctx),
+                KeyBinding::new("alt-d", EditAddress, ctx),
+                KeyBinding::new("cmd-l", EditAddress, ctx),
                 KeyBinding::new("escape", ClearSearch, ctx),
                 KeyBinding::new("ctrl-t", NewTab, Some("ExplorerTabs")),
                 KeyBinding::new("ctrl-w", CloseTab, Some("ExplorerTabs")),

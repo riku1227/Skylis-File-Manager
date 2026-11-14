@@ -13,19 +13,23 @@ cargo run --release -p explorer -- --theme light --path "C:\Users"
 cargo run --release -p explorer -- --theme dark --path "C:\Users"
 ```
 
-ビルド後のアプリは `target/release/explorer.exe`。内部のcrate名・実行ファイル名は現時点では `explorer` です。`--theme` は `light` / `dark` / `system`、省略時はOS設定。`--path` を省略するとホームフォルダーを開きます。
+ビルド後のアプリは `target/release/explorer.exe`。内部のcrate名・実行ファイル名は現時点では `explorer` です。`--theme` は `light` / `dark` / `system`、省略時はOS設定。`--path` を省略すると、ドライブの空き容量と主要フォルダーを並べたホーム画面を開きます。
 
 ## 操作
 
-- Ctrl+T / Ctrl+W: タブ追加・閉じる（最後の1枚は残す）
+- Ctrl+T / Ctrl+W: ホーム画面のタブを追加・閉じる（最後の1枚は残す）
 - Ctrl+Tab / Ctrl+Shift+Tab: タブ切替
 - Ctrl+F: 現在のフォルダー内を名前で絞り込み、Esc: 解除
+- 現在のパンくず／アドレス欄の空白をクリック、Ctrl+L / Alt+D: パスを直接入力（macOSはCmd+Lも対応）
+- パス入力中のEnter: フォルダーへ移動、Esc／欄外クリック: キャンセル。無効なパスは入力を保持してエラーを表示
 - Alt+左 / 右 / 上: 戻る・進む・親へ
 - Enter / ダブルクリック: フォルダーを開く、ファイルは既定アプリへ
 - F5: 再読込、Ctrl+H: 隠しファイル
 - Ctrl+Shift+L: ライト → ダーク → システム
 
-右の詳細ペインと下端の密度・隠しファイル設定も操作できます。検索は再帰検索ではありません。
+右の詳細ペインと下端の密度・隠しファイル設定も操作できます。検索は再帰検索ではありません。ホームではドライブ・主要フォルダーを絞り込みます。ホームのカードはダブルクリック、または選択後のEnterで開けます。ホームもタブごとの戻る・進む履歴に含まれます。
+
+直接入力は絶対パス、相対パス、UNCパス、`~`、引用符で囲まれたパスに対応します。Windowsの `D:` は `D:\` として扱います。コマンド実行やURLの起動は行いません。
 
 ## 設計と開発
 

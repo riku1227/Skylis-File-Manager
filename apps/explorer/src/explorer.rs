@@ -4,6 +4,7 @@ use crate::{
     shell_icons::ShellIcons,
     theme::{Theme, ThemeMode},
 };
+use explorer_core::location::Location;
 use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, img, prelude::*, px, svg};
 use std::path::PathBuf;
 
@@ -38,7 +39,7 @@ impl Explorer {
             i += 1;
         }
         let icons = cx.new(ShellIcons::new);
-        let start = path.unwrap_or_else(explorer_core::platform::home_dir);
+        let start = path.map(Location::Folder).unwrap_or(Location::Home);
         let folder = cx.new(|cx| FolderView::new(start, mode, icons.clone(), window, cx));
         cx.observe(&folder, |_, _, cx| cx.notify()).detach();
         cx.observe_window_appearance(window, |_, _, cx| cx.notify())
@@ -55,13 +56,14 @@ impl Explorer {
         if index >= self.tabs.len() {
             return;
         }
+        self.tabs[self.active].update(cx, |tab, cx| tab.cancel_address(cx));
         self.active = index;
         window.focus(&self.tabs[index].focus_handle(cx), cx);
         cx.notify();
     }
     fn new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
-        let path = self.tabs[self.active].read(cx).path().to_path_buf();
-        let folder = cx.new(|cx| FolderView::new(path, self.mode, self.icons.clone(), window, cx));
+        let folder =
+            cx.new(|cx| FolderView::new(Location::Home, self.mode, self.icons.clone(), window, cx));
         cx.observe(&folder, |_, _, cx| cx.notify()).detach();
         folder.update(cx, |folder, _| folder.compact = self.compact);
         self.tabs.push(folder);
@@ -131,9 +133,11 @@ impl Render for Explorer {
             .overflow_x_scroll();
         for (i, tab) in self.tabs.iter().enumerate() {
             let current = i == self.active;
-            let path = tab.read(cx).path().to_path_buf();
-            let image = self.icons.update(cx, |icons, cx| {
-                icons.get(&path, true, (14. * window.scale_factor()).ceil() as u32, cx)
+            let path = tab.read(cx).path().map(std::path::Path::to_path_buf);
+            let image = path.as_ref().and_then(|path| {
+                self.icons.update(cx, |icons, cx| {
+                    icons.get(path, true, (14. * window.scale_factor()).ceil() as u32, cx)
+                })
             });
             tabs = tabs.child(
                 div()
@@ -161,7 +165,15 @@ impl Render for Explorer {
                         div()
                             .size(px(14.))
                             .flex_shrink_0()
-                            .when_some(image, |d, image| d.child(img(image).size_full())),
+                            .when_some(image, |d, image| d.child(img(image).size_full()))
+                            .when(path.is_none(), |d| {
+                                d.child(
+                                    svg()
+                                        .path("icons/home.svg")
+                                        .size_full()
+                                        .text_color(t.c("icon.default")),
+                                )
+                            }),
                     )
                     .child(div().flex_1().truncate().child(tab.read(cx).label()))
                     .child(

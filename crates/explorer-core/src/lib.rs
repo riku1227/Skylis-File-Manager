@@ -4,6 +4,7 @@ pub mod entry;
 pub mod format;
 pub mod history;
 pub mod listing;
+pub mod location;
 pub mod platform;
 
 pub use entry::{Entry, EntryKind, SortKey, SortOrder};

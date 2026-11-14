@@ -2,14 +2,14 @@ use std::path::{Path, PathBuf};
 
 /// 戻る/進む の履歴。移動元フォルダーで選択していた名前も覚えておき、戻ったときに選択を復元する。
 #[derive(Debug, Clone)]
-pub struct History {
-    back: Vec<(PathBuf, Option<String>)>,
-    forward: Vec<(PathBuf, Option<String>)>,
-    current: PathBuf,
+pub struct History<T = PathBuf> {
+    back: Vec<(T, Option<String>)>,
+    forward: Vec<(T, Option<String>)>,
+    current: T,
 }
 
-impl History {
-    pub fn new(start: PathBuf) -> Self {
+impl<T: Clone + PartialEq> History<T> {
+    pub fn new(start: T) -> Self {
         Self {
             back: Vec::new(),
             forward: Vec::new(),
@@ -17,12 +17,12 @@ impl History {
         }
     }
 
-    pub fn current(&self) -> &Path {
+    pub fn current(&self) -> &T {
         &self.current
     }
 
     /// 新しい場所へ移動。`selected` は今の場所で選んでいた項目名。
-    pub fn push(&mut self, to: PathBuf, selected: Option<String>) {
+    pub fn push(&mut self, to: T, selected: Option<String>) {
         if to == self.current {
             return;
         }
@@ -32,14 +32,14 @@ impl History {
     }
 
     /// 戻る。戻り先と、そこで選んでいた項目名を返す。
-    pub fn go_back(&mut self, selected: Option<String>) -> Option<(PathBuf, Option<String>)> {
+    pub fn go_back(&mut self, selected: Option<String>) -> Option<(T, Option<String>)> {
         let (to, sel) = self.back.pop()?;
         let from = std::mem::replace(&mut self.current, to.clone());
         self.forward.push((from, selected));
         Some((to, sel))
     }
 
-    pub fn go_forward(&mut self, selected: Option<String>) -> Option<(PathBuf, Option<String>)> {
+    pub fn go_forward(&mut self, selected: Option<String>) -> Option<(T, Option<String>)> {
         let (to, sel) = self.forward.pop()?;
         let from = std::mem::replace(&mut self.current, to.clone());
         self.back.push((from, selected));
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn back_forward_restores_selection() {
-        let mut h = History::new("a".into());
+        let mut h = History::<PathBuf>::new("a".into());
         h.push("b".into(), Some("b".into()));
         h.push("c".into(), Some("x".into()));
         assert_eq!(

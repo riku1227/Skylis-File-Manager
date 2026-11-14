@@ -1,7 +1,11 @@
 use std::ops::Range;
+#[cfg(test)]
+mod tests;
 use std::path::{Path, PathBuf};
 
+mod home;
 use explorer_core::history::breadcrumbs;
+use explorer_core::location::{Location, resolve_address};
 use explorer_core::platform::{self, DriveSpace, Place};
 use explorer_core::{
     CancelToken, Entry, EntryKind, History, ListingEvent, ListingStats, SortKey, SortOrder, format,
@@ -33,7 +37,14 @@ pub struct FolderView {
     query: String,
     icons: Entity<ShellIcons>,
     focus: FocusHandle,
-    history: History,
+    history: History<Location>,
+    address: Entity<TextInput>,
+    editing_address: bool,
+    address_error: Option<String>,
+    address_pending: bool,
+    address_generation: u64,
+    _address_validation: Option<Task<()>>,
+    _drive_task: Option<Task<()>>,
     /// 現在のフォルダーの全項目（隠しファイル含む）、常にソート済み
     entries: Vec<Entry>,
     /// 表示対象の entries インデックス（隠しファイルのフィルター後）
@@ -59,7 +70,7 @@ pub struct FolderView {
 
 impl FolderView {
     pub fn new(
-        start: PathBuf,
+        start: Location,
         mode: ThemeMode,
         icons: Entity<ShellIcons>,
         window: &mut Window,
@@ -85,12 +96,36 @@ impl FolderView {
             }
         })
         .detach();
+        let address = cx.new(|cx| {
+            let mut input = TextInput::new(cx);
+            input.placeholder = "フォルダーのパスを入力…".into();
+            input
+        });
+        cx.on_blur(&address.focus_handle(cx), window, |this, _, cx| {
+            this.cancel_address(cx);
+        })
+        .detach();
+        cx.observe(&address, |this, _, cx| {
+            this.address_generation = this.address_generation.wrapping_add(1);
+            this._address_validation = None;
+            this.address_pending = false;
+            this.address_error = None;
+            cx.notify();
+        })
+        .detach();
         cx.observe(&icons, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             mode,
             pane: true,
             compact: false,
             search,
+            address,
+            editing_address: false,
+            address_error: None,
+            address_pending: false,
+            address_generation: 0,
+            _address_validation: None,
+            _drive_task: None,
             query: String::new(),
             icons,
             focus,
@@ -113,7 +148,15 @@ impl FolderView {
             drive_space: HashMap::new(),
             title_dirty: true,
         };
-        let paths: Vec<_> = this.drives.iter().map(|p| p.path.clone()).collect();
+        this.refresh_drives(cx);
+        this.load(start, None, cx);
+        this
+    }
+
+    fn refresh_drives(&mut self, cx: &mut Context<Self>) {
+        self.drives = platform::drives();
+        self.drive_space.clear();
+        let paths: Vec<_> = self.drives.iter().map(|p| p.path.clone()).collect();
         let (tx, rx) = async_channel::bounded(paths.len().max(1));
         let _ = std::thread::Builder::new()
             .name("drive-space".into())
@@ -125,7 +168,7 @@ impl FolderView {
                     }
                 }
             });
-        cx.spawn(async move |view, cx| {
+        self._drive_task = Some(cx.spawn(async move |view, cx| {
             while let Ok((path, space)) = rx.recv().await {
                 if view
                     .update(cx, |view, cx| {
@@ -137,15 +180,13 @@ impl FolderView {
                     break;
                 }
             }
-        })
-        .detach();
-        this.load(start, None, cx);
-        this
+        }));
     }
 
     // ───────────── 読み込み ─────────────
 
-    fn load(&mut self, path: PathBuf, select: Option<String>, cx: &mut Context<Self>) {
+    fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.cancel_address(cx);
         // 前の列挙を止める（タスクをdropすると受信側も閉じ、列挙スレッドは次のsendで終了する）
         self.cancel.cancel();
         self.cancel = CancelToken::new();
@@ -161,6 +202,17 @@ impl FolderView {
         self.notice = None;
         self.title_dirty = true;
         self.scroll.scroll_to_item(0, ScrollStrategy::Top);
+
+        let Location::Folder(path) = location else {
+            self.selected = self.pending_select.take().and_then(|path| {
+                self.home_places()
+                    .iter()
+                    .position(|p| p.path.display().to_string() == path)
+            });
+            self.loading = false;
+            cx.notify();
+            return;
+        };
 
         let (tx, rx) = async_channel::bounded::<ListingEvent>(16);
         let token = self.cancel.clone();
@@ -250,20 +302,45 @@ impl FolderView {
     }
 
     fn selected_name(&self) -> Option<String> {
-        self.selected_entry().map(|e| e.name.clone())
+        if self.is_home() {
+            self.selected.and_then(|i| {
+                self.home_places()
+                    .get(i)
+                    .map(|p| p.path.display().to_string())
+            })
+        } else {
+            self.selected_entry().map(|e| e.name.clone())
+        }
     }
 
     // ───────────── ナビゲーション ─────────────
 
-    fn navigate_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        if path == self.history.current() {
-            return;
-        }
-        self.history.push(path.clone(), self.selected_name());
-        self.load(path, None, cx);
+    fn clear_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.query.clear();
+        self.search.update(cx, |input, cx| input.reset(window, cx));
+        window.focus(&self.focus, cx);
     }
 
-    fn open_entry(&mut self, ix: usize, cx: &mut Context<Self>) {
+    fn navigate_to(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.navigate(Location::Folder(path), window, cx);
+    }
+
+    fn navigate(&mut self, location: Location, window: &mut Window, cx: &mut Context<Self>) {
+        if &location == self.history.current() {
+            return;
+        }
+        self.history.push(location.clone(), self.selected_name());
+        self.clear_query(window, cx);
+        self.load(location, None, cx);
+    }
+
+    fn open_entry(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_home() {
+            if let Some(place) = self.home_places().get(ix) {
+                self.navigate_to(place.path.clone(), window, cx);
+            }
+            return;
+        }
         let Some(&i) = self.visible.get(ix) else {
             return;
         };
@@ -276,41 +353,49 @@ impl FolderView {
             EntryKind::File => false,
         };
         if is_dir {
-            self.navigate_to(path, cx);
+            self.navigate_to(path, window, cx);
         } else if let Err(e) = platform::open_with_default_app(&path) {
             self.notice = Some(format!("開けませんでした: {e}"));
             cx.notify();
         }
     }
 
-    fn go_back(&mut self, _: &GoBack, _: &mut Window, cx: &mut Context<Self>) {
+    fn go_back(&mut self, _: &GoBack, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((path, sel)) = self.history.go_back(self.selected_name()) {
+            self.clear_query(window, cx);
             self.load(path, sel, cx);
         }
     }
 
-    fn go_forward(&mut self, _: &GoForward, _: &mut Window, cx: &mut Context<Self>) {
+    fn go_forward(&mut self, _: &GoForward, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((path, sel)) = self.history.go_forward(self.selected_name()) {
+            self.clear_query(window, cx);
             self.load(path, sel, cx);
         }
     }
 
-    fn go_up(&mut self, _: &GoUp, _: &mut Window, cx: &mut Context<Self>) {
-        let current = self.history.current().to_path_buf();
+    fn go_up(&mut self, _: &GoUp, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(current) = self.path().map(Path::to_path_buf) else {
+            return;
+        };
         if let Some(parent) = current.parent() {
             let came_from = current
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned());
-            self.history
-                .push(parent.to_path_buf(), self.selected_name());
-            self.load(parent.to_path_buf(), came_from, cx);
+            let location = Location::Folder(parent.to_path_buf());
+            self.history.push(location.clone(), self.selected_name());
+            self.clear_query(window, cx);
+            self.load(location, came_from, cx);
+        } else {
+            self.navigate(Location::Home, window, cx);
         }
     }
 
     fn refresh(&mut self, _: &Refresh, _: &mut Window, cx: &mut Context<Self>) {
-        let path = self.history.current().to_path_buf();
+        let location = self.history.current().clone();
         let sel = self.selected_name();
-        self.load(path, sel, cx);
+        self.refresh_drives(cx);
+        self.load(location, sel, cx);
     }
 
     fn toggle_hidden(&mut self, _: &ToggleHidden, _: &mut Window, cx: &mut Context<Self>) {
@@ -335,7 +420,7 @@ impl FolderView {
     // ───────────── 選択移動 ─────────────
 
     fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
-        let len = self.visible.len();
+        let len = self.item_count();
         if len == 0 {
             return;
         }
@@ -354,7 +439,9 @@ impl FolderView {
 
     fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
         self.selected = Some(ix);
-        self.scroll.scroll_to_item(ix, ScrollStrategy::Nearest);
+        if !self.is_home() {
+            self.scroll.scroll_to_item(ix, ScrollStrategy::Nearest);
+        }
         cx.notify();
     }
 
@@ -364,66 +451,161 @@ impl FolderView {
     }
 
     fn select_prev(&mut self, _: &SelectPrev, window: &mut Window, cx: &mut Context<Self>) {
-        if self.search.focus_handle(cx).is_focused(window) {
+        if self.input_focused(window, cx) {
             return;
         }
         self.move_selection(-1, cx);
     }
     fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
-        if self.search.focus_handle(cx).is_focused(window) {
+        if self.input_focused(window, cx) {
             return;
         }
         self.move_selection(1, cx);
     }
     fn select_first(&mut self, _: &SelectFirst, window: &mut Window, cx: &mut Context<Self>) {
-        if self.search.focus_handle(cx).is_focused(window) {
+        if self.input_focused(window, cx) {
             return;
         }
-        if !self.visible.is_empty() {
+        if self.item_count() > 0 {
             self.select(0, cx);
         }
     }
     fn select_last(&mut self, _: &SelectLast, window: &mut Window, cx: &mut Context<Self>) {
-        if self.search.focus_handle(cx).is_focused(window) {
+        if self.input_focused(window, cx) {
             return;
         }
-        if !self.visible.is_empty() {
-            self.select(self.visible.len() - 1, cx);
+        if self.item_count() > 0 {
+            self.select(self.item_count() - 1, cx);
         }
     }
     fn page_up(&mut self, _: &PageUp, window: &mut Window, cx: &mut Context<Self>) {
-        if self.search.focus_handle(cx).is_focused(window) {
+        if self.input_focused(window, cx) {
             return;
         }
         let n = self.page_rows();
         self.move_selection(-n, cx);
     }
     fn page_down(&mut self, _: &PageDown, window: &mut Window, cx: &mut Context<Self>) {
-        if self.search.focus_handle(cx).is_focused(window) {
+        if self.input_focused(window, cx) {
             return;
         }
         let n = self.page_rows();
         self.move_selection(n, cx);
     }
     fn open_selected(&mut self, _: &OpenSelected, window: &mut Window, cx: &mut Context<Self>) {
+        if self.address.focus_handle(cx).is_focused(window) {
+            self.submit_address(window, cx);
+            return;
+        }
         if self.search.focus_handle(cx).is_focused(window) {
             window.focus(&self.focus, cx);
             cx.notify();
             return;
         }
         if let Some(ix) = self.selected {
-            self.open_entry(ix, cx);
+            self.open_entry(ix, window, cx);
         }
     }
 
-    pub fn path(&self) -> &Path {
-        self.history.current()
+    pub fn path(&self) -> Option<&Path> {
+        self.history.current().path()
+    }
+    pub fn is_home(&self) -> bool {
+        matches!(self.history.current(), Location::Home)
     }
     pub fn label(&self) -> String {
         self.path()
-            .file_name()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| self.path().display().to_string())
+            .map(|p| {
+                p.file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| p.display().to_string())
+            })
+            .unwrap_or_else(|| "ホーム".into())
+    }
+    fn item_count(&self) -> usize {
+        if self.is_home() {
+            self.home_places().len()
+        } else {
+            self.visible.len()
+        }
+    }
+    fn input_focused(&self, window: &Window, cx: &App) -> bool {
+        self.search.focus_handle(cx).is_focused(window)
+            || self.address.focus_handle(cx).is_focused(window)
+    }
+    pub fn cancel_address(&mut self, cx: &mut Context<Self>) {
+        self.editing_address = false;
+        self.address_error = None;
+        self.address_pending = false;
+        self.address_generation = self.address_generation.wrapping_add(1);
+        self._address_validation = None;
+        cx.notify();
+    }
+    fn edit_address(&mut self, _: &EditAddress, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self
+            .path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        self.address
+            .update(cx, |input, cx| input.set_text(text, true, window, cx));
+        self.editing_address = true;
+        window.focus(&self.address.focus_handle(cx), cx);
+        cx.notify();
+    }
+    fn submit_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.address.read(cx).is_composing() || self.address_pending {
+            return;
+        }
+        let home = platform::home_dir();
+        let result = resolve_address(
+            &self.address.read(cx).content,
+            self.path().unwrap_or(&home),
+            &home,
+        );
+        let path = match result {
+            Ok(path) => path,
+            Err(message) => {
+                self.address_error = Some(message);
+                cx.notify();
+                return;
+            }
+        };
+        self.address_generation = self.address_generation.wrapping_add(1);
+        let generation = self.address_generation;
+        self.address_pending = true;
+        self.address_error = None;
+        let candidate = path.clone();
+        let validate = cx.background_executor().spawn(async move {
+            std::fs::metadata(candidate).and_then(|metadata| {
+                if metadata.is_dir() {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::other("フォルダーではありません"))
+                }
+            })
+        });
+        self._address_validation = Some(cx.spawn_in(window, async move |view, cx| {
+            let result = validate.await;
+            let _ = view.update_in(cx, |this, window, cx| {
+                if this.address_generation != generation || !this.editing_address {
+                    return;
+                }
+                this.address_pending = false;
+                match result {
+                    Ok(()) => {
+                        this.editing_address = false;
+                        this.address_error = None;
+                        window.focus(&this.focus, cx);
+                        this.navigate_to(path, window, cx);
+                    }
+                    Err(error) => {
+                        this.address_error = Some(format!("開けませんでした: {error}"));
+                    }
+                }
+                cx.notify();
+            });
+        }));
+        cx.notify();
     }
     fn theme(&self, window: &Window) -> Theme {
         Theme::resolve(self.mode, window.appearance())
@@ -452,7 +634,7 @@ impl FolderView {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let all = breadcrumbs(self.path());
+        let all = self.path().map(breadcrumbs).unwrap_or_default();
         let n = all.len();
         let crumbs: Vec<_> = all
             .into_iter()
@@ -472,8 +654,42 @@ impl FolderView {
             .border_color(t.c("border.subtle"))
             .rounded(px(18.))
             .overflow_x_scroll();
-        address = address.child(self.object_icon(self.path(), true, 18., window, cx));
-        for (i, (label, path)) in crumbs {
+        address = address
+            .cursor_text()
+            .on_click(cx.listener(|this, _, w, cx| {
+                if !this.editing_address {
+                    this.edit_address(&EditAddress, w, cx);
+                }
+            }))
+            .when(self.editing_address, |d| {
+                d.on_mouse_down_out(cx.listener(|this, _, w, cx| {
+                    this.cancel_address(cx);
+                    if this.address.focus_handle(cx).is_focused(w) {
+                        w.focus(&this.focus, cx);
+                    }
+                }))
+            });
+        if self.editing_address {
+            address = address
+                .border_color(t.c(if self.address_error.is_some() {
+                    "danger.fg"
+                } else {
+                    "focus.ring"
+                }))
+                .child(self.address.clone());
+        } else if let Some(path) = self.path() {
+            address = address.child(self.object_icon(path, true, 18., window, cx));
+        } else {
+            address = address
+                .child(
+                    svg()
+                        .path("icons/home.svg")
+                        .size(px(18.))
+                        .text_color(t.c("icon.default")),
+                )
+                .child(div().ml(px(10.)).child("ホーム"));
+        }
+        for (i, (label, path)) in crumbs.into_iter().filter(|_| !self.editing_address) {
             let last = i + 1 == n;
             address = address
                 .when(i > 0, |d| {
@@ -503,9 +719,14 @@ impl FolderView {
                         .hover(|s| s.bg(t.c("state.hover")))
                         .cursor_pointer()
                         .child(div().truncate().child(label))
-                        .on_click(
-                            cx.listener(move |this, _, _, cx| this.navigate_to(path.clone(), cx)),
-                        ),
+                        .on_click(cx.listener(move |this, _, w, cx| {
+                            cx.stop_propagation();
+                            if last {
+                                this.edit_address(&EditAddress, w, cx);
+                            } else {
+                                this.navigate_to(path.clone(), w, cx);
+                            }
+                        })),
                 );
         }
         div()
@@ -546,13 +767,8 @@ impl FolderView {
                         .on_click(cx.listener(|this, _, w, cx| this.go_forward(&GoForward, w, cx))),
                     )
                     .child(
-                        icon_button(
-                            "up",
-                            "icons/arrow-up.svg",
-                            self.path().parent().is_some(),
-                            t,
-                        )
-                        .on_click(cx.listener(|this, _, w, cx| this.go_up(&GoUp, w, cx))),
+                        icon_button("up", "icons/arrow-up.svg", !self.is_home(), t)
+                            .on_click(cx.listener(|this, _, w, cx| this.go_up(&GoUp, w, cx))),
                     )
                     .child(
                         icon_button("refresh", "icons/refresh.svg", true, t)
@@ -641,6 +857,41 @@ impl FolderView {
             .border_color(t.c("border.default"))
             .rounded(px(10.))
             .overflow_y_scroll();
+        panel = panel.child(
+            div()
+                .id("home-place")
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .px(px(10.))
+                .py(px(6.))
+                .mb(px(12.))
+                .rounded(px(8.))
+                .bg(t.c(if self.is_home() {
+                    "nav.current.bg"
+                } else {
+                    "surface.chrome"
+                }))
+                .text_color(t.c(if self.is_home() {
+                    "nav.current.fg"
+                } else {
+                    "text.secondary"
+                }))
+                .when(!self.is_home(), |d| d.hover(|s| s.bg(t.c("state.hover"))))
+                .cursor_pointer()
+                .child(svg().path("icons/home.svg").size(px(18.)).text_color(t.c(
+                    if self.is_home() {
+                        "nav.current.fg"
+                    } else {
+                        "icon.default"
+                    },
+                )))
+                .child("ホーム")
+                .on_click(cx.listener(|this, _, w, cx| {
+                    w.focus(&this.focus, cx);
+                    this.navigate(Location::Home, w, cx);
+                })),
+        );
         for (title, places) in [
             ("よく使う場所", &self.favorites),
             ("ストレージ", &self.drives),
@@ -656,16 +907,23 @@ impl FolderView {
             );
             for (i, place) in places.iter().enumerate() {
                 let path = place.path.clone();
-                let active = path == self.path();
+                let active = self.path() == Some(path.as_path());
                 let drive = title == "ストレージ";
                 let space = self.drive_space.get(&path);
-                let mut label = div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap(px(5.))
-                    .child(div().truncate().child(place.label.clone()));
+                let mut label =
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap(px(5.))
+                        .child(div().truncate().child(
+                            if place.icon == platform::PlaceIcon::Home {
+                                "ユーザーフォルダー".to_string()
+                            } else {
+                                place.label.clone()
+                            },
+                        ));
                 if drive {
                     if let Some(Some(space)) = space {
                         let used = if space.total == 0 {
@@ -726,35 +984,36 @@ impl FolderView {
                         );
                     }
                 }
-                panel = panel.child(
-                    div()
-                        .id((if drive { "drive" } else { "fav" }, i))
-                        .flex()
-                        .items_start()
-                        .gap(px(10.))
-                        .px(px(10.))
-                        .py(px(if drive { 8. } else { 4. }))
-                        .mb(px(if drive { 6. } else { 3. }))
-                        .rounded(px(10.))
-                        .text_color(if active {
-                            t.c("nav.current.fg")
-                        } else {
-                            t.c("text.secondary")
-                        })
-                        .when(drive && !active, |d| {
-                            d.bg(t.c("surface.field"))
-                                .border_1()
-                                .border_color(t.c("border.subtle"))
-                        })
-                        .when(active, |d| d.bg(t.c("nav.current.bg")))
-                        .when(!active, |d| d.hover(|s| s.bg(t.c("state.hover"))))
-                        .cursor_pointer()
-                        .child(self.object_icon(&path, true, 18., window, cx))
-                        .child(label)
-                        .on_click(
-                            cx.listener(move |this, _, _, cx| this.navigate_to(path.clone(), cx)),
-                        ),
-                );
+                panel =
+                    panel.child(
+                        div()
+                            .id((if drive { "drive" } else { "fav" }, i))
+                            .flex()
+                            .items_start()
+                            .gap(px(10.))
+                            .px(px(10.))
+                            .py(px(if drive { 8. } else { 4. }))
+                            .mb(px(if drive { 6. } else { 3. }))
+                            .rounded(px(10.))
+                            .text_color(if active {
+                                t.c("nav.current.fg")
+                            } else {
+                                t.c("text.secondary")
+                            })
+                            .when(drive && !active, |d| {
+                                d.bg(t.c("surface.field"))
+                                    .border_1()
+                                    .border_color(t.c("border.subtle"))
+                            })
+                            .when(active, |d| d.bg(t.c("nav.current.bg")))
+                            .when(!active, |d| d.hover(|s| s.bg(t.c("state.hover"))))
+                            .cursor_pointer()
+                            .child(self.object_icon(&path, true, 18., window, cx))
+                            .child(label)
+                            .on_click(cx.listener(move |this, _, w, cx| {
+                                this.navigate_to(path.clone(), w, cx)
+                            })),
+                    );
             }
         }
         panel
@@ -856,31 +1115,7 @@ impl FolderView {
                 } else {
                     t.c("text.muted")
                 };
-                let row = div()
-                    .flex()
-                    .items_center()
-                    .w_full()
-                    .h_full()
-                    .px(px(10.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(if selected {
-                        if focused {
-                            t.c("selection.border")
-                        } else {
-                            t.c("selection.inactive.border")
-                        }
-                    } else {
-                        gpui::transparent_black().into()
-                    })
-                    .when(selected, |d| {
-                        d.bg(t.c(if focused {
-                            "selection.bg"
-                        } else {
-                            "selection.inactive.bg"
-                        }))
-                    })
-                    .when(!selected, |d| d.hover(|s| s.bg(t.c("state.hover"))))
+                let row = row_surface(t, selected, focused)
                     .child(
                         div()
                             .flex()
@@ -952,9 +1187,9 @@ impl FolderView {
                                 cx.notify();
                             }),
                         )
-                        .on_click(cx.listener(move |this, e: &ClickEvent, _, cx| {
+                        .on_click(cx.listener(move |this, e: &ClickEvent, w, cx| {
                             if e.click_count() == 2 {
-                                this.open_entry(ix, cx)
+                                this.open_entry(ix, w, cx)
                             }
                         }))
                         .into_any_element(),
@@ -1140,9 +1375,9 @@ impl FolderView {
                                 .text_color(t.c("text.on-accent"))
                                 .cursor_pointer()
                                 .child("開く")
-                                .on_click(cx.listener(|this, _, _, cx| {
+                                .on_click(cx.listener(|this, _, w, cx| {
                                     if let Some(ix) = this.selected {
-                                        this.open_entry(ix, cx)
+                                        this.open_entry(ix, w, cx)
                                     }
                                 })),
                         )
@@ -1198,7 +1433,7 @@ impl FolderView {
             .text_color(t.c("text.secondary"))
             .child(format!(
                 "{} 項目{}",
-                format::count(self.visible.len()),
+                format::count(self.item_count()),
                 if self.loading {
                     " · 読み込み中…"
                 } else {
@@ -1261,10 +1496,20 @@ impl Focusable for FolderView {
 impl Render for FolderView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme(window);
-        self.search.update(cx, |input, _| input.theme = t);
+        self.search.update(cx, |input, _| {
+            input.theme = t;
+            input.placeholder = if self.is_home() {
+                "ホーム内を検索…"
+            } else {
+                "このフォルダーを検索…"
+            }
+            .into();
+        });
+        self.address.update(cx, |input, _| input.theme = t);
         div()
             .key_context("Explorer")
             .track_focus(&self.focus)
+            .on_action(cx.listener(Self::edit_address))
             .on_action(cx.listener(Self::select_prev))
             .on_action(cx.listener(Self::select_next))
             .on_action(cx.listener(Self::select_first))
@@ -1282,7 +1527,11 @@ impl Render for FolderView {
                 cx.notify()
             }))
             .on_action(cx.listener(|this, _: &ClearSearch, w, cx| {
-                this.search.update(cx, |input, cx| input.reset(w, cx));
+                if this.editing_address {
+                    this.cancel_address(cx);
+                } else {
+                    this.search.update(cx, |input, cx| input.reset(w, cx));
+                }
                 w.focus(&this.focus, cx);
                 cx.notify()
             }))
@@ -1329,14 +1578,63 @@ impl Render for FolderView {
                             .border_color(t.c("border.content"))
                             .rounded(px(10.))
                             .overflow_hidden()
-                            .child(self.render_header(t, self.narrow(window), cx))
-                            .child(self.render_list(t, cx)),
+                            .when(self.is_home(), |d| d.child(self.render_home(t, window, cx)))
+                            .when(!self.is_home(), |d| {
+                                d.child(self.render_header(t, self.narrow(window), cx))
+                                    .child(self.render_list(t, cx))
+                            }),
                     )
-                    .when(self.pane, |d| d.child(self.render_inspector(t, window, cx))),
+                    .when(self.pane && !self.is_home(), |d| {
+                        d.child(self.render_inspector(t, window, cx))
+                    }),
             )
+            .when(self.address_pending || self.address_error.is_some(), |d| {
+                d.child(
+                    div()
+                        .px(px(16.))
+                        .py(px(5.))
+                        .text_size(px(12.))
+                        .text_color(t.c("danger.fg"))
+                        .child(
+                            self.address_error
+                                .clone()
+                                .unwrap_or_else(|| "パスを確認中…".into()),
+                        ),
+                )
+            })
             .child(self.render_status(t, cx))
     }
 }
+// Shared by real list rows and the hover regression probe.
+fn row_surface(t: Theme, selected: bool, focused: bool) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id("row-surface")
+        .flex()
+        .items_center()
+        .w_full()
+        .h_full()
+        .px(px(10.))
+        .rounded(px(6.))
+        .border_1()
+        .border_color(if selected {
+            if focused {
+                t.c("selection.border")
+            } else {
+                t.c("selection.inactive.border")
+            }
+        } else {
+            gpui::transparent_black().into()
+        })
+        .when(selected, |d| {
+            d.bg(t.c(if focused {
+                "selection.bg"
+            } else {
+                "selection.inactive.bg"
+            }))
+        })
+        .when(!selected, |d| d.hover(|s| s.bg(t.c("state.hover"))))
+}
+
 pub fn icon_button(
     id: &'static str,
     icon: &'static str,
