@@ -11,7 +11,7 @@ use std::{
 mod windows_io;
 #[cfg(windows)]
 pub use windows_io::{
-    ClipboardFiles, NativeFileDrag, clear_file_clipboard, read_file_clipboard, write_file_clipboard,
+    NativeFileDrag, clear_file_clipboard, read_file_clipboard, write_file_clipboard,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

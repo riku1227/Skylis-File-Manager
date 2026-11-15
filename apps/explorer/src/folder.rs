@@ -8,14 +8,13 @@ mod transfers;
 use transfers::FileDrag;
 mod sizes;
 use sizes::SizeState;
-mod wsl;
 mod grouping;
 mod media_view;
+mod wsl;
 use crate::media::{MediaCache, MediaScope};
-mod scrollbar;
 mod context_menu;
+mod scrollbar;
 use context_menu::ContextMenu;
-use grouping::DisplayRow;
 use explorer_core::history::breadcrumbs;
 use explorer_core::location::{Location, resolve_address};
 use explorer_core::platform::{self, DriveSpace, Place};
@@ -28,6 +27,7 @@ use gpui::{
     NavigationDirection, Pixels, ScrollStrategy, Task, UniformListScrollHandle, Window, div,
     prelude::*, px, svg, uniform_list,
 };
+use grouping::DisplayRow;
 use std::collections::HashMap;
 
 use crate::actions::*;
@@ -41,7 +41,9 @@ const COL_KIND: Pixels = px(136.);
 const COL_SIZE: Pixels = px(92.);
 const SIDEBAR_WIDTH: Pixels = px(200.);
 
-pub enum FolderEvent { OpenInTab(PathBuf) }
+pub enum FolderEvent {
+    OpenInTab(PathBuf),
+}
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
@@ -55,7 +57,7 @@ pub struct FolderView {
     gallery: bool,
     gallery_override: Option<bool>,
     gallery_columns: usize,
-    gallery_rows: Vec<(Option<explorer_core::date_group::DateGroup>,Vec<usize>)>,
+    gallery_rows: Vec<(Option<explorer_core::date_group::DateGroup>, Vec<usize>)>,
     context_menu: Option<ContextMenu>,
     menu_focus: FocusHandle,
     _shell_menu: Option<Task<()>>,
@@ -143,12 +145,16 @@ impl FolderView {
         })
         .detach();
         cx.observe(&icons, |_, _, cx| cx.notify()).detach();
-        let preferences = cx.try_global::<crate::settings::SharedPreferences>().map(|p| p.0.clone());
-        let group_downloads = preferences.as_ref().map_or(true, |p| p.read(cx).value.group_downloads);
+        let preferences = cx
+            .try_global::<crate::settings::SharedPreferences>()
+            .map(|p| p.0.clone());
+        let group_downloads = preferences
+            .as_ref()
+            .map_or(true, |p| p.read(cx).value.group_downloads);
         if let Some(preferences) = preferences {
             cx.observe(&preferences, |this, preferences, cx| {
                 let automatic = preferences.read(cx).value.automatic_sizes;
-                this.update_size_mode(automatic,cx);
+                this.update_size_mode(automatic, cx);
                 this.choose_auto_gallery(cx);
                 let enabled = preferences.read(cx).value.group_downloads;
                 if this.group_downloads != enabled {
@@ -158,17 +164,29 @@ impl FolderView {
                     this.rebuild_visible(keep.as_deref());
                     cx.notify();
                 }
-            }).detach();
+            })
+            .detach();
         }
-        let media = if let Some(shared) = cx.try_global::<media_view::SharedMedia>() { shared.0.clone() } else {
-            let cache = cx.new(MediaCache::new); cx.set_global(media_view::SharedMedia(cache.clone())); cache
+        let media = if let Some(shared) = cx.try_global::<media_view::SharedMedia>() {
+            shared.0.clone()
+        } else {
+            let cache = cx.new(MediaCache::new);
+            cx.set_global(media_view::SharedMedia(cache.clone()));
+            cache
         };
-        cx.observe(&media, |_,_,cx|cx.notify()).detach();
+        cx.observe(&media, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
-            multi_selection: Default::default(), selection_anchor: None,
+            multi_selection: Default::default(),
+            selection_anchor: None,
             sizes: SizeState::default(),
-            media, media_scope: MediaScope::new(), preview_scope: MediaScope::new(), preview_open: false,
-            gallery: false, gallery_override: None, gallery_columns: 1, gallery_rows: Vec::new(),
+            media,
+            media_scope: MediaScope::new(),
+            preview_scope: MediaScope::new(),
+            preview_open: false,
+            gallery: false,
+            gallery_override: None,
+            gallery_columns: 1,
+            gallery_rows: Vec::new(),
             context_menu: None,
             menu_focus: cx.focus_handle(),
             _shell_menu: None,
@@ -214,7 +232,7 @@ impl FolderView {
             drive_space: HashMap::new(),
             title_dirty: true,
         };
-        this.attach_window(window,cx);
+        this.attach_window(window, cx);
         this.observe_file_transfers(cx);
         this.refresh_drives(cx);
         this.discover_wsl(cx);
@@ -224,17 +242,24 @@ impl FolderView {
 
     pub fn attach_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self._window_subscriptions.clear();
-        self._window_subscriptions.push(cx.on_focus(&self.focus, window, |this, _, cx| {
-            let date = chrono::Local::now().date_naive();
-            if date != this.group_date {
-                this.group_date = date;
-                this.rebuild_display_rows();
-            }
-            cx.notify();
-        }));
-        self._window_subscriptions.push(cx.on_blur(&self.focus, window, |_, _, cx| cx.notify()));
-        self._window_subscriptions.push(cx.observe_window_appearance(window, |_,_,cx| cx.notify()));
-        self._window_subscriptions.push(cx.on_blur(&self.address.focus_handle(cx), window, |this,_,cx| this.cancel_address(cx)));
+        self._window_subscriptions
+            .push(cx.on_focus(&self.focus, window, |this, _, cx| {
+                let date = chrono::Local::now().date_naive();
+                if date != this.group_date {
+                    this.group_date = date;
+                    this.rebuild_display_rows();
+                }
+                cx.notify();
+            }));
+        self._window_subscriptions
+            .push(cx.on_blur(&self.focus, window, |_, _, cx| cx.notify()));
+        self._window_subscriptions
+            .push(cx.observe_window_appearance(window, |_, _, cx| cx.notify()));
+        self._window_subscriptions.push(cx.on_blur(
+            &self.address.focus_handle(cx),
+            window,
+            |this, _, cx| this.cancel_address(cx),
+        ));
     }
 
     fn refresh_drives(&mut self, cx: &mut Context<Self>) {
@@ -353,7 +378,7 @@ impl FolderView {
                         .iter()
                         .position(|&i| &self.entries[i].name == name)
                     {
-                        self.select(ix,cx);
+                        self.select(ix, cx);
                         self.scroll_to_entry(ix, ScrollStrategy::Center);
                         self.pending_select = None;
                     }
@@ -552,8 +577,10 @@ impl FolderView {
     fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
         self.preview_scope.cancel();
         self.multi_selection.clear();
-        if let Some(&i)=self.visible.get(ix) {self.multi_selection.insert(self.entries[i].path.clone());}
-        self.selection_anchor=self.visible.get(ix).map(|&i|self.entries[i].path.clone());
+        if let Some(&i) = self.visible.get(ix) {
+            self.multi_selection.insert(self.entries[i].path.clone());
+        }
+        self.selection_anchor = self.visible.get(ix).map(|&i| self.entries[i].path.clone());
         self.selected = Some(ix);
         if !self.is_home() {
             self.scroll_to_entry(ix, ScrollStrategy::Nearest);
@@ -563,21 +590,46 @@ impl FolderView {
 
     fn page_rows(&self) -> isize {
         let h = self.scroll.0.borrow().base_handle.bounds().size.height;
-        let row_height=if self.gallery {if self.compact {156.} else {172.}} else if self.compact {24.} else {28.};
-        ((h / px(row_height)).floor() as isize - 1).max(1) * if self.gallery {self.gallery_columns as isize} else {1}
+        let row_height = if self.gallery {
+            if self.compact { 156. } else { 172. }
+        } else if self.compact {
+            24.
+        } else {
+            28.
+        };
+        ((h / px(row_height)).floor() as isize - 1).max(1)
+            * if self.gallery {
+                self.gallery_columns as isize
+            } else {
+                1
+            }
     }
 
     fn select_prev(&mut self, _: &SelectPrev, window: &mut Window, cx: &mut Context<Self>) {
         if self.input_focused(window, cx) {
             return;
         }
-        self.move_selection(if self.gallery && !self.preview_open { -(self.gallery_columns as isize) } else {-1}, cx);
+        self.move_selection(
+            if self.gallery && !self.preview_open {
+                -(self.gallery_columns as isize)
+            } else {
+                -1
+            },
+            cx,
+        );
     }
     fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
         if self.input_focused(window, cx) {
             return;
         }
-        self.move_selection(if self.gallery && !self.preview_open { self.gallery_columns as isize } else {1}, cx);
+        self.move_selection(
+            if self.gallery && !self.preview_open {
+                self.gallery_columns as isize
+            } else {
+                1
+            },
+            cx,
+        );
     }
     fn select_first(&mut self, _: &SelectFirst, window: &mut Window, cx: &mut Context<Self>) {
         if self.input_focused(window, cx) {
@@ -620,7 +672,9 @@ impl FolderView {
             return;
         }
         if let Some(ix) = self.selected {
-            if self.preview_open { self.close_preview(cx); }
+            if self.preview_open {
+                self.close_preview(cx);
+            }
             self.open_entry(ix, window, cx);
         }
     }
@@ -935,9 +989,17 @@ impl FolderView {
                     }),
             )
             .child(
-                div().id("view-mode").px(px(8.)).cursor_pointer().text_color(t.c("text.secondary"))
-                    .child(if self.gallery { "詳細表示" } else { "ギャラリー" })
-                    .on_click(cx.listener(|this,_,_,cx|this.set_gallery(!this.gallery,cx))),
+                div()
+                    .id("view-mode")
+                    .px(px(8.))
+                    .cursor_pointer()
+                    .text_color(t.c("text.secondary"))
+                    .child(if self.gallery {
+                        "詳細表示"
+                    } else {
+                        "ギャラリー"
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| this.set_gallery(!this.gallery, cx))),
             )
             .child(
                 icon_button("settings", "icons/settings.svg", true, t)
@@ -1135,7 +1197,7 @@ impl FolderView {
                     );
             }
         }
-        panel.child(self.render_wsl(t,cx))
+        panel.child(self.render_wsl(t, cx))
     }
     fn render_header(&self, t: Theme, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let col = |id: &'static str, label: &'static str, key: SortKey, cx: &mut Context<Self>| {
@@ -1212,7 +1274,11 @@ impl FolderView {
         self.pane && window.viewport_size().width < px(1200.)
     }
     fn is_downloads(&self) -> bool {
-        self.path().is_some_and(|path| self.favorites.iter().any(|p| p.icon == platform::PlaceIcon::Downloads && p.path == path))
+        self.path().is_some_and(|path| {
+            self.favorites
+                .iter()
+                .any(|p| p.icon == platform::PlaceIcon::Downloads && p.path == path)
+        })
     }
     fn render_rows(
         &mut self,
@@ -1227,11 +1293,24 @@ impl FolderView {
             .filter_map(|row_ix| {
                 let ix = match *self.display_rows.get(row_ix)? {
                     DisplayRow::Entry(ix) => ix,
-                    DisplayRow::Header(group, count) => return Some(div().id(("date-group", row_ix))
-                        .h(px(if self.compact { 24. } else { 28. })).w_full().px(px(16.))
-                        .flex().items_center().border_b_1().border_color(t.c("border.subtle"))
-                        .text_size(px(11.)).text_color(t.c("text.muted")).font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child(format!("{} · {}", group.label(), count)).into_any_element()),
+                    DisplayRow::Header(group, count) => {
+                        return Some(
+                            div()
+                                .id(("date-group", row_ix))
+                                .h(px(if self.compact { 24. } else { 28. }))
+                                .w_full()
+                                .px(px(16.))
+                                .flex()
+                                .items_center()
+                                .border_b_1()
+                                .border_color(t.c("border.subtle"))
+                                .text_size(px(11.))
+                                .text_color(t.c("text.muted"))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .child(format!("{} · {}", group.label(), count))
+                                .into_any_element(),
+                        );
+                    }
                 };
                 let &i = self.visible.get(ix)?;
                 let e = self.entries[i].clone();
@@ -1301,7 +1380,13 @@ impl FolderView {
                             .justify_end()
                             .text_size(px(12.))
                             .text_color(meta_color)
-                            .child(if e.kind == EntryKind::Dir { self.size_cell(&e.path,t,cx) } else { div().child(e.size.map(format::size).unwrap_or_else(|| "—".into())).into_any_element() }),
+                            .child(if e.kind == EntryKind::Dir {
+                                self.size_cell(&e.path, t, cx)
+                            } else {
+                                div()
+                                    .child(e.size.map(format::size).unwrap_or_else(|| "—".into()))
+                                    .into_any_element()
+                            }),
                     );
                 Some(
                     div()
@@ -1310,15 +1395,25 @@ impl FolderView {
                         .h(px(if self.compact { 24. } else { 28. }))
                         .px(px(6.))
                         .child(row)
-                        .on_drag(self.file_drag(ix,cx),|drag,_,_,cx| {drag.resolve(cx); cx.new(|_|drag.clone())})
-                        .external_drag_payload(|drag: &FileDrag,_,cx|drag.external_payload(cx))
-                        .when(e.kind==EntryKind::Dir,|d| {
+                        .on_drag(self.file_drag(ix, cx), |drag, _, _, cx| {
+                            drag.resolve(cx);
+                            cx.new(|_| drag.clone())
+                        })
+                        .external_drag_payload(|drag: &FileDrag, _, cx| drag.external_payload(cx))
+                        .when(e.kind == EntryKind::Dir, |d| {
                             Self::file_drop_target(d, Some(e.path.clone()), t, cx)
                         })
-                        .on_mouse_down(MouseButton::Right, cx.listener(move |this,event,w,cx| this.open_context_menu(Some(ix),event,w,cx)))
+                        .on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener(move |this, event, w, cx| {
+                                this.open_context_menu(Some(ix), event, w, cx)
+                            }),
+                        )
                         .on_mouse_down(
                             MouseButton::Left,
-                            cx.listener(move |this, event: &MouseDownEvent, w, cx| this.pointer_select(ix,event,w,cx)),
+                            cx.listener(move |this, event: &MouseDownEvent, w, cx| {
+                                this.pointer_select(ix, event, w, cx)
+                            }),
                         )
                         .on_click(cx.listener(move |this, e: &ClickEvent, w, cx| {
                             this.finish_pointer_click(ix, e, cx);
@@ -1358,9 +1453,18 @@ impl FolderView {
         .min_h_0()
         .py(px(2.))
         .track_scroll(&self.scroll)
-        .on_mouse_down(MouseButton::Right, cx.listener(|this,event,w,cx| this.open_context_menu(None,event,w,cx)));
-        div().flex().flex_1().min_h_0().child(list).child(self.render_scrollbar(t,cx))
-            .on_scroll(cx.listener(|_,_,_,cx| cx.notify())).into_any_element()
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(|this, event, w, cx| this.open_context_menu(None, event, w, cx)),
+        );
+        div()
+            .flex()
+            .flex_1()
+            .min_h_0()
+            .child(list)
+            .child(self.render_scrollbar(t, cx))
+            .on_scroll(cx.listener(|_, _, _, cx| cx.notify()))
+            .into_any_element()
     }
     fn render_inspector(
         &self,
@@ -1644,27 +1748,59 @@ impl Render for FolderView {
             .into();
         });
         self.address.update(cx, |input, _| input.theme = t);
-        #[cfg(target_os="macos")]
+        #[cfg(target_os = "macos")]
         {
             if self.preview_open {
-                if let Some(entry)=self.selected_entry() {
-                    match crate::media::quicklook::update(&entry.path,window) {
-                        Ok(true)=>(), Ok(false)=>{self.preview_open=false;self.preview_scope.cancel();},
-                        Err(error)=>{self.preview_open=false;self.preview_scope.cancel();self.notice=Some(error);}
+                if let Some(entry) = self.selected_entry() {
+                    match crate::media::quicklook::update(&entry.path, window) {
+                        Ok(true) => (),
+                        Ok(false) => {
+                            self.preview_open = false;
+                            self.preview_scope.cancel();
+                        }
+                        Err(error) => {
+                            self.preview_open = false;
+                            self.preview_scope.cancel();
+                            self.notice = Some(error);
+                        }
                     }
                 }
-            } else { let _=crate::media::quicklook::close(window); }
+            } else {
+                let _ = crate::media::quicklook::close(window);
+            }
         }
 
-        let content_width = f32::from(window.viewport_size().width) - f32::from(SIDEBAR_WIDTH) - if self.pane { 280. } else { 0. } - 40.;
-        let columns = (content_width / if self.compact {112.} else {128.}).floor().max(1.) as usize;
-        if columns != self.gallery_columns { self.gallery_columns = columns; self.rebuild_display_rows(); }
+        let content_width = f32::from(window.viewport_size().width)
+            - f32::from(SIDEBAR_WIDTH)
+            - if self.pane { 280. } else { 0. }
+            - 40.;
+        let columns = (content_width / if self.compact { 112. } else { 128. })
+            .floor()
+            .max(1.) as usize;
+        if columns != self.gallery_columns {
+            self.gallery_columns = columns;
+            self.rebuild_display_rows();
+        }
         div()
             .key_context("Explorer")
             .track_focus(&self.focus)
-            .on_mouse_move(cx.listener(|this,event: &gpui::MouseMoveEvent,_,cx| this.drag_scrollbar(event.position,cx)))
-            .on_mouse_up(MouseButton::Left,cx.listener(|this,_,_,cx| { this.scrollbar_drag = None; cx.notify(); }))
-            .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,_,cx| { this.scrollbar_drag = None; cx.notify(); }))
+            .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+                this.drag_scrollbar(event.position, cx)
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.scrollbar_drag = None;
+                    cx.notify();
+                }),
+            )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.scrollbar_drag = None;
+                    cx.notify();
+                }),
+            )
             .on_action(cx.listener(Self::select_all))
             .on_action(cx.listener(Self::copy_files))
             .on_action(cx.listener(Self::cut_files))
@@ -1673,8 +1809,16 @@ impl Render for FolderView {
             .on_action(cx.listener(Self::toggle_preview))
             .on_action(cx.listener(Self::keyboard_context_menu))
             .on_action(cx.listener(Self::edit_address))
-            .on_action(cx.listener(|this,_:&SelectLeft,w,cx|{if !this.input_focused(w,cx) && (this.gallery || this.preview_open) {this.move_selection(-1,cx);}}))
-            .on_action(cx.listener(|this,_:&SelectRight,w,cx|{if !this.input_focused(w,cx) && (this.gallery || this.preview_open) {this.move_selection(1,cx);}}))
+            .on_action(cx.listener(|this, _: &SelectLeft, w, cx| {
+                if !this.input_focused(w, cx) && (this.gallery || this.preview_open) {
+                    this.move_selection(-1, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &SelectRight, w, cx| {
+                if !this.input_focused(w, cx) && (this.gallery || this.preview_open) {
+                    this.move_selection(1, cx);
+                }
+            }))
             .on_action(cx.listener(Self::select_prev))
             .on_action(cx.listener(Self::select_next))
             .on_action(cx.listener(Self::select_first))
@@ -1692,7 +1836,10 @@ impl Render for FolderView {
                 cx.notify()
             }))
             .on_action(cx.listener(|this, _: &ClearSearch, w, cx| {
-                if this.preview_open { this.close_preview(cx); return; }
+                if this.preview_open {
+                    this.close_preview(cx);
+                    return;
+                }
                 if this.editing_address {
                     this.cancel_address(cx);
                 } else {
@@ -1744,11 +1891,27 @@ impl Render for FolderView {
                             .border_color(t.c("border.content"))
                             .rounded(px(10.))
                             .overflow_hidden()
-                            .map(|d| Self::file_drop_target(d, self.path().map(Path::to_path_buf), t, cx))
+                            .map(|d| {
+                                Self::file_drop_target(d, self.path().map(Path::to_path_buf), t, cx)
+                            })
                             .when(self.is_home(), |d| d.child(self.render_home(t, window, cx)))
                             .when(!self.is_home(), |d| {
-                                d.on_mouse_down(MouseButton::Right,cx.listener(|this,event,w,cx|this.open_context_menu(None,event,w,cx))).when(!self.gallery, |d| d.child(self.render_header(t, self.narrow(window), cx)))
-                                    .child(if self.gallery && !self.visible.is_empty() { self.render_gallery(t,cx) } else { self.render_list(t,cx) })
+                                d.on_mouse_down(
+                                    MouseButton::Right,
+                                    cx.listener(|this, event, w, cx| {
+                                        this.open_context_menu(None, event, w, cx)
+                                    }),
+                                )
+                                .when(!self.gallery, |d| {
+                                    d.child(self.render_header(t, self.narrow(window), cx))
+                                })
+                                .child(
+                                    if self.gallery && !self.visible.is_empty() {
+                                        self.render_gallery(t, cx)
+                                    } else {
+                                        self.render_list(t, cx)
+                                    },
+                                )
                             }),
                     )
                     .when(self.pane && !self.is_home(), |d| {
@@ -1770,8 +1933,12 @@ impl Render for FolderView {
                 )
             })
             .child(self.render_status(t, cx))
-            .when(self.preview_open && !cfg!(target_os="macos"),|d|d.child(self.render_preview(t,cx)))
-            .when(self.context_menu.is_some(), |d| d.child(self.render_context_menu(t,cx)))
+            .when(self.preview_open && !cfg!(target_os = "macos"), |d| {
+                d.child(self.render_preview(t, cx))
+            })
+            .when(self.context_menu.is_some(), |d| {
+                d.child(self.render_context_menu(t, cx))
+            })
     }
 }
 // Shared by real list rows and the hover regression probe.
@@ -1839,6 +2006,8 @@ pub fn icon_button(
                     "close-pane" => "詳細ペインを閉じる",
                     "clear-search" => "検索をクリア（Esc）",
                     "new-tab" => "新しいタブ（Ctrl+T）",
+                    "settings" => "設定（Ctrl+,）",
+                    "close-settings" => "設定を閉じる（Esc）",
                     _ => "テーマ切替",
                 }
                 .into(),

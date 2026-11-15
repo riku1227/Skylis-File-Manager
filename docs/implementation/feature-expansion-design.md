@@ -28,3 +28,13 @@ Pure tests cover date boundaries, selection mapping, settings corruption/round t
 ## Workspace
 
 Work on feature branch in the existing checkout to preserve already available builds and shared-agent file ownership. Pre-existing README.md and docs/implementation/windows-build.md changes are not ours and will not be committed.
+
+## Concrete choices after implementation
+
+Preferences use a small versioned `settings.conf` format with atomic replacement and 300ms debounce. An invalid existing file is preserved and writes are disabled with a visible error instead of overwriting it. Defaults remain system theme, normal density, grouped Downloads, automatic gallery and manual folder sizes.
+
+Date sections are Today, Yesterday, This week, Last week, This month, Last month, Earlier and Unknown; calendar boundaries are local and nonoverlapping. Gallery decisions run after enumeration; manual view selection survives refresh within the visit. The 80% rule has no extra minimum file count.
+
+Icons use a 16 MiB/2,048-entry cache and a bounded 128-request demand queue. Media uses a 64 MiB/384-entry cache and 96 pending requests, with one internal decoder and one Windows Shell worker. Recursive size scans use two shared workers, 128 waiting requests and a 128-level traversal cap; logical sizes and incomplete lower bounds are explicit.
+
+Native Shell, transfer, WSL, media and size services are focused modules. Windows Shell calls normalize slash-separated absolute paths without an added filesystem probe. macOS integrations are compile-gated, with runtime verification outstanding on a Mac. See the progress document for exact validation and platform boundaries.
