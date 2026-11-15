@@ -19,6 +19,7 @@ icons!(
     "x",
     "plus",
     "sun",
+        "settings",
     "panel",
     "folder",
     "file",

@@ -860,16 +860,6 @@ impl FolderView {
             )
             .child(
                 icon_button("theme", "icons/sun.svg", true, t)
-                    .tooltip({
-                        let text = format!("テーマ: {}（クリックで切替）", self.mode.label());
-                        move |_, cx| {
-                            cx.new(|_| Tip {
-                                text: text.clone(),
-                                theme: t,
-                            })
-                            .into()
-                        }
-                    })
                     .on_click(|_, w, cx| w.dispatch_action(Box::new(CycleTheme), cx)),
             )
             .child(

@@ -207,3 +207,10 @@ fn cancelling_pending_address_cannot_navigate_later(cx: &mut gpui::TestAppContex
         .update(cx, |view, _, _| assert!(view.is_home()))
         .unwrap();
 }
+
+#[gpui::test]
+fn toolbar_can_be_constructed_with_debug_assertions(cx: &mut gpui::TestAppContext) {
+    let window = home_window(cx);
+    window.update(cx, |view, w, cx| { let _ = view.render_toolbar(Theme::light(), w, cx).into_any_element(); }).unwrap();
+}
+
