@@ -1313,10 +1313,6 @@ impl FolderView {
                     .on_click(|_, w, cx| w.dispatch_action(Box::new(OpenSettings), cx)),
             )
             .child(
-                icon_button("theme", "icons/sun.svg", true, t)
-                    .on_click(|_, w, cx| w.dispatch_action(Box::new(CycleTheme), cx)),
-            )
-            .child(
                 icon_button("pane", "icons/panel.svg", true, t)
                     .when(self.pane, |d| d.bg(t.c("accent.soft")))
                     .on_click(cx.listener(|this, _, _, cx| {
