@@ -85,6 +85,7 @@ impl FolderView {
         cx: &mut Context<Self>,
     ) {
         cx.stop_propagation();
+        self.close_display_settings(cx);
         self.cancel_scroll_motion();
         self.menu_generation = self.menu_generation.wrapping_add(1);
         window.focus(&self.menu_focus, cx);
@@ -115,6 +116,7 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.close_display_settings(cx);
         if self.input_focused(window, cx) || self.is_home() {
             return;
         }

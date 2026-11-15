@@ -39,6 +39,7 @@ pub struct Explorer {
     active: usize,
     mode: ThemeMode,
     compact: bool,
+    pane: bool,
     icons: Entity<ShellIcons>,
     preferences: Entity<crate::settings::Preferences>,
     settings_open: bool,
@@ -175,6 +176,7 @@ impl Explorer {
             active: 0,
             mode,
             compact,
+            pane: true,
             icons,
             last_saved_theme: preferences.read(cx).value.theme,
             preferences,
@@ -207,6 +209,7 @@ impl Explorer {
             tab.cancel_address(cx);
             tab.cancel_scroll_motion();
             tab.close_preview(cx);
+            tab.close_display_settings(cx);
         });
         self.active = index;
         window.focus(&self.tabs[index].focus_handle(cx), cx);
@@ -492,7 +495,10 @@ impl Render for Explorer {
                 this.settings_open = !this.settings_open;
                 if this.settings_open {
                     crate::motion_preferences::refresh(cx);
-                    this.tabs[this.active].update(cx, |tab, _| tab.cancel_scroll_motion());
+                    this.tabs[this.active].update(cx, |tab, cx| {
+                        tab.cancel_scroll_motion();
+                        tab.close_display_settings(cx);
+                    });
                     w.focus(&this.settings_focus, cx);
                 } else {
                     w.focus(&this.tabs[this.active].focus_handle(cx), cx);
@@ -581,6 +587,43 @@ impl Render for Explorer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[gpui::test]
+    fn pane_is_shared_by_window_tabs_and_inherited_on_attach(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        let explorer = window
+            .read_with(cx, |probe, _| probe.explorer.clone())
+            .unwrap();
+        window
+            .update(cx, |_, w, cx| {
+                explorer.update(cx, |view, cx| {
+                    view.settings_open = false;
+                    view.new_tab(&NewTab, w, cx);
+                    view.tabs[view.active].update(cx, |_, cx| {
+                        cx.emit(crate::folder::FolderEvent::SetPane(false))
+                    });
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+        window
+            .update(cx, |_, w, cx| {
+                explorer.update(cx, |view, cx| {
+                    assert!(!view.pane);
+                    assert!(view.tabs.iter().all(|tab| !tab.read(cx).pane));
+                    view.new_tab(&NewTab, w, cx);
+                    assert!(!view.tabs[view.active].read(cx).pane);
+                    // An arriving tab must adopt the destination window's choice.
+                    let incoming = cx.new(|cx| {
+                        FolderView::new(Location::Home, view.mode, view.icons.clone(), w, cx)
+                    });
+                    assert!(incoming.read(cx).pane);
+                    view.watch_tab(&incoming, w, cx);
+                    assert!(!incoming.read(cx).pane);
+                });
+            })
+            .unwrap();
+    }
 
     struct SettingsKeyProbe {
         explorer: Entity<Explorer>,
