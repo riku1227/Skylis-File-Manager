@@ -65,6 +65,34 @@ fn home_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderView> 
     })
 }
 
+#[gpui::test]
+fn grouped_headers_are_not_selectable_and_scroll_maps_to_entry_rows(cx: &mut gpui::TestAppContext) {
+    let window = home_window(cx);
+    let mut entries = Vec::new();
+    list_dir(Path::new(env!("CARGO_MANIFEST_DIR")), &CancelToken::new(), |event| {
+        if let ListingEvent::Batch(batch) = event { entries.extend(batch); }
+        true
+    });
+    assert!(entries.len() >= 2);
+    entries[0].modified = Some(std::time::SystemTime::UNIX_EPOCH);
+    entries[1].modified = Some(std::time::SystemTime::now());
+    window.update(cx, |view, _, _| {
+        view.entries = entries;
+        view.grouped = true;
+        view.rebuild_visible(None);
+        assert!(matches!(view.display_rows[0], DisplayRow::Header(_, _)));
+        assert_eq!(view.entry_rows.len(), view.visible.len());
+        for (ix, &row) in view.entry_rows.iter().enumerate() {
+            assert!(matches!(view.display_rows[row], DisplayRow::Entry(index) if index == ix));
+        }
+        let keep = view.entries[view.visible[0]].path.clone();
+        view.rebuild_visible(Some(&keep));
+        assert_eq!(view.selected_entry().unwrap().path, keep);
+        view.scroll_to_entry(0, ScrollStrategy::Nearest);
+        assert_eq!(view.scroll.0.borrow().deferred_scroll_to_item.unwrap().item_index, 1);
+    }).unwrap();
+}
+
 #[cfg(windows)]
 #[gpui::test]
 fn recycle_bin_participates_in_home_search_count_and_keyboard_selection(

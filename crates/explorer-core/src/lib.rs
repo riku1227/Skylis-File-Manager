@@ -10,3 +10,5 @@ pub mod platform;
 pub use entry::{Entry, EntryKind, SortKey, SortOrder};
 pub use history::History;
 pub use listing::{CancelToken, ListingEvent, ListingStats, list_dir};
+
+pub mod date_group;

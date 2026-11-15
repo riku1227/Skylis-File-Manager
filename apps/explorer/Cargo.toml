@@ -10,6 +10,7 @@ gpui.workspace = true
 gpui_platform.workspace = true
 async-channel.workspace = true
 anyhow.workspace = true
+chrono.workspace = true
 image = { version = "0.25", default-features = false }
 unicode-segmentation = "1.12"
 

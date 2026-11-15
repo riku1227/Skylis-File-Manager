@@ -4,6 +4,8 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
+mod grouping;
+use grouping::DisplayRow;
 use explorer_core::history::breadcrumbs;
 use explorer_core::location::{Location, resolve_address};
 use explorer_core::platform::{self, DriveSpace, Place};
@@ -49,6 +51,11 @@ pub struct FolderView {
     entries: Vec<Entry>,
     /// 表示対象の entries インデックス（隠しファイルのフィルター後）
     visible: Vec<usize>,
+    display_rows: Vec<DisplayRow>,
+    entry_rows: Vec<usize>,
+    grouped: bool,
+    group_date: chrono::NaiveDate,
+    group_downloads: bool,
     /// visible 上の選択位置
     selected: Option<usize>,
     /// 列挙中に現れたら選択したい項目名（戻る/上へ で元のフォルダーを選択するため）
@@ -114,6 +121,20 @@ impl FolderView {
         })
         .detach();
         cx.observe(&icons, |_, _, cx| cx.notify()).detach();
+        let preferences = cx.try_global::<crate::settings::SharedPreferences>().map(|p| p.0.clone());
+        let group_downloads = preferences.as_ref().map_or(true, |p| p.read(cx).value.group_downloads);
+        if let Some(preferences) = preferences {
+            cx.observe(&preferences, |this, preferences, cx| {
+                let enabled = preferences.read(cx).value.group_downloads;
+                if this.group_downloads != enabled {
+                    this.group_downloads = enabled;
+                    this.grouped = enabled && this.is_downloads();
+                    let keep = this.selected_entry().map(|e| e.path.clone());
+                    this.rebuild_visible(keep.as_deref());
+                    cx.notify();
+                }
+            }).detach();
+        }
         let mut this = Self {
             mode,
             pane: true,
@@ -132,6 +153,11 @@ impl FolderView {
             history: History::new(start.clone()),
             entries: Vec::new(),
             visible: Vec::new(),
+            display_rows: Vec::new(),
+            entry_rows: Vec::new(),
+            grouped: false,
+            group_date: chrono::Local::now().date_naive(),
+            group_downloads,
             selected: None,
             pending_select: None,
             sort: SortOrder::default(),
@@ -192,6 +218,10 @@ impl FolderView {
         self.cancel = CancelToken::new();
         self._listing = None;
 
+        self.grouped = self.group_downloads && self.is_downloads();
+        self.group_date = chrono::Local::now().date_naive();
+        self.display_rows.clear();
+        self.entry_rows.clear();
         self.entries.clear();
         self.visible.clear();
         self.selected = None;
@@ -256,7 +286,7 @@ impl FolderView {
                         .position(|&i| &self.entries[i].name == name)
                     {
                         self.selected = Some(ix);
-                        self.scroll.scroll_to_item(ix, ScrollStrategy::Center);
+                        self.scroll_to_entry(ix, ScrollStrategy::Center);
                         self.pending_select = None;
                     }
                 }
@@ -291,6 +321,7 @@ impl FolderView {
             .filter(|(_, e)| (show_hidden || !e.hidden) && e.name.to_lowercase().contains(&query))
             .map(|(i, _)| i)
             .collect();
+        self.apply_grouping();
         self.selected =
             keep.and_then(|p| self.visible.iter().position(|&i| self.entries[i].path == p));
     }
@@ -413,13 +444,14 @@ impl FolderView {
     }
 
     fn set_sort(&mut self, key: SortKey, cx: &mut Context<Self>) {
+        self.grouped = false;
         self.sort = self.sort.toggled(key);
         let keep = self.selected_entry().map(|e| e.path.clone());
         let sort = self.sort;
         self.entries.sort_unstable_by(|a, b| sort.compare(a, b));
         self.rebuild_visible(keep.as_deref());
         if let Some(ix) = self.selected {
-            self.scroll.scroll_to_item(ix, ScrollStrategy::Center);
+            self.scroll_to_entry(ix, ScrollStrategy::Center);
         }
         cx.notify();
     }
@@ -447,7 +479,7 @@ impl FolderView {
     fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
         self.selected = Some(ix);
         if !self.is_home() {
-            self.scroll.scroll_to_item(ix, ScrollStrategy::Nearest);
+            self.scroll_to_entry(ix, ScrollStrategy::Nearest);
         }
         cx.notify();
     }
@@ -1102,6 +1134,9 @@ impl FolderView {
     fn narrow(&self, window: &Window) -> bool {
         self.pane && window.viewport_size().width < px(1200.)
     }
+    fn is_downloads(&self) -> bool {
+        self.path().is_some_and(|path| self.favorites.iter().any(|p| p.icon == platform::PlaceIcon::Downloads && p.path == path))
+    }
     fn render_rows(
         &mut self,
         range: Range<usize>,
@@ -1112,7 +1147,15 @@ impl FolderView {
         let focused = self.focus.is_focused(window);
         let narrow = self.narrow(window);
         range
-            .filter_map(|ix| {
+            .filter_map(|row_ix| {
+                let ix = match *self.display_rows.get(row_ix)? {
+                    DisplayRow::Entry(ix) => ix,
+                    DisplayRow::Header(group, count) => return Some(div().id(("date-group", row_ix))
+                        .h(px(if self.compact { 24. } else { 28. })).w_full().px(px(16.))
+                        .flex().items_center().border_b_1().border_color(t.c("border.subtle"))
+                        .text_size(px(11.)).text_color(t.c("text.muted")).font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(format!("{} · {}", group.label(), count)).into_any_element()),
+                };
                 let &i = self.visible.get(ix)?;
                 let e = &self.entries[i];
                 let selected = self.selected == Some(ix);
@@ -1228,7 +1271,7 @@ impl FolderView {
         }
         uniform_list(
             "entries",
-            self.visible.len(),
+            self.display_rows.len(),
             cx.processor(Self::render_rows),
         )
         .flex_1()
