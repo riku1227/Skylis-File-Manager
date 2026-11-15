@@ -620,6 +620,7 @@ impl FolderView {
             return;
         }
         if let Some(ix) = self.selected {
+            if self.preview_open { self.close_preview(cx); }
             self.open_entry(ix, window, cx);
         }
     }

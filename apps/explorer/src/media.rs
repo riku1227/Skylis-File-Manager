@@ -1,7 +1,9 @@
 //! Bounded media loading. All filesystem/codec/Shell work stays on worker threads.
 mod decode;
-pub(crate) mod quicklook;
+#[cfg(target_os = "macos")]
 pub(crate) mod macos_actions;
+#[cfg(target_os = "macos")]
+pub(crate) mod quicklook;
 #[cfg(windows)]
 mod windows;
 
