@@ -1,5 +1,5 @@
 use super::*;
-use crate::media::{MediaCache, PreviewContent};
+use crate::media::MediaCache;
 
 #[derive(Clone)]
 pub(super) struct SharedMedia(pub Entity<MediaCache>);
@@ -15,155 +15,114 @@ impl FolderView {
         if self.input_focused(w, cx) {
             return;
         }
-        #[cfg(target_os = "macos")]
-        if crate::media::quicklook::is_visible(w).unwrap_or(false) {
+        if self.preview_open {
+            #[cfg(target_os = "macos")]
             let _ = crate::media::quicklook::close(w);
             self.close_preview(cx);
             return;
         }
-        #[cfg(not(target_os = "macos"))]
-        if self.preview_open {
-            self.close_preview(cx);
+        let Some(entry) = self.selected_entry().cloned() else {
             return;
-        }
-        if self.selected_entry().is_none() {
-            return;
-        }
+        };
         #[cfg(target_os = "macos")]
-        if let Some(entry) = self.selected_entry() {
-            if let Err(error) = crate::media::quicklook::show(&entry.path, w) {
-                self.notice = Some(error.to_string());
-                cx.notify();
-                return;
-            }
+        if let Err(error) = crate::media::quicklook::show(&entry.path, w) {
+            self.notice = Some(error.to_string());
+            cx.notify();
+            return;
         }
         self.cancel_scroll_motion();
         self.preview_scope.cancel();
         self.preview_open = true;
+        #[cfg(not(target_os = "macos"))]
+        {
+            let source = cx.entity();
+            let owner = w.window_handle();
+            let media = self.media.clone();
+            let scope = self.preview_scope.clone();
+            let mode = self.mode;
+            let bounds = gpui::Bounds::new(
+                w.bounds().origin + gpui::point(px(48.), px(48.)),
+                gpui::size(px(800.), px(600.)),
+            );
+            let native_owner = preview_window::native_owner(w);
+            match cx.open_window(
+                gpui::WindowOptions {
+                    window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
+                    window_min_size: Some(gpui::size(px(400.), px(300.))),
+                    titlebar: Some(gpui::TitlebarOptions {
+                        title: Some("クイックプレビュー — Skylis".into()),
+                        ..Default::default()
+                    }),
+                    focus: false,
+                    is_minimizable: false,
+                    ..Default::default()
+                },
+                move |window, cx| {
+                    preview_window::attach_native_owner(window, native_owner);
+                    cx.new(|cx| {
+                        preview_window::PreviewWindow::new(
+                            source, owner, entry, media, scope, mode, window, cx,
+                        )
+                    })
+                },
+            ) {
+                Ok(handle) => self.preview_window = Some(handle),
+                Err(error) => {
+                    self.preview_open = false;
+                    self.notice = Some(format!("プレビューを開けません: {error}"));
+                }
+            }
+        }
         cx.notify();
     }
-    pub(super) fn close_preview(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn close_preview(&mut self, cx: &mut Context<Self>) {
         self.preview_open = false;
         self.preview_scope.cancel();
+        #[cfg(not(target_os = "macos"))]
+        if let Some(handle) = self.preview_window.take() {
+            cx.defer(move |cx| {
+                let _ = handle.update(cx, |_, window, _| window.remove_window());
+            });
+        }
         cx.notify();
     }
-    pub(super) fn render_preview(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
-        let Some(entry) = self.selected_entry() else {
-            return div().into_any_element();
-        };
-        let content = self.media.update(cx, |media, cx| {
-            media.get_preview(entry, &self.preview_scope, cx)
-        });
-        let content = match content {
-            PreviewContent::Loading => div()
-                .text_color(t.c("text.muted"))
-                .child("プレビューを読み込み中…")
-                .into_any_element(),
-            PreviewContent::Image(image) => div()
-                .relative()
-                .size_full()
-                .overflow_hidden()
-                .child(
-                    img(image)
-                        .absolute()
-                        .inset_0()
-                        .size_full()
-                        .object_fit(gpui::ObjectFit::Contain),
-                )
-                .into_any_element(),
-            PreviewContent::Text { text, truncated } => div()
-                .id("preview-text")
-                .size_full()
-                .overflow_y_scroll()
-                .font_family("Consolas")
-                .text_size(px(13.))
-                .child(text.to_string())
-                .when(truncated, |d| {
-                    d.child(
-                        div()
-                            .mt(px(16.))
-                            .text_color(t.c("text.muted"))
-                            .child("先頭128 KiBのみ表示しています"),
-                    )
-                })
-                .into_any_element(),
-            PreviewContent::Metadata { reason } => div()
-                .flex()
-                .flex_col()
-                .gap(px(12.))
-                .child(entry.kind_label())
-                .child(entry.size.map(format::size).unwrap_or_default())
-                .child(
-                    div()
-                        .text_color(t.c("text.muted"))
-                        .child(reason.to_string()),
-                )
-                .into_any_element(),
-        };
-        div()
-            .absolute()
-            .inset_0()
-            .occlude()
-            .p(px(28.))
-            .bg(t.c("surface.canvas").opacity(0.94))
-            .child(
-                div()
-                    .size_full()
-                    .flex()
-                    .flex_col()
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(t.c("border.subtle"))
-                    .bg(t.c("surface.raised"))
-                    .child(
-                        div()
-                            .h(px(44.))
-                            .flex_shrink_0()
-                            .px(px(16.))
-                            .flex()
-                            .items_center()
-                            .gap(px(12.))
-                            .child(div().flex_1().truncate().child(entry.name.clone()))
-                            .child(
-                                div()
-                                    .id("preview-open")
-                                    .cursor_pointer()
-                                    .text_color(t.c("accent.fg"))
-                                    .child("既定のアプリで開く")
-                                    .on_click(cx.listener(|this, _, w, cx| {
-                                        this.close_preview(cx);
-                                        this.open_selected(&OpenSelected, w, cx);
-                                    })),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_hidden()
-                            .p(px(16.))
-                            .child(content),
-                    )
-                    .child(
-                        div()
-                            .h(px(32.))
-                            .flex_shrink_0()
-                            .px(px(16.))
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .text_color(t.c("text.muted"))
-                            .child("↑ ↓ 選択を移動  ·  Space / Esc 閉じる")
-                            .child(
-                                div()
-                                    .id("preview-close")
-                                    .cursor_pointer()
-                                    .child("閉じる")
-                                    .on_click(cx.listener(|this, _, _, cx| this.close_preview(cx))),
-                            ),
-                    ),
+
+    pub(super) fn inspector_picture(
+        &self,
+        entry: &Entry,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let thumbnail = self.media.update(cx, |media, cx| {
+            media.get_thumbnail(
+                entry,
+                (232. * window.scale_factor()).ceil() as u32,
+                &self.preview_scope,
+                cx,
             )
-            .into_any_element()
+        });
+        let mut displayed = self.inspector_image.borrow_mut();
+        if displayed.as_ref().is_some_and(|(old, _)| {
+            old.path != entry.path || old.modified != entry.modified || old.size != entry.size
+        }) {
+            *displayed = None;
+        }
+        if let Some(image) = thumbnail {
+            let keep_existing = displayed.as_ref().is_some_and(|(_, old)| {
+                old.as_bytes(0).map_or(0, <[u8]>::len) > image.as_bytes(0).map_or(0, <[u8]>::len)
+            });
+            if !keep_existing {
+                *displayed = Some((entry.clone(), image));
+            }
+        }
+        if let Some((_, image)) = displayed.as_ref() {
+            img(image.clone())
+                .size_full()
+                .object_fit(gpui::ObjectFit::Contain)
+                .into_any_element()
+        } else {
+            self.object_icon(&entry.path, entry.kind == EntryKind::Dir, 68., window, cx)
+        }
     }
 
     pub(super) fn set_gallery(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -258,35 +217,7 @@ impl FolderView {
                                 drag.external_payload(cx)
                             })
                             .when(entry.kind == EntryKind::Dir, |d| {
-                                let destination = entry.path.clone();
-                                let external = destination.clone();
-                                d.on_drop(cx.listener(move |this, drag: &FileDrag, w, cx| {
-                                    cx.stop_propagation();
-                                    let kind = if w.modifiers().shift {
-                                        crate::file_operations::TransferKind::Move
-                                    } else {
-                                        crate::file_operations::TransferKind::Copy
-                                    };
-                                    this.receive_files(
-                                        drag.paths(cx),
-                                        destination.clone(),
-                                        kind,
-                                        w,
-                                        cx,
-                                    );
-                                }))
-                                .on_drop(cx.listener(
-                                    move |this, drag: &gpui::ExternalPaths, w, cx| {
-                                        cx.stop_propagation();
-                                        this.receive_files(
-                                            drag.paths().to_vec(),
-                                            external.clone(),
-                                            crate::file_operations::TransferKind::Copy,
-                                            w,
-                                            cx,
-                                        );
-                                    },
-                                ))
+                                Self::file_drop_target(d, Some(entry.path.clone()), t, cx)
                             })
                             .on_mouse_down(
                                 MouseButton::Left,

@@ -71,7 +71,7 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.context_menu.is_some() || self.preview_open || self.marquee_in_progress() {
+        if self.context_menu.is_some() || self.marquee_in_progress() {
             self.stop_wheel_motion();
             return;
         }

@@ -368,9 +368,13 @@ impl MediaCache {
         drop(tx);
         let receiver = cx.spawn(async move |this, cx| {
             while let Ok(first) = rx.recv().await {
-                cx.background_executor()
-                    .timer(Duration::from_millis(8))
-                    .await;
+                // A directly requested preview is latency-sensitive; thumbnail
+                // bursts can still be batched to keep gallery repaints bounded.
+                if first.job.key.kind != Kind::Preview {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(8))
+                        .await;
+                }
                 let mut batch = vec![first];
                 while batch.len() < 8 {
                     match rx.try_recv() {
@@ -423,6 +427,7 @@ impl MediaCache {
         }
         match self.get(entry, Kind::Thumbnail(edge.clamp(64, 512)), scope) {
             PreviewContent::Image(image) => Some(image),
+            PreviewContent::Loading => self.cached_thumbnail(entry),
             _ => None,
         }
     }
@@ -438,7 +443,37 @@ impl MediaCache {
                 reason: "フォルダーやリンクは詳細情報を表示します".into(),
             };
         }
-        self.get(entry, Kind::Preview, scope)
+        let content = self.get(entry, Kind::Preview, scope);
+        if matches!(content, PreviewContent::Loading) {
+            // Reuse an already decoded gallery/inspector image immediately while
+            // the full preview is queued. Only identical file versions qualify.
+            if let Some(image) = self.cached_thumbnail(entry) {
+                return PreviewContent::Image(image);
+            }
+        }
+        content
+    }
+
+    fn cached_thumbnail(&mut self, entry: &Entry) -> Option<Arc<RenderImage>> {
+        let key = self
+            .entries
+            .iter()
+            .filter(|(key, value)| {
+                key.path == entry.path
+                    && key.modified == entry.modified
+                    && key.len == entry.size
+                    && matches!(key.kind, Kind::Thumbnail(_))
+                    && matches!(value.value, PreviewContent::Image(_))
+            })
+            .max_by_key(|(_, value)| value.bytes)
+            .map(|(key, _)| key.clone())?;
+        self.clock += 1;
+        let cached = self.entries.get_mut(&key)?;
+        cached.used = self.clock;
+        match &cached.value {
+            PreviewContent::Image(image) => Some(image.clone()),
+            _ => None,
+        }
     }
 
     fn get(&mut self, entry: &Entry, kind: Kind, scope: &MediaScope) -> PreviewContent {
@@ -460,6 +495,9 @@ impl MediaCache {
             if !cached.complete {
                 job.stage = Stage::Shell;
                 self.shell.push(job);
+                if kind == Kind::Preview && !matches!(cached.value, PreviewContent::Image(_)) {
+                    return PreviewContent::Loading;
+                }
             }
             return cached.value.clone();
         }
@@ -796,5 +834,67 @@ mod tests {
             unreachable!()
         };
         assert_eq!(image.as_bytes(0).unwrap(), &[0, 0, 255, 128]);
+    }
+
+    #[gpui::test]
+    fn preview_reuses_largest_thumbnail_only_for_the_current_file_version(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let mut entry = None;
+        explorer_core::list_dir(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &explorer_core::CancelToken::new(),
+            |event| {
+                if let explorer_core::ListingEvent::Batch(batch) = event {
+                    entry = entry
+                        .take()
+                        .or_else(|| batch.into_iter().find(|e| e.kind == EntryKind::File));
+                }
+                true
+            },
+        );
+        let mut entry = entry.expect("fixture file");
+        entry.path = "preview-fixture.png".into();
+        entry.modified = None;
+        entry.size = Some(123);
+        let scope = MediaScope::new();
+        let cache = cx.new(|cx| MediaCache {
+            entries: HashMap::new(),
+            bytes: 0,
+            clock: 0,
+            fast: Arc::new(WorkerQueue::new()),
+            shell: Arc::new(WorkerQueue::new()),
+            _receiver: cx.spawn(async |_, _| {}),
+        });
+        cache.update(cx, |cache, cx| {
+            for edge in [64, 128] {
+                let mut job = job("preview-fixture.png", &scope, Kind::Thumbnail(edge));
+                job.key.len = entry.size;
+                cache.accept(Completed {
+                    job,
+                    value: Some(render_image(image::RgbaImage::new(edge, edge))),
+                    final_stage: true,
+                });
+            }
+            let PreviewContent::Image(image) = cache.get_preview(&entry, &scope, cx) else {
+                panic!("cached thumbnail should appear without waiting for full decode");
+            };
+            assert_eq!(image.as_bytes(0).unwrap().len(), 128 * 128 * 4);
+            assert_eq!(cache.fast.queue.lock().unwrap().jobs.len(), 1);
+            let inspector = cache.get_thumbnail(&entry, 232, &scope, cx).unwrap();
+            assert!(Arc::ptr_eq(&image, &inspector));
+            entry.size = Some(124);
+            assert!(cache.get_thumbnail(&entry, 232, &scope, cx).is_none());
+            assert!(matches!(
+                cache.get_preview(&entry, &scope, cx),
+                PreviewContent::Loading
+            ));
+            entry.size = Some(123);
+            entry.modified = Some(SystemTime::UNIX_EPOCH);
+            assert!(matches!(
+                cache.get_preview(&entry, &scope, cx),
+                PreviewContent::Loading
+            ));
+        });
     }
 }

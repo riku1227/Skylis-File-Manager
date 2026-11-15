@@ -168,6 +168,7 @@ impl Explorer {
         self.tabs[self.active].update(cx, |tab, cx| {
             tab.cancel_address(cx);
             tab.cancel_scroll_motion();
+            tab.close_preview(cx);
         });
         self.active = index;
         window.focus(&self.tabs[index].focus_handle(cx), cx);

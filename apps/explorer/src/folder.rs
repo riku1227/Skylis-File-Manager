@@ -12,6 +12,8 @@ mod sizes;
 use sizes::SizeState;
 mod grouping;
 mod media_view;
+#[cfg(not(target_os = "macos"))]
+mod preview_window;
 mod wsl;
 use crate::media::{MediaCache, MediaScope};
 mod context_menu;
@@ -58,7 +60,10 @@ pub struct FolderView {
     media: Entity<MediaCache>,
     media_scope: MediaScope,
     preview_scope: MediaScope,
+    inspector_image: std::cell::RefCell<Option<(Entry, std::sync::Arc<gpui::RenderImage>)>>,
     preview_open: bool,
+    #[cfg(not(target_os = "macos"))]
+    preview_window: Option<gpui::WindowHandle<preview_window::PreviewWindow>>,
     gallery: bool,
     gallery_override: Option<bool>,
     gallery_columns: usize,
@@ -192,7 +197,10 @@ impl FolderView {
             media,
             media_scope: MediaScope::new(),
             preview_scope: MediaScope::new(),
+            inspector_image: Default::default(),
             preview_open: false,
+            #[cfg(not(target_os = "macos"))]
+            preview_window: None,
             gallery: false,
             gallery_override: None,
             gallery_columns: 1,
@@ -328,8 +336,8 @@ impl FolderView {
         self.cancel_address(cx);
         self.cancel_sizes(cx);
         self.media_scope.cancel();
-        self.preview_scope.cancel();
-        self.preview_open = false;
+        self.close_preview(cx);
+        self.inspector_image.borrow_mut().take();
         self.gallery = self.gallery_override.unwrap_or(false);
         self.gallery_rows.clear();
         self.context_menu = None;
@@ -1584,13 +1592,8 @@ impl FolderView {
                         .border_1()
                         .border_color(t.c("border.card"))
                         .rounded(px(12.))
-                        .child(self.object_icon(
-                            &e.path,
-                            e.kind == EntryKind::Dir,
-                            68.,
-                            window,
-                            cx,
-                        )),
+                        .overflow_hidden()
+                        .child(self.inspector_picture(e, window, cx)),
                 )
                 .child(
                     div()
@@ -2001,9 +2004,6 @@ impl Render for FolderView {
                 )
             })
             .child(self.render_status(t, cx))
-            .when(self.preview_open && !cfg!(target_os = "macos"), |d| {
-                d.child(self.render_preview(t, cx))
-            })
             .when(self.context_menu.is_some(), |d| {
                 d.child(self.render_context_menu(t, cx))
             })

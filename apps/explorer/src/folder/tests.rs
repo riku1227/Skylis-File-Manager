@@ -592,7 +592,7 @@ fn hidden_window_does_not_resume_elapsed_motion_after_becoming_visible(
 }
 
 #[gpui::test]
-fn keyboard_preview_stops_pending_folder_motion(cx: &mut gpui::TestAppContext) {
+fn keyboard_preview_stops_old_motion_but_allows_new_source_scroll(cx: &mut gpui::TestAppContext) {
     let window = scroll_window(cx, false);
     window.update(cx, |view, _, cx| view.select(0, cx)).unwrap();
     dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
@@ -609,7 +609,12 @@ fn keyboard_preview_stops_pending_folder_motion(cx: &mut gpui::TestAppContext) {
             assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(0.))
         })
         .unwrap();
-    assert_eq!(advance_motion_frame(window, cx, 100), 0);
+    advance_motion_frame(window, cx, 100);
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.scroll.0.borrow().base_handle.offset().y < px(0.))
+        })
+        .unwrap();
 }
 
 fn selected_file_names(view: &FolderView) -> Vec<String> {
@@ -1432,4 +1437,46 @@ fn marquee_receives_outside_motion_before_its_first_repaint(cx: &mut gpui::TestA
         assert!(!cx.has_active_drag());
     })
     .unwrap();
+}
+
+#[cfg(not(target_os = "macos"))]
+#[gpui::test]
+fn standalone_preview_tracks_source_selection_and_closes_on_navigation(
+    cx: &mut gpui::TestAppContext,
+) {
+    let source = workflow_window(cx);
+    let preview = source
+        .update(cx, |view, window, cx| {
+            // Directories avoid launching nondeterministic decoder work in this lifecycle test.
+            view.entries = workflow_entries(&["folder", "media"]);
+            view.rebuild_visible(None);
+            view.select(0, cx);
+            view.toggle_preview(&QuickPreview, window, cx);
+            view.preview_window.expect("separate preview window")
+        })
+        .unwrap();
+    assert_ne!(source.window_id(), preview.window_id());
+    cx.update(|cx| cx.bind_keys([gpui::KeyBinding::new("down", SelectNext, Some("Explorer"))]));
+    cx.update_window(source.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    cx.update_window(preview.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    cx.simulate_keystrokes(preview.into(), "down");
+    cx.run_until_parked();
+    source
+        .read_with(cx, |view, _| assert_eq!(view.selected, Some(1)))
+        .unwrap();
+    preview
+        .read_with(cx, |preview, _| {
+            assert_eq!(preview.entry_name_for_test(), "media");
+        })
+        .unwrap();
+    source
+        .update(cx, |view, _, cx| view.load(Location::Home, None, cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(preview.read_with(cx, |_, _| ()).is_err());
+    source
+        .read_with(cx, |view, _| assert!(!view.preview_open))
+        .unwrap();
 }

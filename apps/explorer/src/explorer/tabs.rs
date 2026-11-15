@@ -117,7 +117,10 @@ impl Explorer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        tab.update(cx, |tab, cx| tab.attach_window(window, cx));
+        tab.update(cx, |tab, cx| {
+            tab.close_preview(cx);
+            tab.attach_window(window, cx);
+        });
         let observer = cx.observe(tab, |_, _, cx| cx.notify());
         let events = cx.subscribe_in(
             tab,
@@ -161,7 +164,10 @@ impl Explorer {
         cx: &mut Context<Self>,
     ) {
         if let Some(active) = self.tabs.get(self.active) {
-            active.update(cx, |tab, _| tab.cancel_scroll_motion());
+            active.update(cx, |tab, cx| {
+                tab.cancel_scroll_motion();
+                tab.close_preview(cx);
+            });
         }
         tab.update(cx, |tab, cx| {
             tab.mode = self.mode;
