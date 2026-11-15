@@ -1,9 +1,10 @@
 //! OS shell images, fetched on a bounded worker, never during UI layout/paint.
 use gpui::{Context, RenderImage, Task};
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Condvar, Mutex},
+    time::Duration,
 };
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -12,20 +13,198 @@ struct Key {
     path: Option<PathBuf>,
     is_dir: bool,
     size: u32,
+    attributes_only: bool,
+}
+
+impl Key {
+    fn file_type(path: &Path, is_dir: bool, size: u32) -> Self {
+        // Never pass the real path for a type lookup. SHGFI_USEFILEATTRIBUTES uses
+        // registered file associations, without opening the file or contacting a share.
+        let mut name = PathBuf::from(if is_dir { "folder" } else { "file" });
+        if !is_dir && let Some(extension) = path.extension() {
+            name.set_extension(extension.to_ascii_lowercase());
+        }
+        Self {
+            path: Some(name),
+            is_dir,
+            size: size.clamp(16, 256),
+            attributes_only: true,
+        }
+    }
+}
+
+fn type_only(path: &Path) -> bool {
+    matches!(
+        path.components().next(),
+        Some(std::path::Component::Prefix(prefix))
+            if matches!(prefix.kind(), std::path::Prefix::UNC(..) | std::path::Prefix::VerbatimUNC(..))
+    )
 }
 
 pub struct ShellIcons {
-    cache: HashMap<Key, Option<Arc<RenderImage>>>,
-    order: VecDeque<Key>,
-    pending: HashSet<Key>,
-    requests: async_channel::Sender<Key>,
+    cache: IconCache,
+    requests: Arc<WorkerRequests>,
     _receiver: Task<()>,
+}
+
+// Bound both pixel storage and negative entries. Cache hits retain the same RenderImage ID,
+// so new icons never invalidate images that GPUI has already uploaded to the GPU.
+struct CachedIcon {
+    image: Option<Arc<RenderImage>>,
+    touched: u64,
+    bytes: usize,
+}
+
+struct IconCache {
+    entries: HashMap<Key, CachedIcon>,
+    recency: BTreeMap<u64, Key>,
+    clock: u64,
+    bytes: usize,
+    max_entries: usize,
+    max_bytes: usize,
+}
+
+impl IconCache {
+    fn new(max_entries: usize, max_bytes: usize) -> Self {
+        Self {
+            entries: HashMap::new(),
+            recency: BTreeMap::new(),
+            clock: 0,
+            bytes: 0,
+            max_entries,
+            max_bytes,
+        }
+    }
+
+    fn get(&mut self, key: &Key) -> Option<Option<Arc<RenderImage>>> {
+        let entry = self.entries.get_mut(key)?;
+        self.recency.remove(&entry.touched);
+        self.clock += 1;
+        entry.touched = self.clock;
+        self.recency.insert(self.clock, key.clone());
+        Some(entry.image.clone())
+    }
+
+    fn insert(&mut self, key: Key, image: Option<Arc<RenderImage>>) {
+        if let Some(old) = self.entries.remove(&key) {
+            self.recency.remove(&old.touched);
+            self.bytes -= old.bytes;
+        }
+        let bytes = image
+            .as_ref()
+            .and_then(|image| image.as_bytes(0))
+            .map_or(0, <[u8]>::len);
+        if bytes > self.max_bytes || self.max_entries == 0 {
+            return;
+        }
+        while self.entries.len() >= self.max_entries || self.bytes + bytes > self.max_bytes {
+            let Some((_, oldest)) = self.recency.pop_first() else {
+                break;
+            };
+            if let Some(old) = self.entries.remove(&oldest) {
+                self.bytes -= old.bytes;
+            }
+        }
+        self.clock += 1;
+        self.bytes += bytes;
+        self.recency.insert(self.clock, key.clone());
+        self.entries.insert(
+            key,
+            CachedIcon {
+                image,
+                touched: self.clock,
+                bytes,
+            },
+        );
+    }
+}
+
+// Each render refreshes demand for its visible icons. A bounded, newest-first queue lets
+// the current viewport jump ahead of old scroll positions without creating more threads.
+struct RequestQueue {
+    queued: VecDeque<Key>,
+    in_flight: HashSet<Key>,
+    capacity: usize,
+    closed: bool,
+}
+
+impl RequestQueue {
+    fn new(capacity: usize) -> Self {
+        Self {
+            queued: VecDeque::new(),
+            in_flight: HashSet::new(),
+            capacity,
+            closed: false,
+        }
+    }
+
+    fn request(&mut self, key: Key) {
+        if self.closed || self.capacity == 0 || self.in_flight.contains(&key) {
+            return;
+        }
+        if let Some(index) = self.queued.iter().position(|queued| queued == &key) {
+            self.queued.remove(index);
+        } else if self.queued.len() == self.capacity {
+            self.queued.pop_front();
+        }
+        self.queued.push_back(key);
+    }
+
+    fn take(&mut self) -> Option<Key> {
+        let key = self.queued.pop_back()?;
+        self.in_flight.insert(key.clone());
+        Some(key)
+    }
+
+    fn complete(&mut self, key: &Key) {
+        self.in_flight.remove(key);
+    }
+}
+
+struct WorkerRequests {
+    queue: Mutex<RequestQueue>,
+    wake: Condvar,
+}
+
+impl WorkerRequests {
+    fn next(&self) -> Option<Key> {
+        let mut queue = self.queue.lock().unwrap_or_else(|error| error.into_inner());
+        loop {
+            if queue.closed {
+                return None;
+            }
+            if let Some(key) = queue.take() {
+                return Some(key);
+            }
+            queue = self
+                .wake
+                .wait(queue)
+                .unwrap_or_else(|error| error.into_inner());
+        }
+    }
+}
+
+impl Drop for ShellIcons {
+    fn drop(&mut self) {
+        let mut queue = self
+            .requests
+            .queue
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        queue.closed = true;
+        queue.queued.clear();
+        self.requests.wake.notify_one();
+    }
 }
 
 impl ShellIcons {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let (tx, rx) = async_channel::bounded::<Key>(128);
-        let (results_tx, results_rx) = async_channel::bounded(128);
+        let requests = Arc::new(WorkerRequests {
+            queue: Mutex::new(RequestQueue::new(128)),
+            wake: Condvar::new(),
+        });
+        let worker_requests = requests.clone();
+        let (results_tx, results_rx) = async_channel::bounded(16);
         // One worker bounds shell extension concurrency. A slow extension cannot block paint.
         let _ = std::thread::Builder::new()
             .name("shell-icons".into())
@@ -37,8 +216,13 @@ impl ShellIcons {
                         windows_sys::Win32::System::Com::COINIT_APARTMENTTHREADED as u32,
                     )
                 } >= 0;
-                while let Ok(key) = rx.recv_blocking() {
-                    let pixels = extract(key.path.as_deref(), key.is_dir, key.size);
+                while let Some(key) = worker_requests.next() {
+                    let pixels = extract(
+                        key.path.as_deref(),
+                        key.is_dir,
+                        key.size,
+                        key.attributes_only,
+                    );
                     if results_tx.send_blocking((key, pixels)).is_err() {
                         break;
                     }
@@ -51,22 +235,36 @@ impl ShellIcons {
                 }
             });
         let receiver = cx.spawn(async move |this, cx| {
-            while let Ok((key, pixels)) = results_rx.recv().await {
+            while let Ok(first) = results_rx.recv().await {
+                // At most one short frame fraction of latency: coalesce fast completions,
+                // rather than waking every FolderView once for every shell icon.
+                cx.background_executor()
+                    .timer(Duration::from_millis(8))
+                    .await;
+                let mut batch = vec![first];
+                while batch.len() < 32 {
+                    match results_rx.try_recv() {
+                        Ok(result) => batch.push(result),
+                        Err(_) => break,
+                    }
+                }
                 if this
                     .update(cx, |this, cx| {
-                        this.pending.remove(&key);
-                        let rendered = pixels
-                            .and_then(|bytes| image::RgbaImage::from_raw(key.size, key.size, bytes))
-                            .map(|buffer| {
-                                Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]))
-                            });
-                        if this.cache.len() >= 512 {
-                            if let Some(old) = this.order.pop_front() {
-                                this.cache.remove(&old);
-                            }
+                        for (key, pixels) in batch {
+                            this.requests
+                                .queue
+                                .lock()
+                                .unwrap_or_else(|error| error.into_inner())
+                                .complete(&key);
+                            let rendered = pixels
+                                .and_then(|bytes| {
+                                    image::RgbaImage::from_raw(key.size, key.size, bytes)
+                                })
+                                .map(|buffer| {
+                                    Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]))
+                                });
+                            this.cache.insert(key, rendered);
                         }
-                        this.order.push_back(key.clone());
-                        this.cache.insert(key, rendered);
                         cx.notify();
                     })
                     .is_err()
@@ -76,10 +274,8 @@ impl ShellIcons {
             }
         });
         Self {
-            cache: HashMap::new(),
-            order: VecDeque::new(),
-            pending: HashSet::new(),
-            requests: tx,
+            cache: IconCache::new(2048, 16 * 1024 * 1024),
+            requests,
             _receiver: receiver,
         }
     }
@@ -91,12 +287,38 @@ impl ShellIcons {
         size: u32,
         _cx: &mut Context<Self>,
     ) -> Option<Arc<RenderImage>> {
+        let fallback = Key::file_type(path, is_dir, size);
+        // Network/WSL icons deliberately avoid per-file shell extensions: one slow
+        // network lookup must not hold the worker that serves local visible icons.
+        if type_only(path) {
+            return self.get_key(fallback);
+        }
         let key = Key {
             path: Some(path.to_path_buf()),
             is_dir,
             size: size.clamp(16, 256),
+            attributes_only: false,
         };
-        self.get_key(key)
+        if let Some(image) = self.cache.get(&key) {
+            return image.or_else(|| self.get_key(fallback));
+        }
+        // Publish both requests under one lock: the worker must see the cheap type
+        // lookup before it can start an exact lookup that invokes a slow extension.
+        // A ready exact icon remains stable; only the fallback is replaced.
+        let fallback_image = self.cache.get(&fallback);
+        {
+            let mut queue = self
+                .requests
+                .queue
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            queue.request(key);
+            if fallback_image.is_none() {
+                queue.request(fallback);
+            }
+        }
+        self.requests.wake.notify_one();
+        fallback_image.flatten()
     }
 
     pub fn get_recycle_bin(
@@ -108,27 +330,35 @@ impl ShellIcons {
             path: None,
             is_dir: true,
             size: size.clamp(16, 256),
+            attributes_only: false,
         })
     }
 
     fn get_key(&mut self, key: Key) -> Option<Arc<RenderImage>> {
         if let Some(image) = self.cache.get(&key) {
-            return image.clone();
+            return image;
         }
-        if !self.pending.contains(&key) && self.requests.try_send(key.clone()).is_ok() {
-            self.pending.insert(key);
-        }
+        self.request(key);
         None
+    }
+
+    fn request(&self, key: Key) {
+        self.requests
+            .queue
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .request(key);
+        self.requests.wake.notify_one();
     }
 }
 
 #[cfg(not(windows))]
-fn extract(_: Option<&Path>, _: bool, _: u32) -> Option<Vec<u8>> {
+fn extract(_: Option<&Path>, _: bool, _: u32, _: bool) -> Option<Vec<u8>> {
     None
 }
 
 #[cfg(windows)]
-fn extract(path: Option<&Path>, is_dir: bool, size: u32) -> Option<Vec<u8>> {
+fn extract(path: Option<&Path>, is_dir: bool, size: u32, attributes_only: bool) -> Option<Vec<u8>> {
     use std::{
         mem::{size_of, zeroed},
         os::windows::ffi::OsStrExt,
@@ -181,13 +411,26 @@ fn extract(path: Option<&Path>, is_dir: bool, size: u32) -> Option<Vec<u8>> {
         } else {
             SHGetFileInfoW(
                 path.as_ptr(),
-                0,
+                if attributes_only {
+                    if is_dir {
+                        FILE_ATTRIBUTE_DIRECTORY
+                    } else {
+                        FILE_ATTRIBUTE_NORMAL
+                    }
+                } else {
+                    0
+                },
                 &mut info,
                 size_of::<SHFILEINFOW>() as u32,
-                flags,
+                flags
+                    | if attributes_only {
+                        SHGFI_USEFILEATTRIBUTES
+                    } else {
+                        0
+                    },
             )
         };
-        if ok == 0 && !recycle_bin {
+        if ok == 0 && !recycle_bin && !attributes_only {
             ok = SHGetFileInfoW(
                 path.as_ptr(),
                 if is_dir {
@@ -199,6 +442,27 @@ fn extract(path: Option<&Path>, is_dir: bool, size: u32) -> Option<Vec<u8>> {
                 size_of::<SHFILEINFOW>() as u32,
                 flags | SHGFI_USEFILEATTRIBUTES,
             );
+        }
+        if attributes_only && (ok == 0 || info.hIcon.is_null()) {
+            // Association handlers are optional and can fail transiently. Keep the
+            // type placeholder a real OS icon even when that handler is unavailable.
+            if !info.hIcon.is_null() {
+                DestroyIcon(info.hIcon);
+            }
+            let mut stock: SHSTOCKICONINFO = zeroed();
+            stock.cbSize = size_of::<SHSTOCKICONINFO>() as u32;
+            let result = SHGetStockIconInfo(
+                if is_dir { SIID_FOLDER } else { SIID_DOCNOASSOC },
+                SHGSI_ICON
+                    | if size <= 20 {
+                        SHGSI_SMALLICON
+                    } else {
+                        SHGSI_LARGEICON
+                    },
+                &mut stock,
+            );
+            info.hIcon = stock.hIcon;
+            ok = usize::from(result >= 0);
         }
         if ok == 0 || info.hIcon.is_null() {
             return None;
@@ -298,19 +562,179 @@ fn composite_to_bgra(black: &[u8], white: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn key(name: &str) -> Key {
+        Key {
+            path: Some(name.into()),
+            is_dir: false,
+            size: 16,
+            attributes_only: false,
+        }
+    }
+
+    fn image() -> Arc<RenderImage> {
+        Arc::new(RenderImage::new(vec![image::Frame::new(
+            image::RgbaImage::new(16, 16),
+        )]))
+    }
+
+    #[test]
+    fn visible_hits_keep_the_same_image_and_evict_offscreen_entries() {
+        let mut cache = IconCache::new(2, 4096);
+        let visible = image();
+        cache.insert(key("visible"), Some(visible.clone()));
+        cache.insert(key("offscreen"), Some(image()));
+        assert!(Arc::ptr_eq(
+            &visible,
+            &cache.get(&key("visible")).unwrap().unwrap()
+        ));
+        cache.insert(key("new"), Some(image()));
+        assert!(cache.get(&key("offscreen")).is_none());
+        assert!(Arc::ptr_eq(
+            &visible,
+            &cache.get(&key("visible")).unwrap().unwrap()
+        ));
+    }
+
+    #[test]
+    fn cache_bounds_pixel_memory_and_caches_failures() {
+        let mut cache = IconCache::new(8, 2048);
+        cache.insert(key("a"), Some(image()));
+        cache.insert(key("b"), Some(image()));
+        cache.insert(key("c"), Some(image()));
+        assert!(cache.get(&key("a")).is_none());
+        assert_eq!(cache.bytes, 2048);
+        cache.insert(key("missing"), None);
+        assert!(matches!(cache.get(&key("missing")), Some(None)));
+        assert_eq!(cache.bytes, 2048);
+    }
+
+    #[test]
+    fn latest_demand_replaces_stale_work_without_duplicate_extraction() {
+        let mut queue = RequestQueue::new(2);
+        queue.request(key("old"));
+        queue.request(key("visible"));
+        queue.request(key("visible"));
+        queue.request(key("new"));
+        assert_eq!(queue.queued.len(), 2);
+        assert_eq!(queue.take(), Some(key("new")));
+        queue.request(key("new"));
+        assert_eq!(queue.take(), Some(key("visible")));
+        assert_eq!(queue.take(), None);
+        queue.complete(&key("new"));
+        queue.request(key("new"));
+        assert_eq!(queue.take(), Some(key("new")));
+    }
+
+    #[test]
+    fn refreshed_request_is_processed_before_obsolete_requests() {
+        let mut queue = RequestQueue::new(4);
+        queue.request(key("visible"));
+        queue.request(key("obsolete"));
+        queue.request(key("visible"));
+        assert_eq!(queue.take(), Some(key("visible")));
+    }
+
+    #[test]
+    fn unsupported_icons_cannot_grow_cache_without_bound() {
+        let mut cache = IconCache::new(4, 4096);
+        for index in 0..100 {
+            cache.insert(key(&index.to_string()), None);
+        }
+        assert_eq!(cache.entries.len(), 4);
+        assert_eq!(cache.recency.len(), 4);
+        assert_eq!(cache.bytes, 0);
+        assert!(matches!(cache.get(&key("99")), Some(None)));
+        assert!(cache.get(&key("0")).is_none());
+    }
+
+    #[test]
+    fn closing_worker_drops_pending_work_and_wakes_an_idle_thread() {
+        let requests = Arc::new(WorkerRequests {
+            queue: Mutex::new(RequestQueue::new(128)),
+            wake: Condvar::new(),
+        });
+        let worker = requests.clone();
+        let thread = std::thread::spawn(move || worker.next());
+        {
+            let mut queue = requests.queue.lock().unwrap();
+            queue.closed = true;
+            requests.wake.notify_one();
+        }
+        assert_eq!(thread.join().unwrap(), None);
+        let mut queue = requests.queue.lock().unwrap();
+        queue.request(key("late"));
+        assert!(queue.queued.is_empty());
+    }
+
+    #[test]
+    fn type_fallbacks_share_extensions_but_exact_icons_keep_file_identity() {
+        let first = Key::file_type(Path::new("one/REPORT.PDF"), false, 16);
+        let second = Key::file_type(Path::new("other/report.pdf"), false, 16);
+        assert_eq!(first, second);
+        assert!(first.attributes_only);
+        assert_ne!(key("one/report.pdf"), key("other/report.pdf"));
+        assert_ne!(first, Key::file_type(Path::new("report.txt"), false, 16));
+        assert_ne!(first, Key::file_type(Path::new("report.pdf"), false, 32));
+        assert_eq!(
+            Key::file_type(Path::new("one.folder"), true, 16),
+            Key::file_type(Path::new("two"), true, 16),
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn remote_paths_use_type_icons_without_contacting_network_shell_handlers() {
+        for path in [
+            r"\\server\share\file.txt",
+            r"\\wsl.localhost\Ubuntu\home",
+            r"\\?\UNC\server\share\file",
+        ] {
+            assert!(type_only(Path::new(path)), "{path}");
+        }
+        for path in [r"C:\Users\file.txt", r"\\?\C:\Users\file.txt"] {
+            assert!(!type_only(Path::new(path)), "{path}");
+        }
+    }
     #[cfg(windows)]
     #[test]
     fn windows_folder_icon_has_visible_pixels() {
-        let bytes = extract(Some(&std::env::temp_dir()), true, 32).expect("Windows folder icon");
+        let bytes =
+            extract(Some(&std::env::temp_dir()), true, 32, false).expect("Windows folder icon");
         assert_eq!(bytes.len(), 32 * 32 * 4);
         assert!(bytes.chunks_exact(4).any(|pixel| pixel[3] > 0));
     }
     #[cfg(windows)]
     #[test]
     fn windows_recycle_bin_uses_a_visible_shell_icon() {
-        let bytes = extract(None, true, 32).expect("Windows recycle bin icon");
+        let bytes = extract(None, true, 32, false).expect("Windows recycle bin icon");
         assert_eq!(bytes.len(), 32 * 32 * 4);
         assert!(bytes.chunks_exact(4).any(|pixel| pixel[3] > 0));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_type_icons_do_not_require_an_existing_file_or_folder() {
+        // Match the worker's STA; registered file association handlers may require COM.
+        let initialized = unsafe {
+            windows_sys::Win32::System::Com::CoInitializeEx(
+                std::ptr::null(),
+                windows_sys::Win32::System::Com::COINIT_APARTMENTTHREADED as u32,
+            )
+        } >= 0;
+        for (name, is_dir) in [
+            ("__skylis_nonexistent_type__.txt", false),
+            ("__skylis_nonexistent_folder__", true),
+        ] {
+            let bytes = extract(Some(Path::new(name)), is_dir, 32, true)
+                .unwrap_or_else(|| panic!("Windows type icon for {name}"));
+            assert_eq!(bytes.len(), 32 * 32 * 4);
+            assert!(bytes.chunks_exact(4).any(|pixel| pixel[3] > 0));
+        }
+        if initialized {
+            unsafe {
+                windows_sys::Win32::System::Com::CoUninitialize();
+            }
+        }
     }
     #[test]
     fn preserves_opaque_color_and_transparent_background() {
