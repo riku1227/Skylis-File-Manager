@@ -29,6 +29,7 @@ impl FolderView {
                     // Static asset: requesting a Shell icon for the UNC path may start WSL.
                     .child(svg().path("icons/linux.svg").size(px(16.)).text_color(t.c("icon.default")))
                     .child(div().truncate().child(distro.name.clone()))
+                    .map(|d| Self::file_drop_target(d, Some(path.clone()), t, cx))
                     .on_click(cx.listener(move |this,_,w,cx| this.navigate_to(path.clone(),w,cx)))
             })))
     }

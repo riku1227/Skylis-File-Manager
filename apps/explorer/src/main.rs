@@ -37,6 +37,10 @@ mod actions {
             DetachTab,
             MergeWindowTabs,
             QuickPreview,
+            SelectAllFiles,
+            CopyFiles,
+            CutFiles,
+            PasteFiles,
             ClearSearch
         ]
     );
@@ -86,6 +90,7 @@ fn main() {
             cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, Some("ExplorerTabs")), KeyBinding::new("cmd-,", OpenSettings, Some("ExplorerTabs"))]);
             cx.bind_keys([KeyBinding::new("ctrl-shift-n", DetachTab, Some("ExplorerTabs")), KeyBinding::new("cmd-shift-n", DetachTab, Some("ExplorerTabs"))]);
             cx.bind_keys([KeyBinding::new("space",QuickPreview,ctx)]);
+            cx.bind_keys([KeyBinding::new("ctrl-a",SelectAllFiles,ctx),KeyBinding::new("cmd-a",SelectAllFiles,ctx),KeyBinding::new("ctrl-c",CopyFiles,ctx),KeyBinding::new("ctrl-x",CutFiles,ctx),KeyBinding::new("ctrl-v",PasteFiles,ctx),KeyBinding::new("cmd-c",CopyFiles,ctx),KeyBinding::new("cmd-v",PasteFiles,ctx)]);
             search::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
             let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
@@ -112,3 +117,5 @@ mod size_service;
 mod native_shell;
 
 mod media;
+
+mod file_operations;

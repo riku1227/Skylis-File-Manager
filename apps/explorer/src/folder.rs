@@ -4,6 +4,8 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
+mod transfers;
+use transfers::FileDrag;
 mod media_view;
 use crate::media::{MediaCache, MediaScope};
 mod sizes;
@@ -41,6 +43,8 @@ pub enum FolderEvent { OpenInTab(PathBuf) }
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
+    multi_selection: std::collections::BTreeSet<PathBuf>,
+    selection_anchor: Option<PathBuf>,
     media: Entity<MediaCache>,
     media_scope: MediaScope,
     preview_scope: MediaScope,
@@ -150,6 +154,7 @@ impl FolderView {
         };
         cx.observe(&media, |_,_,cx|cx.notify()).detach();
         let mut this = Self {
+            multi_selection: Default::default(), selection_anchor: None,
             media, media_scope: MediaScope::new(), preview_scope: MediaScope::new(), preview_open: false,
             sizes: SizeState::default(),
             mode,
@@ -195,6 +200,7 @@ impl FolderView {
             title_dirty: true,
         };
         this.attach_window(window,cx);
+        this.observe_file_transfers(cx);
         this.refresh_drives(cx);
         this.discover_wsl(cx);
         this.load(start, None, cx);
@@ -261,6 +267,7 @@ impl FolderView {
         self.group_date = chrono::Local::now().date_naive();
         self.display_rows.clear();
         self.entry_rows.clear();
+        self.multi_selection.clear();self.selection_anchor=None;
         self.entries.clear();
         self.visible.clear();
         self.selected = None;
@@ -324,7 +331,7 @@ impl FolderView {
                         .iter()
                         .position(|&i| &self.entries[i].name == name)
                     {
-                        self.selected = Some(ix);
+                        self.select(ix,cx);
                         self.scroll_to_entry(ix, ScrollStrategy::Center);
                         self.pending_select = None;
                     }
@@ -517,6 +524,9 @@ impl FolderView {
 
     fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
         self.preview_scope.cancel();
+        self.multi_selection.clear();
+        if let Some(&i)=self.visible.get(ix) {self.multi_selection.insert(self.entries[i].path.clone());}
+        self.selection_anchor=self.visible.get(ix).map(|&i|self.entries[i].path.clone());
         self.selected = Some(ix);
         if !self.is_home() {
             self.scroll_to_entry(ix, ScrollStrategy::Nearest);
@@ -798,6 +808,7 @@ impl FolderView {
                         .hover(|s| s.bg(t.c("state.hover")))
                         .cursor_pointer()
                         .child(div().truncate().child(label))
+                        .map(|d| Self::file_drop_target(d, Some(path.clone()), t, cx))
                         .on_click(cx.listener(move |this, _, w, cx| {
                             cx.stop_propagation();
                             if last {
@@ -1083,6 +1094,7 @@ impl FolderView {
                             .cursor_pointer()
                             .child(self.object_icon(&path, true, 18., window, cx))
                             .child(label)
+                            .map(|d| Self::file_drop_target(d, Some(path.clone()), t, cx))
                             .on_click(cx.listener(move |this, _, w, cx| {
                                 this.navigate_to(path.clone(), w, cx)
                             })),
@@ -1188,8 +1200,8 @@ impl FolderView {
                         .child(format!("{} · {}", group.label(), count)).into_any_element()),
                 };
                 let &i = self.visible.get(ix)?;
-                let e = &self.entries[i];
-                let selected = self.selected == Some(ix);
+                let e = self.entries[i].clone();
+                let selected = self.multi_selection.contains(&e.path);
                 let name_color = if selected && focused {
                     t.c("selection.fg")
                 } else {
@@ -1264,15 +1276,17 @@ impl FolderView {
                         .h(px(if self.compact { 24. } else { 28. }))
                         .px(px(6.))
                         .child(row)
+                        .on_drag(self.file_drag(ix,cx),|drag,_,_,cx| {drag.resolve(cx); cx.new(|_|drag.clone())})
+                        .external_drag_payload(|drag: &FileDrag,_,cx|drag.external_payload(cx))
+                        .when(e.kind==EntryKind::Dir,|d| {
+                            Self::file_drop_target(d, Some(e.path.clone()), t, cx)
+                        })
                         .on_mouse_down(
                             MouseButton::Left,
-                            cx.listener(move |this, _: &MouseDownEvent, w, cx| {
-                                w.focus(&this.focus, cx);
-                                this.selected = Some(ix);
-                                cx.notify();
-                            }),
+                            cx.listener(move |this, event: &MouseDownEvent, w, cx| this.pointer_select(ix,event,w,cx)),
                         )
                         .on_click(cx.listener(move |this, e: &ClickEvent, w, cx| {
+                            this.finish_pointer_click(ix, e, cx);
                             if e.click_count() == 2 {
                                 this.open_entry(ix, w, cx)
                             }
@@ -1528,7 +1542,7 @@ impl FolderView {
             ))
             .when_some(self.selected_entry(), |d, e| {
                 d.child(div().text_color(t.c("accent.fg")).child(format!(
-                        "1 項目を選択{}",
+                        "{} 項目を選択{}", self.multi_selection.len(),
                         e.size
                             .map(|s| format!(" · {}", format::size(s)))
                             .unwrap_or_default()
@@ -1618,6 +1632,11 @@ impl Render for FolderView {
             .on_mouse_move(cx.listener(|this,event: &gpui::MouseMoveEvent,_,cx| this.drag_scrollbar(event.position,cx)))
             .on_mouse_up(MouseButton::Left,cx.listener(|this,_,_,cx| { this.scrollbar_drag = None; cx.notify(); }))
             .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,_,cx| { this.scrollbar_drag = None; cx.notify(); }))
+            .on_action(cx.listener(Self::select_all))
+            .on_action(cx.listener(Self::copy_files))
+            .on_action(cx.listener(Self::cut_files))
+            .on_action(cx.listener(Self::paste_files))
+            .on_drag_move(cx.listener(Self::promote_file_drag))
             .on_action(cx.listener(Self::toggle_preview))
             .on_action(cx.listener(Self::edit_address))
             .on_action(cx.listener(Self::select_prev))
@@ -1689,6 +1708,7 @@ impl Render for FolderView {
                             .border_color(t.c("border.content"))
                             .rounded(px(10.))
                             .overflow_hidden()
+                            .map(|d| Self::file_drop_target(d, self.path().map(Path::to_path_buf), t, cx))
                             .when(self.is_home(), |d| d.child(self.render_home(t, window, cx)))
                             .when(!self.is_home(), |d| {
                                 d.child(self.render_header(t, self.narrow(window), cx))
