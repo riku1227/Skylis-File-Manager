@@ -51,14 +51,20 @@ impl Explorer {
         div().id("settings-panel").track_focus(&self.settings_focus)
             .size_full().overflow_y_scroll().p(px(24.)).bg(t.c("surface.canvas"))
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
+                if event.keystroke.modifiers.modified() {
+                    return;
+                }
                 if event.keystroke.key == "escape" {
                     this.settings_open = false;
                     w.focus(&this.tabs[this.active].focus_handle(cx), cx);
                     cx.notify();
-                } else if let Ok(number) = event.keystroke.key.parse::<usize>() {
-                    if (1..=5).contains(&number) { this.change_preference(number - 1, cx); }
+                    cx.stop_propagation();
+                } else if let Ok(number) = event.keystroke.key.parse::<usize>()
+                    && (1..=5).contains(&number)
+                {
+                    this.change_preference(number - 1, cx);
+                    cx.stop_propagation();
                 }
-                cx.stop_propagation();
             }))
             .child(div().flex().items_center().justify_between().mb(px(12.))
                 .child(div().text_size(px(20.)).font_weight(gpui::FontWeight::SEMIBOLD).child("設定"))

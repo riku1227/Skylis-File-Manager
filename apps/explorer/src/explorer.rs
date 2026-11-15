@@ -450,6 +450,137 @@ impl Render for Explorer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct SettingsKeyProbe {
+        explorer: Entity<Explorer>,
+        bubbled_keys: Vec<gpui::Keystroke>,
+    }
+
+    impl Render for SettingsKeyProbe {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, _| {
+                    this.bubbled_keys.push(event.keystroke.clone());
+                }))
+                .child(self.explorer.clone())
+        }
+    }
+
+    fn settings_key_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<SettingsKeyProbe> {
+        cx.background_executor.allow_parking();
+        cx.add_window(|window, cx| {
+            // Exercise real preference changes without writing the user's settings.
+            // The normal load-error path deliberately keeps the original file intact.
+            let preferences = cx.new(|cx| {
+                crate::settings::Preferences::new(
+                    (
+                        Default::default(),
+                        Some("memory-only test preferences".into()),
+                    ),
+                    cx,
+                )
+            });
+            cx.set_global(crate::settings::SharedPreferences(preferences));
+            let icons = cx.new(ShellIcons::new);
+            let tab = cx.new(|cx| {
+                FolderView::new(Location::Home, ThemeMode::Light, icons.clone(), window, cx)
+            });
+            let explorer = cx.new(|cx| {
+                let mut explorer =
+                    Explorer::with_tabs(vec![tab], icons, ThemeMode::Light, false, window, cx);
+                explorer.settings_open = true;
+                window.focus(&explorer.settings_focus, cx);
+                explorer
+            });
+            SettingsKeyProbe {
+                explorer,
+                bubbled_keys: Vec::new(),
+            }
+        })
+    }
+
+    #[gpui::test]
+    fn settings_preserve_modified_digits_and_propagate_unhandled_shortcuts(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let window = settings_key_window(cx);
+        let before = window
+            .read_with(cx, |probe, cx| {
+                probe.explorer.read(cx).preferences.read(cx).value.clone()
+            })
+            .unwrap();
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+        cx.simulate_keystrokes(
+            window.into(),
+            "alt-f4 ctrl-1 alt-2 shift-3 cmd-4 ctrl-5 ctrl-escape 6 x",
+        );
+        cx.dispatch_keystroke(
+            window.into(),
+            gpui::Keystroke {
+                modifiers: gpui::Modifiers {
+                    function: true,
+                    ..Default::default()
+                },
+                key: "5".into(),
+                key_char: None,
+            },
+        );
+        window
+            .read_with(cx, |probe, cx| {
+                let explorer = probe.explorer.read(cx);
+                assert_eq!(explorer.preferences.read(cx).value, before);
+                assert!(
+                    explorer.settings_open,
+                    "modified Escape is not the panel's close key"
+                );
+                let keys: Vec<_> = probe
+                    .bubbled_keys
+                    .iter()
+                    .map(|key| key.key.as_str())
+                    .collect();
+                assert_eq!(
+                    keys,
+                    ["f4", "1", "2", "3", "4", "5", "escape", "6", "x", "5"]
+                );
+                assert!(probe.bubbled_keys[0].modifiers.alt);
+                assert!(probe.bubbled_keys[9].modifiers.function);
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn settings_consume_plain_digit_and_escape_and_restore_folder_focus(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let window = settings_key_window(cx);
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "2");
+        window
+            .read_with(cx, |probe, cx| {
+                let explorer = probe.explorer.read(cx);
+                assert!(explorer.preferences.read(cx).value.compact);
+                assert!(explorer.settings_open);
+                assert!(probe.bubbled_keys.is_empty());
+            })
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "escape");
+        window
+            .update(cx, |probe, window, cx| {
+                let explorer = probe.explorer.read(cx);
+                assert!(!explorer.settings_open);
+                assert!(
+                    explorer.tabs[explorer.active]
+                        .focus_handle(cx)
+                        .is_focused(window)
+                );
+                assert!(probe.bubbled_keys.is_empty());
+            })
+            .unwrap();
+    }
+
     #[test]
     fn closing_tabs_preserves_active_neighbor() {
         assert_eq!(after_close(3, 0, 3), 2);
