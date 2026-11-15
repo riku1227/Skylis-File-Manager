@@ -160,6 +160,9 @@ impl Explorer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(active) = self.tabs.get(self.active) {
+            active.update(cx, |tab, _| tab.cancel_scroll_motion());
+        }
         tab.update(cx, |tab, cx| {
             tab.mode = self.mode;
             tab.compact = self.compact;
@@ -300,6 +303,9 @@ impl Explorer {
         if is_under_pointer(w, screen)
             && let Some(slot) = self.tab_drop_slot_at(position, w)
         {
+            // Stop the outgoing tab before its index changes, including when a
+            // search/address child owns focus and the folder blur hook won't run.
+            self.tabs[self.active].update(cx, |tab, _| tab.cancel_scroll_motion());
             let to = reordered_index(index, slot, self.tabs.len());
             let tab = self.tabs.remove(index);
             self.tabs.insert(to, tab);
@@ -506,8 +512,15 @@ mod tests {
         cx.skip_drawing();
         cx.update(|cx| {
             if !cx.has_global::<crate::settings::SharedPreferences>() {
-                let preferences =
-                    cx.new(|cx| crate::settings::Preferences::new((Default::default(), None), cx));
+                let preferences = cx.new(|cx| {
+                    crate::settings::Preferences::new(
+                        (
+                            Default::default(),
+                            Some("memory-only test preferences".into()),
+                        ),
+                        cx,
+                    )
+                });
                 cx.set_global(crate::settings::SharedPreferences(preferences));
             }
         });
@@ -517,6 +530,60 @@ mod tests {
                 .new(|cx| FolderView::new(Location::Home, ThemeMode::Light, icons.clone(), w, cx));
             Explorer::with_tabs(vec![tab], icons, ThemeMode::Light, false, w, cx)
         })
+    }
+
+    #[gpui::test]
+    fn displayed_refresh_interval_follows_window_display_changes(cx: &mut gpui::TestAppContext) {
+        let window = test_window(cx);
+        let interval = std::time::Duration::from_secs(1) / 120;
+        cx.simulate_display_refresh_interval_change(gpui::DisplayId::new(1), Some(interval));
+        window
+            .read_with(cx, |view, _| {
+                assert_eq!(view.display_interval, Some(interval))
+            })
+            .unwrap();
+        cx.simulate_display_refresh_interval_change(gpui::DisplayId::new(1), None);
+        window
+            .update(cx, |view, window, _| {
+                assert_eq!(view.display_interval, None);
+                assert_eq!(
+                    window.frame_rate_limit(),
+                    None,
+                    "unknown Hz must retain native timing"
+                );
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn presentation_limit_tracks_shared_settings_and_new_windows(cx: &mut gpui::TestAppContext) {
+        let first = test_window(cx);
+        let second = test_window(cx);
+        first
+            .update(cx, |_, w, _| assert_eq!(w.frame_rate_limit(), None))
+            .unwrap();
+        cx.update(|cx| {
+            let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
+            preferences.update(cx, |p, cx| p.change(|s| s.high_refresh_rate = false, cx));
+        });
+        for handle in [first, second] {
+            handle
+                .update(cx, |_, w, _| assert_eq!(w.frame_rate_limit(), Some(60.0)))
+                .unwrap();
+        }
+        let third = test_window(cx);
+        third
+            .update(cx, |_, w, _| assert_eq!(w.frame_rate_limit(), Some(60.0)))
+            .unwrap();
+        cx.update(|cx| {
+            let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
+            preferences.update(cx, |p, cx| p.change(|s| s.high_refresh_rate = true, cx));
+        });
+        for handle in [first, second, third] {
+            handle
+                .update(cx, |_, w, _| assert_eq!(w.frame_rate_limit(), None))
+                .unwrap();
+        }
     }
 
     #[gpui::test]

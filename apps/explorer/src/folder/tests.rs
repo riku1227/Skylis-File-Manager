@@ -271,7 +271,8 @@ fn workflow_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderVi
         FolderView::new(Location::Home, ThemeMode::Light, icons, w, cx)
     });
     window
-        .update(cx, |view, _, cx| {
+        .update(cx, |view, w, cx| {
+            w.activate_window();
             view.history = History::new(Location::Folder(
                 Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
             ));
@@ -283,6 +284,332 @@ fn workflow_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderVi
         })
         .unwrap();
     window
+}
+
+fn scroll_window(cx: &mut gpui::TestAppContext, gallery: bool) -> gpui::WindowHandle<FolderView> {
+    cx.update(|cx| crate::motion_preferences::set_wheel_scroll_lines_for_test(cx, 3));
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            let template = workflow_entries(&["assets.rs"]).remove(0);
+            view.entries = (0..1000)
+                .map(|index| {
+                    let mut entry = template.clone();
+                    entry.path = template
+                        .path
+                        .parent()
+                        .unwrap()
+                        .join(format!("fixture-{index}"))
+                        .join(&entry.name);
+                    entry
+                })
+                .collect();
+            view.gallery = gallery;
+            view.rebuild_visible(None);
+            cx.notify();
+        })
+        .unwrap();
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    window
+}
+
+fn dispatch_wheel(
+    window: gpui::WindowHandle<FolderView>,
+    cx: &mut gpui::TestAppContext,
+    delta: gpui::ScrollDelta,
+) {
+    let bounds = window
+        .read_with(cx, |v, _| v.scroll.0.borrow().base_handle.bounds())
+        .unwrap();
+    cx.update_window(window.into(), |_, w, cx| {
+        w.dispatch_event(
+            gpui::PlatformInput::Scroll(gpui::ScrollEvent {
+                position: bounds.origin + gpui::point(px(120.), px(100.)),
+                delta,
+                ..Default::default()
+            }),
+            cx,
+        );
+    })
+    .unwrap();
+}
+
+fn advance_motion_frame(
+    window: gpui::WindowHandle<FolderView>,
+    cx: &mut gpui::TestAppContext,
+    millis: u64,
+) -> usize {
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(millis));
+    cx.update_window(window.into(), |_, w, cx| {
+        let callbacks = w.simulate_next_frame(cx);
+        w.draw(cx).clear(cx);
+        callbacks
+    })
+    .unwrap()
+}
+
+#[gpui::test]
+fn wheel_capture_moves_once_on_frames_in_both_virtual_layouts(cx: &mut gpui::TestAppContext) {
+    for gallery in [false, true] {
+        let window = scroll_window(cx, gallery);
+        // Match the existing GPUI conversion at the folder's 13.5px text size
+        // and default rounded line-height, not the virtual row's visual height.
+        let line_height = px(22.);
+        dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+        window
+            .read_with(cx, |view, _| {
+                assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(0.))
+            })
+            .unwrap();
+        assert_eq!(advance_motion_frame(window, cx, 50), 1);
+        window
+            .read_with(cx, |view, _| {
+                let offset = -f32::from(view.scroll.0.borrow().base_handle.offset().y);
+                assert!(offset > 0. && offset < f32::from(line_height) * 3.);
+            })
+            .unwrap();
+        advance_motion_frame(window, cx, 50);
+        window
+            .read_with(cx, |view, _| {
+                let offset = -f32::from(view.scroll.0.borrow().base_handle.offset().y);
+                assert!(
+                    (offset - f32::from(line_height) * 3.).abs() < 0.1,
+                    "offset {offset}"
+                );
+            })
+            .unwrap();
+        assert_eq!(
+            advance_motion_frame(window, cx, 50),
+            0,
+            "idle must have no custom callbacks"
+        );
+    }
+}
+
+#[gpui::test]
+fn precise_input_discards_pending_target_and_moves_from_painted_position(
+    cx: &mut gpui::TestAppContext,
+) {
+    let window = scroll_window(cx, false);
+    dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+    dispatch_wheel(
+        window,
+        cx,
+        gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-11.))),
+    );
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(-11.))
+        })
+        .unwrap();
+    advance_motion_frame(window, cx, 200);
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(-11.))
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn click_between_callback_and_paint_uses_the_visible_row(cx: &mut gpui::TestAppContext) {
+    for elapsed in [50, 100] {
+        let window = scroll_window(cx, false);
+        let (position, expected) = window
+            .read_with(cx, |view, _| {
+                (
+                    view.scroll.0.borrow().base_handle.bounds().origin
+                        + gpui::point(px(120.), px(14.)),
+                    view.entries[view.visible[0]].path.clone(),
+                )
+            })
+            .unwrap();
+        dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(elapsed));
+        cx.update_window(window.into(), |_, w, cx| {
+            w.simulate_next_frame(cx);
+            // Deliberately no draw here: the input must use the prior hitbox tree.
+            w.dispatch_event(
+                gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
+                    position,
+                    button: MouseButton::Left,
+                    click_count: 1,
+                    ..Default::default()
+                }),
+                cx,
+            );
+        })
+        .unwrap();
+        window
+            .read_with(cx, |view, _| {
+                assert_eq!(
+                    view.selected_entry().map(|entry| &entry.path),
+                    Some(&expected)
+                );
+            })
+            .unwrap();
+        advance_motion_frame(window, cx, 200);
+        window
+            .read_with(cx, |view, _| {
+                assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(0.))
+            })
+            .unwrap();
+    }
+}
+
+#[gpui::test]
+fn motion_frame_rebuilds_visible_row_hitboxes(cx: &mut gpui::TestAppContext) {
+    let window = scroll_window(cx, false);
+    let (position, expected) = window
+        .read_with(cx, |view, _| {
+            (
+                view.scroll.0.borrow().base_handle.bounds().origin + gpui::point(px(120.), px(14.)),
+                view.entries[view.visible[1]].path.clone(),
+            )
+        })
+        .unwrap();
+    dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+    advance_motion_frame(window, cx, 50); //33px: the next28px row is now at this point.
+    cx.update_window(window.into(), |_, w, cx| {
+        w.dispatch_event(
+            gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
+                position,
+                button: MouseButton::Left,
+                click_count: 1,
+                ..Default::default()
+            }),
+            cx,
+        );
+    })
+    .unwrap();
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(
+                view.selected_entry().map(|entry| &entry.path),
+                Some(&expected)
+            )
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn cancelled_hidden_or_rebuilt_folder_drains_callbacks_without_moving(
+    cx: &mut gpui::TestAppContext,
+) {
+    for rebuild in [false, true] {
+        let window = scroll_window(cx, false);
+        dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+        // Multiple input requests still own just one pending callback.
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(30));
+        dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+        window
+            .update(cx, |view, _, _| {
+                if rebuild {
+                    view.rebuild_visible(None);
+                } else {
+                    view.cancel_scroll_motion();
+                }
+            })
+            .unwrap();
+        assert_eq!(advance_motion_frame(window, cx, 200), 1);
+        window
+            .read_with(cx, |view, _| {
+                assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(0.))
+            })
+            .unwrap();
+        assert_eq!(advance_motion_frame(window, cx, 200), 0);
+    }
+}
+
+#[gpui::test]
+fn keyboard_jump_cancels_wheel_and_reduce_motion_keeps_input_direct(cx: &mut gpui::TestAppContext) {
+    let window = scroll_window(cx, false);
+    dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+    window
+        .update(cx, |view, _, cx| view.select(900, cx))
+        .unwrap();
+    advance_motion_frame(window, cx, 200);
+    let jumped = window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.selected, Some(900));
+            let offset = view.scroll.0.borrow().base_handle.offset().y;
+            assert!(offset < px(-1000.));
+            offset
+        })
+        .unwrap();
+    cx.update(|cx| cx.set_reduce_motion(true));
+    dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.scroll.0.borrow().base_handle.offset().y < jumped)
+        })
+        .unwrap();
+    assert_eq!(advance_motion_frame(window, cx, 200), 0);
+}
+
+#[gpui::test]
+fn sibling_scroll_region_does_not_start_folder_motion(cx: &mut gpui::TestAppContext) {
+    let window = scroll_window(cx, false);
+    cx.update_window(window.into(), |_, w, cx| {
+        w.dispatch_event(
+            gpui::PlatformInput::Scroll(gpui::ScrollEvent {
+                position: gpui::point(px(50.), px(200.)),
+                delta: gpui::ScrollDelta::Lines(gpui::point(0., -3.)),
+                ..Default::default()
+            }),
+            cx,
+        );
+    })
+    .unwrap();
+    assert_eq!(advance_motion_frame(window, cx, 100), 0);
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(0.))
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn hidden_window_does_not_resume_elapsed_motion_after_becoming_visible(
+    cx: &mut gpui::TestAppContext,
+) {
+    let window = scroll_window(cx, false);
+    dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+    cx.simulate_window_visibility_change(window.into(), gpui::WindowVisibility::Hidden);
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(2));
+    cx.simulate_window_visibility_change(window.into(), gpui::WindowVisibility::Visible);
+    advance_motion_frame(window, cx, 100);
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(0.))
+        })
+        .unwrap();
+    assert_eq!(advance_motion_frame(window, cx, 100), 0);
+}
+
+#[gpui::test]
+fn keyboard_preview_stops_pending_folder_motion(cx: &mut gpui::TestAppContext) {
+    let window = scroll_window(cx, false);
+    window.update(cx, |view, _, cx| view.select(0, cx)).unwrap();
+    dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+    window
+        .update(cx, |view, w, cx| {
+            view.toggle_preview(&QuickPreview, w, cx);
+            assert!(view.preview_open);
+        })
+        .unwrap();
+    advance_motion_frame(window, cx, 100);
+    dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(0.))
+        })
+        .unwrap();
+    assert_eq!(advance_motion_frame(window, cx, 100), 0);
 }
 
 fn selected_file_names(view: &FolderView) -> Vec<String> {
@@ -791,6 +1118,43 @@ fn marquee_scrolls_when_pointer_jumps_outside_the_window(cx: &mut gpui::TestAppC
     assert_marquee_edge_scroll(cx, true);
 }
 
+#[gpui::test]
+fn marquee_after_cancelled_wheel_starts_with_a_fresh_clock(cx: &mut gpui::TestAppContext) {
+    let window = scroll_window(cx, false);
+    let bounds = window
+        .read_with(cx, |view, _| view.scroll.0.borrow().base_handle.bounds())
+        .unwrap();
+    dispatch_wheel(window, cx, gpui::ScrollDelta::Lines(gpui::point(0., -3.)));
+    let row = bounds.origin + gpui::point(px(120.), px(14.));
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    visual.simulate_mouse_down(row, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_up(row, MouseButton::Left, gpui::Modifiers::none());
+    assert_eq!(advance_motion_frame(window, cx, 32), 1);
+    assert_eq!(advance_motion_frame(window, cx, 1000), 0);
+
+    let start = bounds.origin + gpui::point(px(4.), px(100.));
+    let end = gpui::point(bounds.origin.x + px(200.), bounds.bottom() - px(2.));
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    assert_eq!(advance_motion_frame(window, cx, 0), 1);
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(
+                view.scroll.0.borrow().base_handle.offset().y,
+                px(0.),
+                "idle time must not become marquee distance"
+            );
+        })
+        .unwrap();
+    advance_motion_frame(window, cx, 16);
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.scroll.0.borrow().base_handle.offset().y < px(0.))
+        })
+        .unwrap();
+    visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+}
+
 fn assert_marquee_edge_scroll(cx: &mut gpui::TestAppContext, outside: bool) {
     let window = workflow_window(cx);
     window
@@ -828,11 +1192,13 @@ fn assert_marquee_edge_scroll(cx: &mut gpui::TestAppContext, outside: bool) {
     visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
     visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
     visual.run_until_parked();
+    // A native callback can arrive at the same clock instant as pointer input.
+    // It must keep edge demand alive for the next nonzero elapsed frame.
+    assert_eq!(advance_motion_frame(window, cx, 0), 1);
     let before = window
         .read_with(cx, |view, _| view.scroll.0.borrow().base_handle.offset().y)
         .unwrap();
-    cx.executor()
-        .advance_clock(std::time::Duration::from_millis(32));
+    advance_motion_frame(window, cx, 32);
     let first = window
         .read_with(cx, |view, _| view.scroll.0.borrow().base_handle.offset().y)
         .unwrap();
@@ -840,14 +1206,32 @@ fn assert_marquee_edge_scroll(cx: &mut gpui::TestAppContext, outside: bool) {
         first < before,
         "edge scrolling must not require another mouse event"
     );
-    cx.executor()
-        .advance_clock(std::time::Duration::from_millis(32));
+    advance_motion_frame(window, cx, 32);
     let second = window
         .read_with(cx, |view, _| view.scroll.0.borrow().base_handle.offset().y)
         .unwrap();
     assert!(
         second < first,
-        "the timer must keep scrolling while the pointer is stationary"
+        "native frames must keep scrolling while the pointer is stationary"
+    );
+    let max = window
+        .update(cx, |view, _, _| {
+            let handle = view.scroll.0.borrow().base_handle.clone();
+            let max = f32::from(handle.max_offset().y).abs();
+            handle.set_offset(gpui::point(handle.offset().x, px(-(max - 0.005))));
+            max
+        })
+        .unwrap();
+    advance_motion_frame(window, cx, 32);
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.scroll.0.borrow().base_handle.offset().y, px(-max))
+        })
+        .unwrap();
+    assert_eq!(
+        advance_motion_frame(window, cx, 32),
+        0,
+        "an exact boundary must end frame demand"
     );
     visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
     let released = window
@@ -857,8 +1241,7 @@ fn assert_marquee_edge_scroll(cx: &mut gpui::TestAppContext, outside: bool) {
             view.scroll.0.borrow().base_handle.offset().y
         })
         .unwrap();
-    cx.executor()
-        .advance_clock(std::time::Duration::from_millis(128));
+    advance_motion_frame(window, cx, 128);
     window
         .read_with(cx, |view, _| {
             assert_eq!(view.scroll.0.borrow().base_handle.offset().y, released)

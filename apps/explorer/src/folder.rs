@@ -15,6 +15,7 @@ mod media_view;
 mod wsl;
 use crate::media::{MediaCache, MediaScope};
 mod context_menu;
+mod scroll_motion;
 mod scrollbar;
 use context_menu::ContextMenu;
 use explorer_core::history::breadcrumbs;
@@ -50,6 +51,7 @@ impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
     marquee: marquee::MarqueeState,
+    motion: scroll_motion::FolderMotion,
     multi_selection: std::collections::BTreeSet<PathBuf>,
     selection_anchor: Option<PathBuf>,
     sizes: SizeState,
@@ -156,6 +158,9 @@ impl FolderView {
             .map_or(true, |p| p.read(cx).value.group_downloads);
         if let Some(preferences) = preferences {
             cx.observe(&preferences, |this, preferences, cx| {
+                if !preferences.read(cx).value.smooth_scroll {
+                    this.cancel_scroll_motion();
+                }
                 let automatic = preferences.read(cx).value.automatic_sizes;
                 this.update_size_mode(automatic, cx);
                 this.choose_auto_gallery(cx);
@@ -180,6 +185,7 @@ impl FolderView {
         cx.observe(&media, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             marquee: Default::default(),
+            motion: Default::default(),
             multi_selection: Default::default(),
             selection_anchor: None,
             sizes: SizeState::default(),
@@ -245,15 +251,23 @@ impl FolderView {
     }
 
     pub fn attach_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.cancel_marquee();
+        self.attach_motion_window(window);
         self._window_subscriptions.clear();
         self._window_subscriptions
             .push(cx.observe_window_activation(window, |this, w, cx| {
                 if !w.is_window_active() {
-                    this.cancel_marquee();
+                    this.cancel_scroll_motion();
                     cx.notify();
                 }
             }));
+        self._window_subscriptions
+            .push(
+                cx.observe_window_visibility(window, |this, visibility, _, _| {
+                    if !visibility.is_visible() {
+                        this.cancel_scroll_motion();
+                    }
+                }),
+            );
         self._window_subscriptions
             .push(cx.on_focus(&self.focus, window, |this, _, cx| {
                 let date = chrono::Local::now().date_naive();
@@ -265,7 +279,7 @@ impl FolderView {
             }));
         self._window_subscriptions
             .push(cx.on_blur(&self.focus, window, |this, _, cx| {
-                this.cancel_marquee();
+                this.cancel_scroll_motion();
                 cx.notify();
             }));
         self._window_subscriptions
@@ -310,7 +324,7 @@ impl FolderView {
     // ───────────── 読み込み ─────────────
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
-        self.cancel_marquee();
+        self.cancel_scroll_motion();
         self.cancel_address(cx);
         self.cancel_sizes(cx);
         self.media_scope.cancel();
@@ -1782,6 +1796,7 @@ impl Focusable for FolderView {
 impl Render for FolderView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = self.theme(window);
+        self.check_motion_layout();
         self.cancel_marquee_if_layout_changed();
         self.search.update(cx, |input, _| {
             input.theme = t;

@@ -24,6 +24,7 @@ impl FolderView {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                    this.cancel_scroll_motion();
                     let handle = this.scroll.0.borrow().base_handle.clone();
                     let bounds = handle.bounds();
                     let viewport = f32::from(bounds.size.height);

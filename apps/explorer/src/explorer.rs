@@ -29,6 +29,8 @@ pub struct Explorer {
     drop_slot: Option<usize>,
     tab_menu: Option<(gpui::EntityId, gpui::Point<gpui::Pixels>)>,
     tab_error: Option<String>,
+    display_interval: Option<std::time::Duration>,
+    _display_subscription: gpui::Subscription,
 }
 impl Explorer {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -70,8 +72,10 @@ impl Explorer {
         cx: &mut Context<Self>,
     ) -> Self {
         let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
-        cx.observe(&preferences, |this, preferences, cx| {
+        apply_frame_limit(window, preferences.read(cx).value.high_refresh_rate);
+        cx.observe_in(&preferences, window, |this, preferences, window, cx| {
             let value = preferences.read(cx).value.clone();
+            apply_frame_limit(window, value.high_refresh_rate);
             if this.last_saved_theme != value.theme {
                 this.mode = value.theme.into();
                 this.last_saved_theme = value.theme;
@@ -81,6 +85,9 @@ impl Explorer {
                 tab.update(cx, |tab, cx| {
                     tab.mode = this.mode;
                     tab.compact = this.compact;
+                    if !value.smooth_scroll {
+                        tab.cancel_scroll_motion();
+                    }
                     cx.notify();
                 });
             }
@@ -90,6 +97,10 @@ impl Explorer {
         cx.observe_window_appearance(window, |_, _, cx| cx.notify())
             .detach();
         cx.observe_window_activation(window, |this, window, cx| {
+            if window.is_window_active() {
+                crate::motion_preferences::refresh(cx);
+                cx.notify();
+            }
             if !window.is_window_active() && this.dragging_tab.take().is_some() {
                 this.clear_tab_drop_indicators(window, cx);
                 cx.stop_active_drag(window);
@@ -97,6 +108,14 @@ impl Explorer {
             }
         })
         .detach();
+        let weak = cx.weak_entity();
+        let display_subscription = window.observe_window_display(move |window, cx| {
+            let interval = window.refresh_interval(cx);
+            let _ = weak.update(cx, |this, cx| {
+                this.display_interval = interval;
+                cx.notify();
+            });
+        });
         let mut this = Self {
             tabs,
             active: 0,
@@ -114,6 +133,8 @@ impl Explorer {
             drop_slot: None,
             tab_menu: None,
             tab_error: None,
+            display_interval: window.refresh_interval(cx),
+            _display_subscription: display_subscription,
         };
         for tab in this.tabs.clone() {
             this.watch_tab(&tab, window, cx);
@@ -125,7 +146,10 @@ impl Explorer {
         if index >= self.tabs.len() {
             return;
         }
-        self.tabs[self.active].update(cx, |tab, cx| tab.cancel_address(cx));
+        self.tabs[self.active].update(cx, |tab, cx| {
+            tab.cancel_address(cx);
+            tab.cancel_scroll_motion();
+        });
         self.active = index;
         window.focus(&self.tabs[index].focus_handle(cx), cx);
         cx.notify();
@@ -144,6 +168,7 @@ impl Explorer {
             return;
         }
         let removed = self.tabs.remove(index);
+        removed.update(cx, |tab, _| tab.cancel_scroll_motion());
         self.tab_subscriptions.remove(&removed.entity_id());
         self.active = after_close(self.active, index, self.tabs.len());
         self.switch(self.active, window, cx);
@@ -167,6 +192,11 @@ impl Explorer {
         self.preferences
             .update(cx, |p, cx| p.change(|s| s.compact = compact, cx));
     }
+}
+fn apply_frame_limit(window: &mut Window, high_refresh_rate: bool) {
+    window
+        .set_frame_rate_limit((!high_refresh_rate).then_some(60.0))
+        .expect("60fps is a valid frame limit");
 }
 fn after_close(active: usize, closed: usize, remaining: usize) -> usize {
     if closed < active {
@@ -398,6 +428,8 @@ impl Render for Explorer {
             .on_action(cx.listener(|this, _: &OpenSettings, w, cx| {
                 this.settings_open = !this.settings_open;
                 if this.settings_open {
+                    crate::motion_preferences::refresh(cx);
+                    this.tabs[this.active].update(cx, |tab, _| tab.cancel_scroll_motion());
                     w.focus(&this.settings_focus, cx);
                 } else {
                     w.focus(&this.tabs[this.active].focus_handle(cx), cx);
@@ -642,7 +674,7 @@ mod tests {
             .unwrap();
         cx.simulate_keystrokes(
             window.into(),
-            "alt-f4 ctrl-1 alt-2 shift-3 cmd-4 ctrl-5 ctrl-escape 6 x",
+            "alt-f4 ctrl-1 alt-2 shift-3 cmd-4 ctrl-5 ctrl-escape 8 x",
         );
         cx.dispatch_keystroke(
             window.into(),
@@ -670,7 +702,7 @@ mod tests {
                     .collect();
                 assert_eq!(
                     keys,
-                    ["f4", "1", "2", "3", "4", "5", "escape", "6", "x", "5"]
+                    ["f4", "1", "2", "3", "4", "5", "escape", "8", "x", "5"]
                 );
                 assert!(probe.bubbled_keys[0].modifiers.alt);
                 assert!(probe.bubbled_keys[9].modifiers.function);
@@ -715,6 +747,33 @@ mod tests {
         assert_eq!(after_close(2, 2, 2), 1);
         assert_eq!(after_close(0, 2, 2), 0);
         assert_eq!(after_close(0, 0, 1), 0);
+    }
+
+    #[gpui::test]
+    fn motion_shortcuts_change_independent_preferences(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "6");
+        window
+            .update(cx, |probe, w, cx| {
+                let explorer = probe.explorer.read(cx);
+                let value = &explorer.preferences.read(cx).value;
+                assert!(!value.high_refresh_rate);
+                assert!(value.smooth_scroll);
+                assert_eq!(w.frame_rate_limit(), Some(60.0));
+                assert!(probe.bubbled_keys.is_empty());
+            })
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "7");
+        window
+            .read_with(cx, |probe, cx| {
+                let value = &probe.explorer.read(cx).preferences.read(cx).value;
+                assert!(!value.smooth_scroll);
+                assert!(!value.high_refresh_rate);
+                assert!(probe.bubbled_keys.is_empty());
+            })
+            .unwrap();
     }
 }
 

@@ -17,7 +17,7 @@ impl FolderView {
         )
     }
     pub(super) fn rebuild_display_rows(&mut self) {
-        self.cancel_marquee();
+        self.cancel_scroll_motion();
         self.display_rows.clear();
         self.entry_rows.clear();
         self.entry_rows.resize(self.visible.len(), 0);
@@ -64,7 +64,8 @@ impl FolderView {
             self.display_rows.push(DisplayRow::Entry(ix));
         }
     }
-    pub(super) fn scroll_to_entry(&self, ix: usize, strategy: ScrollStrategy) {
+    pub(super) fn scroll_to_entry(&mut self, ix: usize, strategy: ScrollStrategy) {
+        self.cancel_scroll_motion();
         self.scroll
             .scroll_to_item(self.entry_rows.get(ix).copied().unwrap_or(ix), strategy);
     }

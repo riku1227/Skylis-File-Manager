@@ -11,6 +11,8 @@ impl Explorer {
         let p = self.preferences.read(cx);
         let value = p.value.clone();
         let error = p.error.clone();
+        let refresh_description =
+            refresh_description(self.display_interval, value.high_refresh_rate);
         let rows = [
             (
                 "テーマ",
@@ -58,6 +60,34 @@ impl Explorer {
                     "手動"
                 },
             ),
+            (
+                "高リフレッシュレート対応",
+                refresh_description.as_str(),
+                value.high_refresh_rate,
+                if value.high_refresh_rate {
+                    "有効"
+                } else {
+                    "最大60fps"
+                },
+            ),
+            (
+                "滑らかなスクロール",
+                if crate::motion_preferences::reduce_motion_status(cx)
+                    == crate::motion_preferences::ReduceMotionStatus::Unknown
+                {
+                    "一覧とギャラリーに適用（OSの動作低減設定は取得できません）"
+                } else {
+                    "一覧とギャラリーのホイール操作を滑らかにします"
+                },
+                value.smooth_scroll,
+                if !value.smooth_scroll {
+                    "無効"
+                } else if cx.reduce_motion() {
+                    "OS設定により停止中"
+                } else {
+                    "有効"
+                },
+            ),
         ];
         let mut body = div()
             .id("settings-body")
@@ -79,8 +109,11 @@ impl Explorer {
                         .child(error),
                 )
             });
-        for (title, range) in [("外観と表示", 0..2), ("フォルダーと一覧の動作", 2..5)]
-        {
+        for (title, range) in [
+            ("外観と表示", 0..2),
+            ("フォルダーと一覧の動作", 2..5),
+            ("描画とスクロール", 5..7),
+        ] {
             let mut group = div()
                 .rounded(px(10.))
                 .overflow_hidden()
@@ -185,7 +218,9 @@ impl Explorer {
                             1 => "settings-row-density".into(),
                             2 => "settings-row-downloads".into(),
                             3 => "settings-row-gallery".into(),
-                            _ => "settings-row-sizes".into(),
+                            4 => "settings-row-sizes".into(),
+                            5 => "settings-row-high-refresh".into(),
+                            _ => "settings-row-smooth-scroll".into(),
                         })
                         .px(px(14.))
                         .py(px(11.))
@@ -232,7 +267,7 @@ impl Explorer {
                                         .mt(px(4.))
                                         .text_size(px(11.5))
                                         .text_color(t.c("text.muted"))
-                                        .child(description),
+                                        .child(description.to_owned()),
                                 ),
                         )
                         .child(div().flex_shrink_0().child(control))
@@ -269,7 +304,7 @@ impl Explorer {
                     if event.keystroke.modifiers.modified() { return; }
                     if event.keystroke.key == "escape" {
                         this.close_settings(w, cx); cx.stop_propagation();
-                    } else if let Ok(number) = event.keystroke.key.parse::<usize>() && (1..=5).contains(&number) {
+                    } else if let Ok(number) = event.keystroke.key.parse::<usize>() && (1..=7).contains(&number) {
                         this.change_preference(number - 1, cx); cx.stop_propagation();
                     }
                 }))
@@ -282,7 +317,7 @@ impl Explorer {
                 .child(body)
                 .child(div().flex_shrink_0().px(px(20.)).py(px(10.)).bg(t.c("surface.chrome"))
                     .border_t_1().border_color(t.c("border.subtle")).flex().items_center().justify_between()
-                    .child(div().text_size(px(11.)).text_color(t.c("text.muted")).child("1〜5 で切替 · Esc で閉じる"))
+                    .child(div().text_size(px(11.)).text_color(t.c("text.muted")).child("1〜7 で切替 · Esc で閉じる"))
                     .child(div().id("settings-done").debug_selector(|| "settings-done".into()).h(px(28.)).px(px(14.)).rounded(px(6.)).flex().items_center()
                         .border_1().border_color(t.c("button.border")).bg(t.c("button.bg")).hover(|s| s.bg(t.c("state.hover")))
                         .cursor_pointer().child("完了").on_click(cx.listener(|this, _, w, cx| this.close_settings(w, cx))))))
@@ -297,10 +332,27 @@ impl Explorer {
                     2 => s.group_downloads = !s.group_downloads,
                     3 => s.auto_gallery = !s.auto_gallery,
                     4 => s.automatic_sizes = !s.automatic_sizes,
+                    5 => s.high_refresh_rate = !s.high_refresh_rate,
+                    6 => s.smooth_scroll = !s.smooth_scroll,
                     _ => (),
                 },
                 cx,
             )
         });
     }
+}
+
+fn refresh_description(interval: Option<std::time::Duration>, enabled: bool) -> String {
+    let display = interval
+        .filter(|interval| !interval.is_zero())
+        .map(|interval| format!("画面: 約{:.0}Hz", 1.0 / interval.as_secs_f64()))
+        .unwrap_or_else(|| "画面: 取得できません".into());
+    format!(
+        "{display} / {}",
+        if enabled {
+            "OSの描画タイミングに追従"
+        } else {
+            "描画上限: 60fps"
+        }
+    )
 }

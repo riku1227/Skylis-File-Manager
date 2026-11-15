@@ -37,6 +37,7 @@ impl FolderView {
                 return;
             }
         }
+        self.cancel_scroll_motion();
         self.preview_scope.cancel();
         self.preview_open = true;
         cx.notify();
@@ -178,9 +179,12 @@ impl FolderView {
             let enabled = cx
                 .try_global::<crate::settings::SharedPreferences>()
                 .is_none_or(|p| p.0.read(cx).value.auto_gallery);
-            self.gallery = enabled
+            let gallery = enabled
                 && crate::media::should_use_gallery(self.visible.iter().map(|&i| &self.entries[i]));
-            self.rebuild_display_rows();
+            if gallery != self.gallery {
+                self.gallery = gallery;
+                self.rebuild_display_rows();
+            }
         }
     }
     pub(super) fn render_gallery_rows(

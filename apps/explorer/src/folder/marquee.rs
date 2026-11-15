@@ -34,7 +34,6 @@ pub(super) struct Marquee {
 pub(super) struct MarqueeState {
     gesture: Option<Marquee>,
     bounds: Rc<Cell<Bounds<Pixels>>>,
-    scroll_task: Option<Task<()>>,
 }
 impl FolderView {
     fn marquee_layout(&self) -> Layout {
@@ -98,7 +97,6 @@ impl FolderView {
     }
     pub(super) fn cancel_marquee(&mut self) -> bool {
         // Selection is not mutated while dragging, so cancellation restores it for free.
-        self.marquee.scroll_task = None;
         self.marquee.gesture.take().is_some()
     }
     fn start_marquee(&mut self, event: &MouseDownEvent, w: &mut Window, cx: &mut Context<Self>) {
@@ -169,7 +167,12 @@ impl FolderView {
             })
         })
     }
-    pub(super) fn move_marquee(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
+    pub(super) fn move_marquee(
+        &mut self,
+        event: &gpui::MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.marquee.gesture.is_none() {
             return;
         }
@@ -193,32 +196,12 @@ impl FolderView {
                 f32::from(m.pointer.y - m.viewport.origin.y),
                 f32::from(m.viewport.size.height),
             ) != 0.;
-        if scroll && self.marquee.scroll_task.is_none() {
-            self.marquee.scroll_task = Some(cx.spawn(async move |view, cx| {
-                loop {
-                    cx.background_executor()
-                        .timer(Duration::from_millis(16))
-                        .await;
-                    let keep = view
-                        .update(cx, |view, cx| {
-                            if view.step_marquee_scroll() {
-                                cx.notify();
-                                true
-                            } else {
-                                view.marquee.scroll_task = None;
-                                false
-                            }
-                        })
-                        .unwrap_or(false);
-                    if !keep {
-                        break;
-                    }
-                }
-            }));
+        if scroll {
+            self.request_motion_frame(window, cx);
         }
         cx.notify();
     }
-    fn step_marquee_scroll(&mut self) -> bool {
+    pub(super) fn step_marquee_scroll(&mut self, elapsed: Duration) -> bool {
         let Some(m) = &self.marquee.gesture else {
             return false;
         };
@@ -228,14 +211,17 @@ impl FolderView {
         {
             return false;
         }
-        let delta = edge_scroll(
-            f32::from(m.pointer.y - m.viewport.origin.y),
-            f32::from(m.viewport.size.height),
+        let delta = crate::motion::edge_distance(
+            edge_scroll(
+                f32::from(m.pointer.y - m.viewport.origin.y),
+                f32::from(m.viewport.size.height),
+            ),
+            elapsed,
         );
         let handle = self.scroll.0.borrow().base_handle.clone();
         let old = -f32::from(handle.offset().y);
         let next = (old + delta).clamp(0., f32::from(handle.max_offset().y).abs());
-        if (next - old).abs() < 0.01 {
+        if next == old {
             return false;
         }
         handle.set_offset(point(handle.offset().x, px(-next)));
@@ -254,7 +240,6 @@ impl FolderView {
         let Some(m) = self.marquee.gesture.take() else {
             return;
         };
-        self.marquee.scroll_task = None;
         if m.layout != self.marquee_layout() || m.viewport != self.marquee.bounds.get() {
             cx.notify();
             return;
@@ -310,6 +295,25 @@ impl FolderView {
         }
         cx.notify();
     }
+    pub(super) fn marquee_needs_scroll(&self) -> bool {
+        let Some(m) = &self.marquee.gesture else {
+            return false;
+        };
+        if !m.dragged
+            || m.layout != self.marquee_layout()
+            || m.viewport != self.marquee.bounds.get()
+        {
+            return false;
+        }
+        let speed = edge_scroll(
+            f32::from(m.pointer.y - m.viewport.origin.y),
+            f32::from(m.viewport.size.height),
+        );
+        let handle = self.scroll.0.borrow().base_handle.clone();
+        let offset = -f32::from(handle.offset().y);
+        let max = f32::from(handle.max_offset().y).abs();
+        (speed < 0. && offset > 0.) || (speed > 0. && offset < max)
+    }
     pub(super) fn marquee_active(&self) -> bool {
         self.marquee.gesture.as_ref().is_some_and(|m| m.dragged)
     }
@@ -325,8 +329,8 @@ impl FolderView {
         let bounds = self.marquee.bounds.clone();
         let viewport = self.marquee.gesture.as_ref().map(|m| m.viewport);
         let view = cx.entity().downgrade();
-        let on_move =
-            cx.listener(|view, event: &gpui::MouseMoveEvent, _, cx| view.move_marquee(event, cx));
+        let on_move = cx
+            .listener(|view, event: &gpui::MouseMoveEvent, w, cx| view.move_marquee(event, w, cx));
         let rect = self
             .marquee
             .gesture
@@ -344,6 +348,7 @@ impl FolderView {
             .min_h_0()
             .overflow_hidden()
             .on_mouse_down(MouseButton::Left, cx.listener(Self::start_marquee))
+            .child(self.motion_capture(cx))
             .child(content)
             .child(
                 canvas(

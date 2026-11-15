@@ -2,6 +2,8 @@
 mod assets;
 mod explorer;
 mod folder;
+mod motion;
+mod motion_preferences;
 mod native_shell;
 mod search;
 mod settings;
@@ -59,6 +61,7 @@ fn main() {
     gpui_platform::application()
         .with_assets(assets::Assets)
         .run(move |cx: &mut App| {
+            motion_preferences::init(cx);
             let preferences = cx.new(|cx| settings::Preferences::new(preferences, cx));
             cx.set_global(settings::SharedPreferences(preferences));
             let ctx = Some("Explorer");

@@ -14,6 +14,8 @@ pub struct Settings {
     pub group_downloads: bool,
     pub auto_gallery: bool,
     pub automatic_sizes: bool,
+    pub high_refresh_rate: bool,
+    pub smooth_scroll: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -23,6 +25,8 @@ impl Default for Settings {
             group_downloads: true,
             auto_gallery: true,
             automatic_sizes: false,
+            high_refresh_rate: true,
+            smooth_scroll: true,
         }
     }
 }
@@ -55,6 +59,8 @@ impl Settings {
                 "group_downloads" => settings.group_downloads = boolean()?,
                 "auto_gallery" => settings.auto_gallery = boolean()?,
                 "automatic_sizes" => settings.automatic_sizes = boolean()?,
+                "high_refresh_rate" => settings.high_refresh_rate = boolean()?,
+                "smooth_scroll" => settings.smooth_scroll = boolean()?,
                 _ => (),
             }
         }
@@ -70,14 +76,38 @@ impl Settings {
             ThemePreference::System => "system",
         };
         format!(
-            "version=1\ntheme={theme}\ncompact={}\ngroup_downloads={}\nauto_gallery={}\nautomatic_sizes={}\n",
-            self.compact, self.group_downloads, self.auto_gallery, self.automatic_sizes
+            "version=1\ntheme={theme}\ncompact={}\ngroup_downloads={}\nauto_gallery={}\nautomatic_sizes={}\nhigh_refresh_rate={}\nsmooth_scroll={}\n",
+            self.compact,
+            self.group_downloads,
+            self.auto_gallery,
+            self.automatic_sizes,
+            self.high_refresh_rate,
+            self.smooth_scroll
         )
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn motion_preferences_reject_invalid_values() {
+        for key in ["high_refresh_rate", "smooth_scroll"] {
+            assert!(Settings::decode(&format!("version=1\n{key}=sometimes\n")).is_err());
+        }
+    }
+    #[test]
+    fn motion_preferences_migrate_and_persist_independently() {
+        let old = Settings::decode("version=1\ntheme=dark\ncompact=true").unwrap();
+        assert!(old.high_refresh_rate && old.smooth_scroll);
+        for (high_refresh_rate, smooth_scroll) in [(false, true), (true, false), (false, false)] {
+            let changed = Settings {
+                high_refresh_rate,
+                smooth_scroll,
+                ..old.clone()
+            };
+            assert_eq!(Settings::decode(&changed.encode()).unwrap(), changed);
+        }
+    }
     #[test]
     fn defaults_and_round_trip() {
         let initial = Settings::default();

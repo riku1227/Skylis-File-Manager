@@ -116,17 +116,17 @@ impl Layout {
     }
 }
 
-/// Signed pixels per approximately 16 ms tick. Near-edge speed ramps up to
-/// 18 px/tick and remains bounded even when the cursor is outside the viewport.
+/// Signed pixels per second. The 24px edge ramp reaches 1125px/s
+/// and stays bounded when the cursor is outside the viewport.
 pub(super) fn edge_scroll(pointer_y: f32, viewport_height: f32) -> f32 {
     if !pointer_y.is_finite() || !viewport_height.is_finite() || viewport_height <= 0. {
         return 0.;
     }
     let edge = 24_f32.min(viewport_height / 2.);
     if pointer_y < edge {
-        -18. * ((edge - pointer_y) / edge).clamp(0., 1.)
+        -1125. * ((edge - pointer_y) / edge).clamp(0., 1.)
     } else if pointer_y > viewport_height - edge {
-        18. * ((pointer_y - (viewport_height - edge)) / edge).clamp(0., 1.)
+        1125. * ((pointer_y - (viewport_height - edge)) / edge).clamp(0., 1.)
     } else {
         0.
     }
@@ -265,21 +265,21 @@ mod tests {
     #[test]
     fn edge_scrolling_is_proportional_directional_and_bounded() {
         for (position, expected) in [
-            (-500., -18.),
-            (0., -18.),
-            (12., -9.),
+            (-500., -1125.),
+            (0., -1125.),
+            (12., -562.5),
             (24., 0.),
             (300., 0.),
             (576., 0.),
-            (588., 9.),
-            (600., 18.),
-            (900., 18.),
+            (588., 562.5),
+            (600., 1125.),
+            (900., 1125.),
         ] {
             assert_eq!(edge_scroll(position, 600.), expected);
         }
         assert_eq!(edge_scroll(10., 20.), 0.);
-        assert_eq!(edge_scroll(0., 20.), -18.);
-        assert_eq!(edge_scroll(20., 20.), 18.);
+        assert_eq!(edge_scroll(0., 20.), -1125.);
+        assert_eq!(edge_scroll(20., 20.), 1125.);
         assert_eq!(edge_scroll(1., 0.), 0.);
         assert_eq!(edge_scroll(f32::NAN, 100.), 0.);
     }
