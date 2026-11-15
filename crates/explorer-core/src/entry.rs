@@ -24,6 +24,25 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Metadata for a read-only virtual location. `path` is its member identity,
+    /// not a path that may be passed to filesystem or Shell operations.
+    pub fn virtual_entry(
+        name: String,
+        path: PathBuf,
+        kind: EntryKind,
+        size: Option<u64>,
+        modified: Option<SystemTime>,
+    ) -> Self {
+        Self {
+            name_key: name.to_lowercase(),
+            hidden: name.starts_with('.'),
+            name,
+            path,
+            kind,
+            size,
+            modified,
+        }
+    }
     /// Windowsでは `DirEntry::metadata()` は FindNextFileW の結果から作られるため追加のsyscallが発生しない。
     pub(crate) fn from_dir_entry(de: &DirEntry) -> Option<Self> {
         let name = de.file_name().to_string_lossy().into_owned();

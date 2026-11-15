@@ -1,6 +1,17 @@
 //! Native properties use a worker-owned dialog host, so the GPUI window remains usable.
 use std::path::PathBuf;
 
+pub fn active() -> bool {
+    #[cfg(windows)]
+    {
+        platform::ACTIVE.load(std::sync::atomic::Ordering::Acquire)
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 pub fn show(
     paths: Vec<PathBuf>,
     window: &gpui::Window,
@@ -40,7 +51,7 @@ mod platform {
         },
         core::{PCWSTR, s, w},
     };
-    static ACTIVE: AtomicBool = AtomicBool::new(false);
+    pub(super) static ACTIVE: AtomicBool = AtomicBool::new(false);
     const CLASS: PCWSTR = w!("Skylis.PropertiesHost");
     const CANCEL_TIMER: usize = 1;
     type Reply = async_channel::Sender<Result<(), String>>;
@@ -107,7 +118,6 @@ mod platform {
         }
     }
     struct State {
-        parent: HWND,
         sender: Reply,
     }
 
@@ -159,13 +169,18 @@ mod platform {
         scan.dialogs
     }
     fn cancel_if_needed(host: HWND, state: &State) {
-        if state.sender.is_closed() || !unsafe { IsWindow(Some(state.parent)).as_bool() } {
+        if state.sender.is_closed() {
             for dialog in owned_dialogs(host) {
                 unsafe {
                     let _ = PostMessageW(Some(dialog), WM_CLOSE, WPARAM(0), LPARAM(0));
                 }
             }
         }
+    }
+    fn has_visible_dialog(host: HWND) -> bool {
+        owned_dialogs(host)
+            .into_iter()
+            .any(|dialog| unsafe { IsWindowVisible(dialog).as_bool() })
     }
     unsafe extern "system" fn window_proc(
         hwnd: HWND,
@@ -198,14 +213,13 @@ mod platform {
         }
         let _apartment = Apartment;
         let parent = HWND(parent as *mut c_void);
-        if sender.is_closed() || !unsafe { IsWindow(Some(parent)).as_bool() } {
+        if sender.is_closed() {
             return Ok(());
         }
         register()?;
         // Host lives on this STA and owns the property sheets. Passing the GPUI HWND
         // directly would allow a modal Shell sheet to disable the entire app window.
         let state = Box::new(State {
-            parent,
             sender: sender.clone(),
         });
         let mut bounds = RECT::default();
@@ -220,7 +234,7 @@ mod platform {
                 bounds.top + (bounds.bottom - bounds.top) / 2,
                 0,
                 0,
-                Some(parent),
+                None,
                 None,
                 Some(HINSTANCE(GetModuleHandleW(None)?.0)),
                 Some((&*state as *const State).cast()),
@@ -236,7 +250,7 @@ mod platform {
                 .QueryContextMenu(menu.0, 0, 1, 0x7fff, CMF_NORMAL)
                 .ok()?;
         }
-        if sender.is_closed() || !unsafe { IsWindow(Some(parent)).as_bool() } {
+        if sender.is_closed() {
             return Ok(());
         }
         let invoke = CMINVOKECOMMANDINFOEX {
@@ -255,9 +269,16 @@ mod platform {
                 .context("プロパティを表示できません")?;
         }
         // Some handlers create modeless sheets even without ASYNCOK. Keep their owner
-        // and COM apartment alive until all sheets owned by this host are closed.
-        while !owned_dialogs(host.0).is_empty() {
-            cancel_if_needed(host.0, &state);
+        // and COM apartment alive until its visible sheets close. An invisible IME
+        // helper also belongs to this host and survives the sheet; it must not keep
+        // ACTIVE set forever or prevent the last application window from closing.
+        wait_for_property_sheets(host.0, &state);
+        Ok(())
+    }
+
+    fn wait_for_property_sheets(host: HWND, state: &State) {
+        while has_visible_dialog(host) {
+            cancel_if_needed(host, state);
             unsafe {
                 MsgWaitForMultipleObjects(None, false, 100, QS_ALLINPUT);
                 let mut msg = MSG::default();
@@ -267,7 +288,6 @@ mod platform {
                 }
             }
         }
-        Ok(())
     }
 
     #[cfg(test)]
@@ -293,6 +313,60 @@ mod platform {
             })
         }
         #[test]
+        fn worker_cleanup_returns_with_only_hidden_owned_helpers() {
+            let (cancel, cancellation) = async_channel::bounded(1);
+            let (finished, completion) = std::sync::mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                let host = hidden(None);
+                let _ime_helper = hidden(Some(host.0));
+                let state = State { sender: cancel };
+                wait_for_property_sheets(host.0, &state);
+                finished.send(()).unwrap();
+            });
+            // Keep the receiver alive: normal sheet closure must finish without
+            // needing tab cancellation to destroy an unrelated hidden IME helper.
+            let result = completion.recv_timeout(std::time::Duration::from_secs(2));
+            drop(cancellation);
+            assert!(
+                result.is_ok(),
+                "hidden helper retained the properties worker"
+            );
+            worker.join().unwrap();
+        }
+        #[test]
+        fn hidden_owned_helpers_do_not_keep_a_closed_property_sheet_alive() {
+            let host = hidden(None);
+            let helper = hidden(Some(host.0));
+            assert!(owned_dialogs(host.0).contains(&helper.0));
+            assert!(!has_visible_dialog(host.0));
+            unsafe {
+                let _ = ShowWindow(helper.0, SW_SHOWNOACTIVATE);
+            }
+            assert!(has_visible_dialog(host.0));
+            unsafe {
+                let _ = ShowWindow(helper.0, SW_HIDE);
+            }
+            assert!(!has_visible_dialog(host.0));
+        }
+        #[test]
+        fn independent_property_host_survives_the_original_window() {
+            let original = hidden(None);
+            let host = hidden(None);
+            let dialog = hidden(Some(host.0));
+            let (sender, _receiver) = async_channel::bounded(1);
+            let state = State { sender };
+            drop(original);
+            cancel_if_needed(host.0, &state);
+            unsafe {
+                let mut message = MSG::default();
+                while PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() {
+                    DispatchMessageW(&message);
+                }
+                assert!(IsWindow(Some(host.0)).as_bool());
+                assert!(IsWindow(Some(dialog.0)).as_bool());
+            }
+        }
+        #[test]
         fn cancellation_only_closes_dialogs_owned_by_its_worker_host() {
             // Fresh hidden test windows only; no registered Shell handler or user window.
             let parent = hidden(None);
@@ -306,10 +380,7 @@ mod platform {
             assert!(!owned.contains(&parent.0));
             assert!(!owned.contains(&unrelated.0));
             let (sender, receiver) = async_channel::bounded(1);
-            let state = State {
-                parent: parent.0,
-                sender,
-            };
+            let state = State { sender };
             cancel_if_needed(host.0, &state);
             assert!(unsafe { IsWindow(Some(dialog.0)).as_bool() });
             drop(receiver);

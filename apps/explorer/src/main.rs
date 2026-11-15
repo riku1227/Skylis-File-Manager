@@ -40,6 +40,7 @@ mod actions {
             ToggleHidden,
             Quit,
             NewTab,
+            NewWindow,
             CloseTab,
             NextTab,
             PrevTab,
@@ -55,6 +56,11 @@ mod actions {
             CutFiles,
             PasteFiles,
             RenameSelected,
+            DeleteFiles,
+            DeletePermanently,
+            NewFolderSelected,
+            CopySelectedPaths,
+            ShowProperties,
             DetachTab,
             MergeWindowTabs,
             ClearSearch
@@ -94,6 +100,10 @@ fn main() {
                 KeyBinding::new("alt-up", GoUp, ctx),
                 KeyBinding::new("f5", Refresh, ctx),
                 KeyBinding::new("f2", RenameSelected, ctx),
+                KeyBinding::new("delete", DeleteFiles, ctx),
+                KeyBinding::new("shift-delete", DeletePermanently, ctx),
+                KeyBinding::new("ctrl-shift-c", CopySelectedPaths, ctx),
+                KeyBinding::new("alt-enter", ShowProperties, ctx),
                 KeyBinding::new("ctrl-r", Refresh, ctx),
                 KeyBinding::new("ctrl-h", ToggleHidden, ctx),
                 KeyBinding::new("ctrl-f", FocusSearch, ctx),
@@ -102,6 +112,7 @@ fn main() {
                 KeyBinding::new("cmd-l", EditAddress, ctx),
                 KeyBinding::new("escape", ClearSearch, ctx),
                 KeyBinding::new("ctrl-t", NewTab, Some("ExplorerTabs")),
+                KeyBinding::new("ctrl-n", NewWindow, Some("ExplorerTabs")),
                 KeyBinding::new("ctrl-w", CloseTab, Some("ExplorerTabs")),
                 KeyBinding::new("ctrl-tab", NextTab, Some("ExplorerTabs")),
                 KeyBinding::new("ctrl-shift-tab", PrevTab, Some("ExplorerTabs")),
@@ -120,8 +131,8 @@ fn main() {
                 KeyBinding::new("menu", ShowContextMenu, ctx),
             ]);
             cx.bind_keys([
-                KeyBinding::new("ctrl-shift-n", DetachTab, Some("ExplorerTabs")),
-                KeyBinding::new("cmd-shift-n", DetachTab, Some("ExplorerTabs")),
+                KeyBinding::new("ctrl-shift-n", NewFolderSelected, ctx),
+                KeyBinding::new("cmd-shift-n", NewFolderSelected, ctx),
             ]);
             cx.bind_keys([KeyBinding::new("space", QuickPreview, ctx)]);
             cx.bind_keys([
@@ -136,7 +147,7 @@ fn main() {
                 KeyBinding::new("cmd-v", PasteFiles, ctx),
             ]);
             search::bind_keys(cx);
-            cx.on_action(|_: &Quit, cx| cx.quit());
+            cx.on_action(|_: &Quit, cx| explorer::request_quit(cx));
             let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
             cx.open_window(
                 WindowOptions {

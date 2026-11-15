@@ -18,6 +18,13 @@ enum Command {
     Cut,
     Paste,
     Rename,
+    Delete,
+    Extract,
+    ExtractAll,
+    CompressZip,
+    Compress7z,
+    OpenExternal,
+    Properties,
     NewFolder,
     NewText,
     Pin,
@@ -30,6 +37,46 @@ enum Command {
 }
 
 impl FolderView {
+    pub(super) fn show_properties(
+        &mut self,
+        _: &ShowProperties,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.path().is_none() || self.input_focused(w, cx) {
+            return;
+        }
+        let paths = self.selected_paths();
+        if paths.is_empty() {
+            return;
+        }
+        match crate::native_shell::properties(paths, w) {
+            Ok(receiver) => {
+                cx.spawn(async move |view, cx| {
+                    if let Ok(Err(error)) = receiver.recv().await {
+                        let _ = view.update(cx, |view, cx| {
+                            view.notice = Some(error);
+                            cx.notify();
+                        });
+                    }
+                })
+                .detach();
+            }
+            Err(error) => self.notice = Some(error),
+        }
+        cx.notify();
+    }
+    pub(super) fn copy_path_list(&self, paths: &[PathBuf], cx: &mut Context<Self>) {
+        if !paths.is_empty() {
+            cx.write_to_clipboard(ClipboardItem::new_string(
+                paths
+                    .iter()
+                    .map(|p| format!("\"{}\"", p.display()))
+                    .collect::<Vec<_>>()
+                    .join("\r\n"),
+            ));
+        }
+    }
     pub(super) fn open_context_menu(
         &mut self,
         item: Option<usize>,
@@ -57,7 +104,7 @@ impl FolderView {
             item,
             active: 0,
         });
-        if event.modifiers.shift && cfg!(windows) {
+        if event.modifiers.shift && cfg!(windows) && self.path().is_some() {
             self.execute_menu(Command::Shell, window, cx);
         }
         cx.notify();
@@ -105,6 +152,18 @@ impl FolderView {
         let item = self.context_menu.as_ref().is_some_and(|m| m.item.is_some());
         let single = item && self.multi_selection.len() <= 1;
         let directory = single && self.selected_entry().is_some_and(Entry::is_dir_like);
+        if self.is_archive() {
+            if directory {
+                commands.push(("開く", Command::Open));
+            }
+            if item {
+                commands.push(("選択した項目を解凍…", Command::Extract));
+            }
+            commands.push(("すべて解凍…", Command::ExtractAll));
+            commands.push(("圧縮ファイルを既定のアプリで開く", Command::OpenExternal));
+            commands.push(("更新", Command::Refresh));
+            return commands;
+        }
         if single {
             commands.push(("開く", Command::Open));
             if directory {
@@ -129,6 +188,24 @@ impl FolderView {
         }
         if single {
             commands.push(("名前の変更", Command::Rename));
+        }
+        if item
+            && self.path().is_some()
+            && crate::file_operations::supports_delete(crate::file_operations::DeleteKind::Recycle)
+        {
+            commands.push(("削除", Command::Delete));
+        }
+        if single
+            && self
+                .selected_entry()
+                .is_some_and(|e| explorer_core::archive::detect_format(&e.path).is_some())
+        {
+            commands.push(("解凍…", Command::ExtractAll));
+            commands.push(("既定のアプリで開く", Command::OpenExternal));
+        }
+        if item && self.path().is_some() {
+            commands.push(("ZIPに圧縮…", Command::CompressZip));
+            commands.push(("7zに圧縮…", Command::Compress7z));
         }
         if directory || !item {
             let path = self
@@ -158,11 +235,27 @@ impl FolderView {
             commands.push(("サービス…", Command::Services));
         }
         if cfg!(windows) {
+            if item {
+                commands.push(("プロパティ", Command::Properties));
+            }
             commands.push(("その他のオプションを表示…", Command::Shell));
         }
         commands
     }
     fn execute_menu(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
+        // A stale or directly dispatched command cannot treat virtual members as disk paths.
+        if self.is_archive()
+            && !matches!(
+                command,
+                Command::Open
+                    | Command::Extract
+                    | Command::ExtractAll
+                    | Command::OpenExternal
+                    | Command::Refresh
+            )
+        {
+            return;
+        }
         let Some(menu) = self.context_menu.take() else {
             return;
         };
@@ -199,6 +292,17 @@ impl FolderView {
                     self.begin_name_edit(NameOperation::Rename(path), window, cx);
                 }
             }
+            Command::Delete => self.delete_selected(&DeleteFiles, window, cx),
+            Command::Extract => self.begin_extract(true, window, cx),
+            Command::ExtractAll => self.begin_extract(false, window, cx),
+            Command::CompressZip => {
+                self.begin_compress(explorer_core::archive::ArchiveFormat::Zip, window, cx)
+            }
+            Command::Compress7z => {
+                self.begin_compress(explorer_core::archive::ArchiveFormat::SevenZip, window, cx)
+            }
+            Command::OpenExternal => self.open_archive_external(cx),
+            Command::Properties => self.show_properties(&ShowProperties, window, cx),
             Command::NewFolder | Command::NewText => {
                 if let Some(path) = self.path().map(Path::to_path_buf) {
                     let operation = if matches!(command, Command::NewFolder) {
@@ -244,13 +348,7 @@ impl FolderView {
                 } else {
                     path.into_iter().collect()
                 };
-                cx.write_to_clipboard(ClipboardItem::new_string(
-                    paths
-                        .iter()
-                        .map(|p| p.display().to_string())
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                ));
+                self.copy_path_list(&paths, cx);
             }
             Command::Refresh => self.refresh(&Refresh, window, cx),
             Command::Shell => {
@@ -418,7 +516,7 @@ impl Command {
     fn group(self) -> u8 {
         match self {
             Self::Open | Self::NewTab | Self::Preview | Self::NewFolder | Self::NewText => 0,
-            Self::Copy | Self::Cut | Self::Paste | Self::Rename => 1,
+            Self::Copy | Self::Cut | Self::Paste | Self::Rename | Self::Delete => 1,
             Self::Pin | Self::CopyPath | Self::Refresh => 2,
             _ => 3,
         }
@@ -428,6 +526,16 @@ impl Command {
             Self::Open => "Enter",
             Self::Preview => "Space",
             Self::Rename => "F2",
+            Self::Delete => "Delete",
+            Self::Properties => "Alt+Enter",
+            Self::CopyPath => "Ctrl+Shift+C",
+            Self::NewFolder => {
+                if cfg!(target_os = "macos") {
+                    "⌘⇧N"
+                } else {
+                    "Ctrl+Shift+N"
+                }
+            }
             Self::Refresh => "F5",
             Self::Copy => {
                 if cfg!(target_os = "macos") {
@@ -446,5 +554,87 @@ impl Command {
             }
             _ => "",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[gpui::test]
+    fn archive_menu_and_shortcuts_cannot_mutate_members(cx: &mut gpui::TestAppContext) {
+        cx.background_executor.allow_parking();
+        let window = cx.add_window(|w, cx| {
+            let icons = cx.new(ShellIcons::new);
+            FolderView::new(Location::Home, ThemeMode::Light, icons, w, cx)
+        });
+        window
+            .update(cx, |view, w, cx| {
+                view.history.push(
+                    Location::Archive {
+                        archive: PathBuf::from("C:/sample.zip"),
+                        prefix: String::new(),
+                    },
+                    None,
+                );
+                view.entries = vec![Entry::virtual_entry(
+                    "member.txt".into(),
+                    PathBuf::from("member.txt"),
+                    EntryKind::File,
+                    Some(1),
+                    None,
+                )];
+                view.rebuild_visible(None);
+                view.select(0, cx);
+                view.keyboard_context_menu(&ShowContextMenu, w, cx);
+                let labels: Vec<_> = view
+                    .menu_commands()
+                    .iter()
+                    .map(|(label, _)| *label)
+                    .collect();
+                assert_eq!(
+                    labels,
+                    [
+                        "選択した項目を解凍…",
+                        "すべて解凍…",
+                        "圧縮ファイルを既定のアプリで開く",
+                        "更新"
+                    ]
+                );
+                for command in [
+                    Command::Rename,
+                    Command::Delete,
+                    Command::Paste,
+                    Command::Shell,
+                    Command::NewFolder,
+                    Command::NewText,
+                    Command::Cut,
+                    Command::Copy,
+                ] {
+                    view.execute_menu(command, w, cx);
+                    assert!(
+                        view.context_menu.is_some(),
+                        "disallowed action must not dispatch"
+                    );
+                }
+                view.context_menu = None;
+                view.rename_selected(&RenameSelected, w, cx);
+                view.delete_selected(&DeleteFiles, w, cx);
+                view.delete_permanently(&DeletePermanently, w, cx);
+                view.copy_files(&CopyFiles, w, cx);
+                view.paste_into(PathBuf::from("C:/sample.zip/inside"), w, cx);
+                view.receive_files(
+                    vec![PathBuf::from("C:/source.txt")],
+                    PathBuf::from("C:/sample.zip/inside"),
+                    crate::file_operations::TransferKind::Move,
+                    w,
+                    cx,
+                );
+                view.request_size(PathBuf::from("member.txt"), cx);
+                assert!(view.path().is_none());
+                assert!(view.name_editor.is_none());
+                assert!(view.notice.is_none());
+            })
+            .unwrap();
     }
 }

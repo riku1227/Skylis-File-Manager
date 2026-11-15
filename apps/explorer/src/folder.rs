@@ -16,11 +16,14 @@ mod media_view;
 mod preview_window;
 mod wsl;
 use crate::media::{MediaCache, MediaScope};
+mod archives;
 mod context_menu;
+mod delete;
 mod name_editor;
 mod name_operations;
 mod scroll_motion;
 mod scrollbar;
+mod watch;
 use context_menu::ContextMenu;
 use explorer_core::history::breadcrumbs;
 use explorer_core::location::{Location, resolve_address};
@@ -72,9 +75,14 @@ pub struct FolderView {
     gallery_rows: Vec<(Option<explorer_core::date_group::DateGroup>, Vec<usize>)>,
     context_menu: Option<ContextMenu>,
     name_editor: Option<name_editor::NameEditor>,
+    archive_index: Option<std::sync::Arc<explorer_core::archive::ArchiveIndex>>,
+    archive_dialog: Option<archives::ArchiveDialog>,
+    archive_jobs: Entity<crate::archive_jobs::ArchiveJobs>,
+    transfer_progress: Entity<transfers::TransferProgress>,
     menu_generation: usize,
     menu_focus: FocusHandle,
     _shell_menu: Option<Task<()>>,
+    _open_request: Option<Task<()>>,
     pub mode: ThemeMode,
     pub pane: bool,
     pub compact: bool,
@@ -82,6 +90,9 @@ pub struct FolderView {
     query: String,
     icons: Entity<ShellIcons>,
     focus: FocusHandle,
+    /// Explicit host: GPUI's entity/window mapping advances only after a paint, whereas
+    /// async results can arrive immediately after a tab has moved between windows.
+    owner_window: gpui::AnyWindowHandle,
     _window_subscriptions: Vec<gpui::Subscription>,
     history: History<Location>,
     address: Entity<TextInput>,
@@ -119,6 +130,7 @@ pub struct FolderView {
     notice: Option<String>,
     cancel: CancelToken,
     _listing: Option<Task<()>>,
+    watch_state: watch::WatchState,
     favorites: Vec<Place>,
     pinned: Vec<Place>,
     drives: Vec<Place>,
@@ -213,6 +225,11 @@ impl FolderView {
             cache
         };
         cx.observe(&media, |_, _, cx| cx.notify()).detach();
+        let archive_jobs = crate::archive_jobs::init(cx);
+        cx.observe(&archive_jobs, |_, _, cx| cx.notify()).detach();
+        let transfer_progress = transfers::transfer_progress(cx);
+        cx.observe(&transfer_progress, |_, _, cx| cx.notify())
+            .detach();
         let mut this = Self {
             marquee: Default::default(),
             motion: Default::default(),
@@ -232,9 +249,14 @@ impl FolderView {
             gallery_rows: Vec::new(),
             context_menu: None,
             name_editor: None,
+            archive_index: None,
+            archive_dialog: None,
+            archive_jobs,
+            transfer_progress,
             menu_generation: 0,
             menu_focus: cx.focus_handle(),
             _shell_menu: None,
+            _open_request: None,
             mode,
             pane: true,
             compact: false,
@@ -251,6 +273,7 @@ impl FolderView {
             query: String::new(),
             icons,
             focus,
+            owner_window: window.window_handle(),
             _window_subscriptions: Vec::new(),
             history: History::new(start.clone()),
             entries: Vec::new(),
@@ -275,6 +298,7 @@ impl FolderView {
             notice: None,
             cancel: CancelToken::new(),
             _listing: None,
+            watch_state: Default::default(),
             favorites: platform::favorite_places(),
             pinned,
             drives: platform::drives(),
@@ -283,6 +307,7 @@ impl FolderView {
         };
         this.attach_window(window, cx);
         this.observe_file_transfers(cx);
+        this.observe_archive_jobs(cx);
         this.refresh_drives(cx);
         this.discover_wsl(cx);
         this.load(start, None, cx);
@@ -290,6 +315,10 @@ impl FolderView {
     }
 
     pub fn attach_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.owner_window != window.window_handle() {
+            self.owner_window = window.window_handle();
+            self.attach_name_editor_window(window, cx);
+        }
         self.attach_motion_window(window);
         self._window_subscriptions.clear();
         self._window_subscriptions
@@ -328,6 +357,17 @@ impl FolderView {
             window,
             |this, _, cx| this.cancel_address(cx),
         ));
+    }
+
+    pub(super) fn with_owner<R>(
+        view: &gpui::WeakEntity<Self>,
+        cx: &mut gpui::AsyncApp,
+        update: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) -> R,
+    ) -> anyhow::Result<R> {
+        let owner = view.read_with(cx, |view, _| view.owner_window)?;
+        gpui::AppContext::update_window(cx, owner, |_, window, cx| {
+            view.update(cx, |view, cx| update(view, window, cx))
+        })?
     }
 
     fn refresh_drives(&mut self, cx: &mut Context<Self>) {
@@ -404,6 +444,7 @@ impl FolderView {
     }
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.archive_dialog = None;
         self.startup_handoff = None;
         self.launch_selection = false;
         self.launch_reveal = None;
@@ -418,6 +459,7 @@ impl FolderView {
         self.gallery_rows.clear();
         self.context_menu = None;
         self._shell_menu = None;
+        self._open_request = None;
         // 前の列挙を止める（タスクをdropすると受信側も閉じ、列挙スレッドは次のsendで終了する）
         self.cancel.cancel();
         self.cancel = CancelToken::new();
@@ -440,6 +482,13 @@ impl FolderView {
         self.title_dirty = true;
         self.scroll.scroll_to_item(0, ScrollStrategy::Top);
 
+        self.update_watch(location.path(), cx);
+        if let Location::Archive { archive, prefix } = &location {
+            self.gallery = false;
+            self.load_archive(archive.clone(), prefix.clone(), cx);
+            return;
+        }
+        self.archive_index = None;
         let Location::Folder(path) = location else {
             self.selected = self.pending_select.take().and_then(|path| {
                 self.home_places()
@@ -603,18 +652,88 @@ impl FolderView {
         };
         let entry = &self.entries[i];
         let path = entry.path.clone();
-        // リンクは開く瞬間だけ先を確認（一覧作成時には追わない）
-        let is_dir = match entry.kind {
-            EntryKind::Dir => true,
-            EntryKind::Symlink => path.is_dir(),
-            EntryKind::File => false,
-        };
-        if is_dir {
-            self.navigate_to(path, window, cx);
-        } else if let Err(e) = platform::open_with_default_app(&path) {
-            self.notice = Some(format!("開けませんでした: {e}"));
-            cx.notify();
+        if let Location::Archive { archive, .. } = self.history.current() {
+            if entry.kind == EntryKind::Dir {
+                self.navigate(
+                    Location::Archive {
+                        archive: archive.clone(),
+                        prefix: path.to_string_lossy().replace('\\', "/"),
+                    },
+                    window,
+                    cx,
+                );
+            } else {
+                self.notice = Some("この項目を開くには、右クリックから解凍してください".into());
+                cx.notify();
+            }
+            return;
         }
+        if entry.kind == EntryKind::File && explorer_core::archive::detect_format(&path).is_some() {
+            self.navigate(
+                Location::Archive {
+                    archive: path,
+                    prefix: String::new(),
+                },
+                window,
+                cx,
+            );
+            return;
+        }
+        if entry.kind == EntryKind::Dir {
+            self.navigate_to(path, window, cx);
+        } else {
+            if self._open_request.is_some() {
+                return;
+            }
+            let generation = self.cancel.clone();
+            match crate::file_open::request(
+                path,
+                entry.kind == EntryKind::Symlink,
+                generation.clone(),
+            ) {
+                Ok(receiver) => {
+                    self.observe_open_request(receiver, generation, cx);
+                }
+                Err(error) => {
+                    self.notice = Some(error);
+                    cx.notify();
+                }
+            }
+        }
+    }
+
+    fn observe_open_request(
+        &mut self,
+        receiver: async_channel::Receiver<Result<crate::file_open::OpenOutcome, String>>,
+        generation: CancelToken,
+        cx: &mut Context<Self>,
+    ) {
+        self._open_request = Some(cx.spawn(async move |view, cx| {
+            let result = receiver.recv().await;
+            let _ = Self::with_owner(&view, cx, |view, window, cx| {
+                if generation.is_cancelled() {
+                    return;
+                }
+                view._open_request = None;
+                match result {
+                    Ok(Ok(crate::file_open::OpenOutcome::Directory(path))) => {
+                        let focused = view.focus.contains_focused(window, cx);
+                        let previous = window.focused(cx);
+                        view.navigate_to(path, window, cx);
+                        // Completing a slow link lookup in an inactive tab must not take
+                        // keyboard focus away from the tab the user switched to.
+                        if !focused && let Some(previous) = previous {
+                            window.focus(&previous, cx);
+                        }
+                    }
+                    Ok(Err(error)) => {
+                        view.notice = Some(format!("開けませんでした: {error}"));
+                    }
+                    _ => (),
+                }
+                cx.notify();
+            });
+        }));
     }
 
     fn go_back(&mut self, _: &GoBack, window: &mut Window, cx: &mut Context<Self>) {
@@ -634,6 +753,32 @@ impl FolderView {
     }
 
     fn go_up(&mut self, _: &GoUp, window: &mut Window, cx: &mut Context<Self>) {
+        if let Location::Archive { archive, prefix } = self.history.current().clone() {
+            if prefix.is_empty() {
+                let parent = archive
+                    .parent()
+                    .unwrap_or_else(|| Path::new("/"))
+                    .to_path_buf();
+                let name = archive
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned());
+                let location = Location::Folder(parent);
+                self.history.push(location.clone(), self.selected_name());
+                self.clear_query(window, cx);
+                self.load(location, name, cx);
+            } else {
+                let parent = prefix.rsplit_once('/').map_or("", |(p, _)| p).to_owned();
+                self.navigate(
+                    Location::Archive {
+                        archive,
+                        prefix: parent,
+                    },
+                    window,
+                    cx,
+                );
+            }
+            return;
+        }
         let Some(current) = self.path().map(Path::to_path_buf) else {
             return;
         };
@@ -652,9 +797,13 @@ impl FolderView {
     }
 
     fn refresh(&mut self, _: &Refresh, _: &mut Window, cx: &mut Context<Self>) {
+        self.refresh_drives(cx);
+        if self.path().is_some() && !self.loading {
+            self.request_refresh(cx);
+            return;
+        }
         let location = self.history.current().clone();
         let sel = self.selected_name();
-        self.refresh_drives(cx);
         self.load(location, sel, cx);
     }
 
@@ -813,7 +962,21 @@ impl FolderView {
     pub fn is_home(&self) -> bool {
         matches!(self.history.current(), Location::Home)
     }
+    pub fn is_archive(&self) -> bool {
+        matches!(self.history.current(), Location::Archive { .. })
+    }
     pub fn label(&self) -> String {
+        if let Location::Archive { archive, prefix } = self.history.current() {
+            return if prefix.is_empty() {
+                archive
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                prefix.rsplit('/').next().unwrap_or(prefix).into()
+            };
+        }
         self.path()
             .map(|p| {
                 p.file_name()
@@ -831,6 +994,7 @@ impl FolderView {
     }
     fn input_focused(&self, window: &Window, cx: &App) -> bool {
         self.name_editor.is_some()
+            || self.archive_dialog.is_some()
             || self.search.focus_handle(cx).is_focused(window)
             || self.address.focus_handle(cx).is_focused(window)
     }
@@ -920,9 +1084,13 @@ impl FolderView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let physical = (logical * window.scale_factor()).ceil() as u32;
-        let image = self
-            .icons
-            .update(cx, |icons, cx| icons.get(path, dir, physical, cx));
+        let image = self.icons.update(cx, |icons, cx| {
+            if self.is_archive() && !path.is_absolute() {
+                icons.get_type(path, dir, physical)
+            } else {
+                icons.get(path, dir, physical, cx)
+            }
+        });
         div()
             .size(px(logical))
             .flex_shrink_0()
@@ -978,6 +1146,16 @@ impl FolderView {
                     "focus.ring"
                 }))
                 .child(self.address.clone());
+        } else if let Location::Archive { archive, prefix } = self.history.current() {
+            address = address.child(div().truncate().child(format!(
+                "{}  ›  {}",
+                archive.display(),
+                if prefix.is_empty() {
+                    "圧縮ファイル"
+                } else {
+                    prefix
+                }
+            )));
         } else if let Some(path) = self.path() {
             address = address.child(self.object_icon(path, true, 18., window, cx));
         } else {
@@ -1543,7 +1721,7 @@ impl FolderView {
                             .justify_end()
                             .text_size(px(12.))
                             .text_color(meta_color)
-                            .child(if e.kind == EntryKind::Dir {
+                            .child(if e.kind == EntryKind::Dir && !self.is_archive() {
                                 self.size_cell(&e.path, t, cx)
                             } else {
                                 div()
@@ -1558,14 +1736,16 @@ impl FolderView {
                         .h(px(if self.compact { 24. } else { 28. }))
                         .px(px(12.))
                         .child(
-                            row.on_drag(self.file_drag(ix, cx), |drag, _, _, cx| {
-                                drag.resolve(cx);
-                                cx.new(|_| drag.clone())
+                            row.when(!self.is_archive(), |row| {
+                                row.on_drag(self.file_drag(ix, cx), |drag, _, _, cx| {
+                                    drag.resolve(cx);
+                                    cx.new(|_| drag.clone())
+                                })
+                                .external_drag_payload(
+                                    |drag: &FileDrag, _, cx| drag.external_payload(cx),
+                                )
                             })
-                            .external_drag_payload(|drag: &FileDrag, _, cx| {
-                                drag.external_payload(cx)
-                            })
-                            .when(e.kind == EntryKind::Dir, |d| {
+                            .when(e.kind == EntryKind::Dir && !self.is_archive(), |d| {
                                 Self::file_drop_target(d, Some(e.path.clone()), t, cx)
                             })
                             .on_mouse_down(
@@ -1736,11 +1916,22 @@ impl FolderView {
                         .unwrap_or_else(|| "—".into()),
                 ),
                 (
-                    "場所",
+                    if self.is_archive() {
+                        "圧縮内"
+                    } else {
+                        "場所"
+                    },
                     e.path
                         .parent()
+                        .filter(|p| !p.as_os_str().is_empty())
                         .map(|p| p.display().to_string())
-                        .unwrap_or_default(),
+                        .unwrap_or_else(|| {
+                            if self.is_archive() {
+                                "/".into()
+                            } else {
+                                String::new()
+                            }
+                        }),
                 ),
             ];
             body = body
@@ -1791,30 +1982,33 @@ impl FolderView {
                                     }
                                 })),
                         )
-                        .child(
-                            div()
-                                .id("copy-path")
-                                .h(px(32.))
-                                .px(px(12.))
-                                .flex()
-                                .items_center()
-                                .rounded(px(16.))
-                                .bg(t.c("button.bg"))
-                                .border_1()
-                                .border_color(t.c("button.border"))
-                                .text_size(px(12.))
-                                .cursor_pointer()
-                                .child("パスをコピー")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    if let Some(e) = this.selected_entry() {
-                                        cx.write_to_clipboard(ClipboardItem::new_string(
-                                            e.path.display().to_string(),
-                                        ));
-                                        this.notice = Some("パスをコピーしました".into());
-                                        cx.notify()
-                                    }
-                                })),
-                        ),
+                        .when(!self.is_archive(), |d| {
+                            d.child(
+                                div()
+                                    .id("copy-path")
+                                    .h(px(32.))
+                                    .px(px(12.))
+                                    .flex()
+                                    .items_center()
+                                    .rounded(px(16.))
+                                    .bg(t.c("button.bg"))
+                                    .border_1()
+                                    .border_color(t.c("button.border"))
+                                    .text_size(px(12.))
+                                    .cursor_pointer()
+                                    .child("パスをコピー")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        if this.is_archive() {
+                                            return;
+                                        }
+                                        if let Some(e) = this.selected_entry() {
+                                            this.copy_path_list(&[e.path.clone()], cx);
+                                            this.notice = Some("パスをコピーしました".into());
+                                            cx.notify()
+                                        }
+                                    })),
+                            )
+                        }),
                 );
         } else {
             body = body.child(
@@ -1905,12 +2099,19 @@ impl Drop for FolderView {
     }
 }
 impl Focusable for FolderView {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus.clone()
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        if let Some(dialog) = &self.archive_dialog {
+            dialog.input.focus_handle(cx)
+        } else if let Some(editor) = &self.name_editor {
+            editor.input.focus_handle(cx)
+        } else {
+            self.focus.clone()
+        }
     }
 }
 impl Render for FolderView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.flush_directory_refresh(cx);
         let t = self.theme(window);
         self.check_motion_layout();
         self.cancel_marquee_if_layout_changed();
@@ -1982,6 +2183,22 @@ impl Render for FolderView {
             .on_action(cx.listener(Self::select_all))
             .on_action(cx.listener(Self::copy_files))
             .on_action(cx.listener(Self::rename_selected))
+            .on_action(cx.listener(Self::delete_selected))
+            .on_action(cx.listener(Self::delete_permanently))
+            .on_action(cx.listener(Self::show_properties))
+            .on_action(cx.listener(|this, _: &NewFolderSelected, w, cx| {
+                if !this.input_focused(w, cx) {
+                    if let Some(path) = this.path().map(Path::to_path_buf) {
+                        this.begin_name_edit(name_operations::NameOperation::Folder(path), w, cx);
+                    }
+                }
+            }))
+            .on_action(cx.listener(|this, _: &CopySelectedPaths, w, cx| {
+                if !this.input_focused(w, cx) && this.path().is_some() {
+                    let paths = this.selected_paths();
+                    this.copy_path_list(&paths, cx);
+                }
+            }))
             .on_action(cx.listener(Self::cut_files))
             .on_action(cx.listener(Self::paste_files))
             .on_drag_move(cx.listener(Self::promote_file_drag))
@@ -2116,6 +2333,36 @@ impl Render for FolderView {
                 )
             })
             .child(self.render_status(t, cx))
+            .when_some(
+                self.transfer_progress.read(cx).latest.clone(),
+                |d, progress| {
+                    let percent = if progress.work_total == 0 {
+                        String::new()
+                    } else {
+                        format!(
+                            " · {}%",
+                            (u64::from(progress.work_done) * 100 / u64::from(progress.work_total))
+                                .min(100)
+                        )
+                    };
+                    d.child(
+                        div()
+                            .px(px(14.))
+                            .py(px(8.))
+                            .text_size(px(12.))
+                            .bg(t.c("surface.chrome"))
+                            .child(format!(
+                                "{}{percent} · {} · 中止はWindowsの進捗ウィンドウから",
+                                progress.label,
+                                progress.current_item.unwrap_or_else(|| "準備中…".into())
+                            )),
+                    )
+                },
+            )
+            .child(self.render_archive_jobs(t, cx))
+            .when(self.is_archive(), |d| {
+                d.child(self.render_archive_bar(t, cx))
+            })
             .when(self.inline_name_target().is_some(), |d| {
                 d.when_some(
                     self.name_editor.as_ref().and_then(|e| e.error.clone()),
@@ -2138,6 +2385,9 @@ impl Render for FolderView {
                 self.name_editor.is_some() && self.inline_name_target().is_none(),
                 |d| d.child(self.render_name_editor(t, cx)),
             )
+            .when(self.archive_dialog.is_some(), |d| {
+                d.child(self.render_archive_dialog(t, cx))
+            })
     }
 }
 // Shared by real list rows and the hover regression probe.

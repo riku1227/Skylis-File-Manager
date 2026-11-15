@@ -48,6 +48,34 @@ fn screen_position(position: Point<Pixels>, window: &Window) -> Point<Pixels> {
 }
 
 impl Explorer {
+    pub(super) fn new_window(&mut self, _: &NewWindow, w: &mut Window, cx: &mut Context<Self>) {
+        let icons = self.icons.clone();
+        let mode = self.mode;
+        let compact = self.compact;
+        let bounds = Bounds::new(w.bounds().origin + point(px(32.), px(32.)), w.bounds().size);
+        if let Err(error) = cx.open_window(
+            gpui::WindowOptions {
+                window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
+                window_min_size: Some(size(px(900.), px(600.))),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: Some("Skylis".into()),
+                    appears_transparent: cfg!(any(windows, target_os = "macos")),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            move |w, cx| {
+                cx.new(|cx| {
+                    let folder =
+                        cx.new(|cx| FolderView::new(Location::Home, mode, icons.clone(), w, cx));
+                    Self::with_tabs(vec![folder], icons, mode, compact, w, cx)
+                })
+            },
+        ) {
+            self.tab_error = Some(format!("新しいウィンドウを開けません: {error}"));
+            cx.notify();
+        }
+    }
     fn tab_drop_slot_at(&self, position: Point<Pixels>, window: &Window) -> Option<usize> {
         let strip = self.tab_strip.get();
         let right = window.viewport_size().width - px(if cfg!(windows) { 138. } else { 0. });
@@ -191,6 +219,12 @@ impl Explorer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.tabs.len() == 1 && crate::file_operations::has_active() {
+            self.tab_error =
+                Some("ファイル操作中は、最後のタブを別のウィンドウへ移動できません。".into());
+            cx.notify();
+            return;
+        }
         let tab = self.tabs[index].clone();
         // Keep the source until destination update succeeds: a closed target never loses a tab.
         if destination
@@ -214,6 +248,12 @@ impl Explorer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.tabs.len() == 1 && crate::file_operations::has_active() {
+            self.tab_error =
+                Some("ファイル操作中は、最後のタブを別のウィンドウへ移動できません。".into());
+            cx.notify();
+            return;
+        }
         let tab = self.tabs[index].clone();
         let icons = self.icons.clone();
         let mode = self.mode;
@@ -259,6 +299,12 @@ impl Explorer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if crate::file_operations::has_active() {
+            self.tab_error =
+                Some("ファイル操作が完了してからウィンドウをまとめてください。".into());
+            cx.notify();
+            return;
+        }
         self.tab_menu = None;
         let current = w.window_handle();
         for handle in cx.windows().into_iter().filter(|handle| *handle != current) {

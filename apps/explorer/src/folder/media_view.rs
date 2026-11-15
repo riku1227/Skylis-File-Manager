@@ -12,7 +12,7 @@ impl FolderView {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.input_focused(w, cx) {
+        if self.is_archive() || self.input_focused(w, cx) {
             return;
         }
         if self.preview_open {
@@ -94,6 +94,9 @@ impl FolderView {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if self.is_archive() {
+            return self.object_icon(&entry.path, entry.is_dir_like(), 68., window, cx);
+        }
         let thumbnail = self.media.update(cx, |media, cx| {
             media.get_thumbnail(
                 entry,
@@ -127,6 +130,9 @@ impl FolderView {
     }
 
     pub(super) fn set_gallery(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.is_archive() {
+            return;
+        }
         self.gallery = enabled;
         self.gallery_override = Some(enabled);
         self.media_scope.cancel();
@@ -135,6 +141,10 @@ impl FolderView {
         cx.notify();
     }
     pub(super) fn choose_auto_gallery(&mut self, cx: &mut Context<Self>) {
+        if self.is_archive() {
+            self.gallery = false;
+            return;
+        }
         if self.gallery_override.is_none() {
             let enabled = cx
                 .try_global::<crate::settings::SharedPreferences>()

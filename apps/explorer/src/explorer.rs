@@ -10,6 +10,29 @@ mod settings_panel;
 mod tabs;
 use tabs::TabDrag;
 
+fn operations_pending(cx: &App) -> bool {
+    crate::file_operations::has_active()
+        || crate::archive_jobs::shared(cx).is_some_and(|jobs| jobs.read(cx).has_active())
+}
+
+pub(crate) fn request_quit(cx: &mut App) {
+    let properties_open = crate::native_shell::properties_active();
+    if !operations_pending(cx) && !properties_open {
+        cx.quit();
+        return;
+    }
+    for handle in cx.windows() {
+        if let Some(handle) = handle.downcast::<Explorer>() {
+            let _ = handle.update(cx, |view, _, cx| {
+                view.tab_error = Some(if properties_open {
+                    "プロパティ画面を閉じてから終了してください。"
+                } else { "ファイル操作が進行中です。完了を待つか、処理をキャンセルしてから終了してください。" }.into());
+                cx.notify();
+            });
+        }
+    }
+}
+
 /// Each tab owns its entity and asynchronous listing. Switching never redirects a pending batch.
 pub struct Explorer {
     tabs: Vec<Entity<FolderView>>,
@@ -75,6 +98,20 @@ impl Explorer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let weak = cx.entity().downgrade();
+        window.on_window_should_close(cx, move |_, cx| {
+            let last_properties_owner = crate::native_shell::properties_active()
+                && cx.windows().iter().filter(|handle| handle.downcast::<Explorer>().is_some()).count() <= 1;
+            if operations_pending(cx) || last_properties_owner {
+                let _ = weak.update(cx, |this, cx| {
+                    this.tab_error = Some(if last_properties_owner {
+                        "プロパティ画面を閉じてから最後のウィンドウを閉じてください。"
+                    } else { "ファイル操作が進行中です。完了を待つか、処理をキャンセルしてから閉じてください。" }.into());
+                    cx.notify();
+                });
+                false
+            } else { true }
+        });
         let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
         apply_frame_limit(window, preferences.read(cx).value.high_refresh_rate);
         let diagnostics =
@@ -272,6 +309,7 @@ impl Render for Explorer {
                 mode: self.mode,
             };
             let current = i == self.active;
+            let archive = tab.read(cx).is_archive();
             let path = tab.read(cx).path().map(std::path::Path::to_path_buf);
             let image = path.as_ref().and_then(|path| {
                 self.icons.update(cx, |icons, cx| {
@@ -335,7 +373,11 @@ impl Render for Explorer {
                             .when(path.is_none(), |d| {
                                 d.child(
                                     svg()
-                                        .path("icons/home.svg")
+                                        .path(if archive {
+                                            "icons/file.svg"
+                                        } else {
+                                            "icons/home.svg"
+                                        })
                                         .size_full()
                                         .text_color(t.c("icon.default")),
                                 )
@@ -462,6 +504,7 @@ impl Render for Explorer {
                     this.new_tab(action, w, cx);
                 }
             }))
+            .on_action(cx.listener(Self::new_window))
             .on_action(cx.listener(|this, action, w, cx| {
                 if !this.settings_open {
                     this.close_tab(action, w, cx);

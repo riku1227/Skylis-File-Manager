@@ -2,6 +2,41 @@ use super::*;
 use crate::file_operations::{self, TransferKind, TransferOutcome};
 use std::{cell::OnceCell, collections::BTreeSet, rc::Rc};
 
+pub(super) struct TransferProgress {
+    pub latest: Option<file_operations::OperationProgress>,
+    _receiver: Task<()>,
+}
+struct SharedTransferProgress(Entity<TransferProgress>);
+impl gpui::Global for SharedTransferProgress {}
+
+pub(super) fn transfer_progress(cx: &mut App) -> Entity<TransferProgress> {
+    if let Some(shared) = cx.try_global::<SharedTransferProgress>() {
+        return shared.0.clone();
+    }
+    let entity = cx.new(|cx| {
+        let receiver = file_operations::subscribe_progress();
+        let task = cx.spawn(async move |view: gpui::WeakEntity<TransferProgress>, cx| {
+            while receiver.recv().await.is_ok() {
+                if view
+                    .update(cx, |view, cx| {
+                        view.latest = file_operations::progress_snapshot();
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        TransferProgress {
+            latest: file_operations::progress_snapshot(),
+            _receiver: task,
+        }
+    });
+    cx.set_global(SharedTransferProgress(entity.clone()));
+    entity
+}
+
 /// 弱参照だけを保持し、終了したドラッグの選択や画像を残さない。
 struct DragFeedback {
     source: gpui::EntityId,
@@ -27,6 +62,14 @@ fn valid_drop_paths(paths: &[PathBuf], destination: &Path) -> bool {
                 && !destination.starts_with(path)
                 && path.parent() != Some(destination)
         })
+}
+
+fn external_drop_kind(same_process: bool, control: bool, shift: bool) -> TransferKind {
+    if same_process {
+        TransferKind::from_drop_modifiers(control, shift)
+    } else {
+        TransferKind::Copy
+    }
 }
 
 /// Cheap per-row descriptor. The selection is frozen once when a drag actually starts,
@@ -303,10 +346,15 @@ impl FolderView {
                 cx.listener(move |this, drag: &gpui::ExternalPaths, window, cx| {
                     cx.stop_propagation();
                     let modifiers = window.modifiers();
+                    #[cfg(windows)]
+                    let same_process =
+                        NATIVE_DRAG_ACTIVE.load(std::sync::atomic::Ordering::Acquire);
+                    #[cfg(not(windows))]
+                    let same_process = false;
                     this.receive_files(
                         drag.paths().to_vec(),
                         external_destination.clone(),
-                        TransferKind::from_drop_modifiers(modifiers.control, modifiers.shift),
+                        external_drop_kind(same_process, modifiers.control, modifiers.shift),
                         window,
                         cx,
                     );
@@ -327,8 +375,7 @@ impl FolderView {
                 _ => false,
             };
             if refresh {
-                let selected = view.selected_name();
-                view.load(view.history.current().clone(), selected, cx);
+                view.request_refresh(cx);
             }
             if let Some(notice) = notice {
                 view.notice = Some(notice.text.clone());
@@ -474,7 +521,52 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.is_archive() {
+            return;
+        }
         self.start_transfer(paths, destination, kind, None, window, cx);
+    }
+
+    pub(super) fn observe_mutation_result(
+        &mut self,
+        paths: Vec<PathBuf>,
+        receiver: async_channel::Receiver<file_operations::TransferResult>,
+        completed: &'static str,
+        cx: &mut Context<Self>,
+    ) {
+        let origin = self.history.current().clone();
+        let listing = self.cancel.clone();
+        let initiator = cx.entity_id();
+        let directories = paths
+            .iter()
+            .filter_map(|p| p.parent().map(Path::to_path_buf))
+            .collect();
+        let events = file_transfer_events(cx);
+        cx.spawn(async move |_, cx| {
+            let result = receiver
+                .recv()
+                .await
+                .unwrap_or_else(|_| Err("ファイル操作の結果を取得できませんでした".into()));
+            let text = match result {
+                Ok(TransferOutcome::Completed) => completed.into(),
+                Ok(TransferOutcome::Aborted) => {
+                    "ファイル操作を中止しました。一部は完了している場合があります".into()
+                }
+                Err(error) => error,
+            };
+            let _ = events.update(cx, |_, cx| {
+                cx.emit(FileTransferCompleted {
+                    directories,
+                    notice: Some(TransferNotice {
+                        initiator,
+                        origin,
+                        listing,
+                        text,
+                    }),
+                })
+            });
+        })
+        .detach();
     }
 
     fn start_transfer(
@@ -559,7 +651,7 @@ impl FolderView {
     }
 
     fn clipboard_write(&mut self, kind: TransferKind, window: &mut Window, cx: &mut Context<Self>) {
-        if self.input_focused(window, cx) {
+        if self.path().is_none() || self.input_focused(window, cx) {
             return;
         }
         let paths = self.selected_paths();
@@ -611,6 +703,9 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.path().is_none() {
+            return;
+        }
         #[cfg(windows)]
         match file_operations::read_file_clipboard() {
             Ok(Some(files)) => self.start_transfer(
@@ -735,6 +830,18 @@ impl FolderView {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn outside_drags_copy_but_own_native_drags_keep_explorer_modifiers() {
+        use super::{TransferKind, external_drop_kind};
+        assert_eq!(external_drop_kind(false, false, true), TransferKind::Copy);
+        assert_eq!(external_drop_kind(false, false, false), TransferKind::Copy);
+        assert_eq!(
+            external_drop_kind(true, false, false),
+            TransferKind::Automatic
+        );
+        assert_eq!(external_drop_kind(true, true, false), TransferKind::Copy);
+        assert_eq!(external_drop_kind(true, false, true), TransferKind::Move);
+    }
     use super::*;
 
     #[gpui::test]
@@ -929,6 +1036,11 @@ mod tests {
                 window
                     .update(cx, |view, _, _| {
                         view.history = History::new(Location::Folder(location.clone()));
+                        view.watch_state =
+                            super::super::watch::WatchState::for_directory(location.clone());
+                        // Keep refresh requests queued so this test can inspect delivery
+                        // without depending on native watcher or directory worker timing.
+                        view.loading = true;
                         view.notice = Some("existing notice".into());
                         view.cancel.clone()
                     })
@@ -951,11 +1063,19 @@ mod tests {
             });
         });
         for (index, token) in tokens.iter().enumerate() {
-            assert_eq!(
-                token.is_cancelled(),
-                index < 3,
-                "only source and destination views refresh"
+            assert!(
+                !token.is_cancelled(),
+                "snapshot refresh preserves the listing generation"
             );
+            windows[index]
+                .update(cx, |view, _, _| {
+                    assert_eq!(
+                        view.watch_state.refresh_pending(),
+                        index < 3,
+                        "only source and destination views refresh"
+                    );
+                })
+                .unwrap();
         }
         windows[0]
             .update(cx, |view, _, _| {
@@ -970,7 +1090,14 @@ mod tests {
         // Returning to the same path still has a different generation; old notices must
         // not overwrite current UI. Refresh is nevertheless delivered to every match.
         let replacement = windows[0]
-            .update(cx, |view, _, _| view.cancel.clone())
+            .update(cx, |view, _, _| {
+                // Model a navigation away/back explicitly; refresh alone keeps the token.
+                view.cancel.cancel();
+                view.cancel = CancelToken::new();
+                view.watch_state = super::super::watch::WatchState::for_directory(source.clone());
+                view.notice = Some("after navigation".into());
+                view.cancel.clone()
+            })
             .unwrap();
         cx.update(|cx| {
             let events = file_transfer_events(cx);
@@ -986,14 +1113,19 @@ mod tests {
                 })
             });
         });
-        assert!(replacement.is_cancelled());
+        assert!(!replacement.is_cancelled());
         windows[0]
             .update(cx, |view, _, _| {
-                assert_ne!(view.notice.as_deref(), Some("stale"))
+                assert!(view.watch_state.refresh_pending());
+                assert_eq!(view.notice.as_deref(), Some("after navigation"));
             })
             .unwrap();
         let survivor = windows[2]
-            .update(cx, |view, _, _| view.cancel.clone())
+            .update(cx, |view, _, _| {
+                view.watch_state =
+                    super::super::watch::WatchState::for_directory(destination.clone());
+                view.cancel.clone()
+            })
             .unwrap();
         windows[0]
             .update(cx, |_, window, _| window.remove_window())
@@ -1007,10 +1139,15 @@ mod tests {
                 })
             });
         });
-        assert!(
-            survivor.is_cancelled(),
-            "completion outlives its initiating window"
-        );
+        assert!(!survivor.is_cancelled());
+        windows[2]
+            .update(cx, |view, _, _| {
+                assert!(
+                    view.watch_state.refresh_pending(),
+                    "completion outlives its initiating window"
+                );
+            })
+            .unwrap();
     }
 
     #[test]

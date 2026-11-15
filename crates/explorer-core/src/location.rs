@@ -4,12 +4,18 @@ use std::path::{Path, PathBuf};
 pub enum Location {
     Home,
     Folder(PathBuf),
+    /// An archive member is never a filesystem destination. `prefix` is a
+    /// validated, slash-separated member path; an empty prefix is the root.
+    Archive {
+        archive: PathBuf,
+        prefix: String,
+    },
 }
 
 impl Location {
     pub fn path(&self) -> Option<&Path> {
         match self {
-            Self::Home => None,
+            Self::Home | Self::Archive { .. } => None,
             Self::Folder(path) => Some(path),
         }
     }
@@ -49,6 +55,15 @@ pub fn resolve_address(text: &str, base: &Path, home: &Path) -> Result<PathBuf, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn archive_members_never_expose_a_filesystem_destination() {
+        let location = Location::Archive {
+            archive: PathBuf::from("C:/downloads/example.zip"),
+            prefix: "inside/folder".into(),
+        };
+        assert!(location.path().is_none());
+    }
 
     #[test]
     fn home_and_folders_share_history_without_a_fake_filesystem_path() {

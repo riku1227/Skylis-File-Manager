@@ -321,6 +321,10 @@ impl ShellIcons {
         fallback_image.flatten()
     }
 
+    pub fn get_type(&mut self, path: &Path, is_dir: bool, size: u32) -> Option<Arc<RenderImage>> {
+        self.get_key(Key::file_type(path, is_dir, size))
+    }
+
     pub fn get_recycle_bin(
         &mut self,
         size: u32,

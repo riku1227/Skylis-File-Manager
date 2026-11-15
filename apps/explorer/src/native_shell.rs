@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 mod properties;
 #[cfg(windows)]
 mod windows;
+pub use properties::active as properties_active;
 pub use properties::show as properties;
 
 /// Shell parsing accepts Windows separators, unlike Rust filesystem APIs that also
