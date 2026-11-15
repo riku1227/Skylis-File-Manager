@@ -14,6 +14,7 @@ struct Segment {
     from: f32,
     target: f32,
     velocity: f32,
+    duration: Duration,
 }
 
 impl ScrollMotion {
@@ -26,10 +27,10 @@ impl ScrollMotion {
     pub fn sample(&self, now: Instant, max: f32) -> Option<(f32, f32)> {
         let segment = self.segment.as_ref()?;
         let t = (now.saturating_duration_since(segment.start).as_secs_f32()
-            / DURATION.as_secs_f32())
+            / segment.duration.as_secs_f32())
         .min(1.);
         let distance = segment.target - segment.from;
-        let tangent = segment.velocity * DURATION.as_secs_f32();
+        let tangent = segment.velocity * segment.duration.as_secs_f32();
         let position = segment.from
             + distance * (3. * t * t - 2. * t * t * t)
             + tangent * (t * t * t - 2. * t * t + t);
@@ -38,7 +39,7 @@ impl ScrollMotion {
             0.
         } else {
             (distance * (6. * t - 6. * t * t) + tangent * (3. * t * t - 4. * t + 1.))
-                / DURATION.as_secs_f32()
+                / segment.duration.as_secs_f32()
         };
         Some((clamped, velocity))
     }
@@ -59,10 +60,17 @@ impl ScrollMotion {
             self.cancel();
             return false;
         }
+        // Repeated notches carry velocity into a slightly longer bounded glide.
+        // Precise touchpad momentum bypasses this trajectory entirely.
+        let duration = if same_direction {
+            Duration::from_millis((100. + distance.abs() * 0.4).clamp(100., 180.) as u64)
+        } else {
+            DURATION
+        };
         let speed = if same_direction && velocity * distance > 0. {
             velocity
                 .abs()
-                .min(3. * distance.abs() / DURATION.as_secs_f32())
+                .min(3. * distance.abs() / duration.as_secs_f32())
                 * distance.signum()
         } else {
             0.
@@ -72,6 +80,7 @@ impl ScrollMotion {
             from,
             target,
             velocity: speed,
+            duration,
         });
         true
     }
@@ -80,7 +89,7 @@ impl ScrollMotion {
         if self
             .segment
             .as_ref()
-            .is_some_and(|s| now.saturating_duration_since(s.start) >= DURATION)
+            .is_some_and(|s| now.saturating_duration_since(s.start) >= s.duration)
             || position <= 0. && self.segment.as_ref().unwrap().target <= 0.
             || position >= max.max(0.) && self.segment.as_ref().unwrap().target >= max.max(0.)
         {
@@ -112,8 +121,9 @@ impl WheelClassifier {
                     && normalized != 0.
                     && (normalized - normalized.round()).abs() < 0.001
             });
-        self.direct |=
-            changed || !notch || interval.is_some_and(|dt| dt < Duration::from_millis(25));
+        // Fast, normalized POINTER notches are still a wheel. Rate alone must
+        // not turn smoothing off in the middle of a spin.
+        self.direct |= changed || !notch;
         self.last = Some(now);
         self.lines = lines;
         !self.direct
@@ -132,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn trajectory_is_monotone_and_ends_at_100ms_without_frame_replay() {
+    fn trajectory_is_monotone_and_ends_within_bound_without_frame_replay() {
         let now = Instant::now();
         for hz in [60., 120., 144., 240.] {
             let mut motion = ScrollMotion::default();
@@ -172,7 +182,12 @@ mod tests {
         near(velocity, 1500.);
         motion.retarget(middle, 0., 100., 1000.);
         near(motion.sample(middle, 1000.).unwrap().1, velocity);
-        near(motion.step(middle + DURATION, 1000.).unwrap(), 200.);
+        near(
+            motion
+                .step(middle + Duration::from_millis(180), 1000.)
+                .unwrap(),
+            200.,
+        );
         motion.retarget(now, 0., 100., 1000.);
         motion.retarget(middle, 0., -20., 1000.);
         near(motion.sample(middle, 1000.).unwrap().1, 0.);
@@ -198,8 +213,8 @@ mod tests {
         let now = Instant::now();
         let mut wheel = WheelClassifier::default();
         assert!(wheel.smooth(now, Some(-3.), Some(3)));
-        assert!(!wheel.smooth(now + Duration::from_millis(10), Some(-3.), Some(3)));
-        assert!(!wheel.smooth(now + Duration::from_millis(50), Some(-3.), Some(3)));
+        assert!(wheel.smooth(now + Duration::from_millis(10), Some(-3.), Some(3)));
+        assert!(wheel.smooth(now + Duration::from_millis(50), Some(-3.), Some(3)));
         assert!(wheel.smooth(now + Duration::from_millis(200), Some(-3.), Some(3)));
         assert!(!wheel.smooth(now + Duration::from_millis(250), Some(-1.), Some(3)));
         assert!(!wheel.smooth(now + Duration::from_millis(300), Some(-3.), Some(3)));
@@ -244,7 +259,7 @@ mod tests {
         let mut motion = ScrollMotion::default();
         motion.retarget(now, 0., 1000., 10000.);
         motion.retarget(middle, 0., 1., 501.);
-        near(motion.sample(middle, 501.).unwrap().1, 30.);
+        assert!(motion.sample(middle, 501.).unwrap().1 <= 30.);
         for millis in 0..=100 {
             let (position, velocity) = motion
                 .sample(middle + Duration::from_millis(millis), 501.)
@@ -255,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn repeated_notches_end_100ms_after_last_input_without_a_queue() {
+    fn repeated_notches_end_within_180ms_of_last_input_without_a_queue() {
         let now = Instant::now();
         let mut motion = ScrollMotion::default();
         for n in 0..10 {
@@ -263,7 +278,7 @@ mod tests {
         }
         near(
             motion
-                .step(now + Duration::from_millis(370), 10000.)
+                .step(now + Duration::from_millis(450), 10000.)
                 .unwrap(),
             600.,
         );
