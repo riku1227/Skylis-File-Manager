@@ -147,15 +147,27 @@ impl Explorer {
     ) {
         tab.update(cx, |tab, cx| {
             tab.close_preview(cx);
+            tab.pane = self.pane;
             tab.attach_window(window, cx);
         });
         let observer = cx.observe(tab, |_, _, cx| cx.notify());
         let events = cx.subscribe_in(
             tab,
             window,
-            |this, _, event: &crate::folder::FolderEvent, w, cx| {
-                let crate::folder::FolderEvent::OpenInTab(path) = event;
-                this.open_tab_at(Location::Folder(path.clone()), w, cx);
+            |this, _, event: &crate::folder::FolderEvent, w, cx| match event {
+                crate::folder::FolderEvent::OpenInTab(path) => {
+                    this.open_tab_at(Location::Folder(path.clone()), w, cx)
+                }
+                crate::folder::FolderEvent::SetPane(enabled) => {
+                    this.pane = *enabled;
+                    for tab in &this.tabs {
+                        tab.update(cx, |tab, cx| {
+                            tab.pane = *enabled;
+                            cx.notify();
+                        });
+                    }
+                    cx.notify();
+                }
             },
         );
         self.tab_subscriptions
@@ -195,6 +207,7 @@ impl Explorer {
             active.update(cx, |tab, cx| {
                 tab.cancel_scroll_motion();
                 tab.close_preview(cx);
+                tab.close_display_settings(cx);
             });
         }
         tab.update(cx, |tab, cx| {
@@ -582,6 +595,74 @@ mod tests {
                 .new(|cx| FolderView::new(Location::Home, ThemeMode::Light, icons.clone(), w, cx));
             Explorer::with_tabs(vec![tab], icons, ThemeMode::Light, false, w, cx)
         })
+    }
+
+    #[gpui::test]
+    fn accepting_tab_dismisses_popup_in_previous_active_tab(cx: &mut gpui::TestAppContext) {
+        let source = test_window(cx);
+        let destination = test_window(cx);
+        let previous = destination
+            .update(cx, |view, w, cx| {
+                let tab = view.tabs[0].clone();
+                tab.update(cx, |tab, cx| tab.open_display_settings(w, cx));
+                tab
+            })
+            .unwrap();
+        source
+            .update(cx, |view, w, cx| {
+                view.transfer_tab(0, destination, 1, w, cx)
+            })
+            .unwrap();
+        destination
+            .update(cx, |view, w, cx| {
+                previous.update(cx, |tab, cx| {
+                    assert!(
+                        !tab.close_display_settings(cx),
+                        "incoming tab must dismiss previous popup before switching back"
+                    )
+                });
+                view.switch(0, w, cx);
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn pane_is_window_local_and_transferred_tabs_adopt_destination(cx: &mut gpui::TestAppContext) {
+        let first = test_window(cx);
+        let second = test_window(cx);
+        first
+            .update(cx, |view, w, cx| {
+                view.new_tab(&NewTab, w, cx);
+                view.tabs[0].update(cx, |_, cx| {
+                    cx.emit(crate::folder::FolderEvent::SetPane(false))
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+        first
+            .read_with(cx, |view, cx| {
+                assert!(view.tabs.iter().all(|tab| !tab.read(cx).pane))
+            })
+            .unwrap();
+        second
+            .read_with(cx, |view, cx| {
+                assert!(view.pane);
+                assert!(view.tabs[0].read(cx).pane);
+            })
+            .unwrap();
+        first
+            .update(cx, |view, w, cx| view.transfer_tab(0, second, 1, w, cx))
+            .unwrap();
+        cx.run_until_parked();
+        second
+            .read_with(cx, |view, cx| {
+                assert_eq!(view.tabs.len(), 2);
+                assert!(view.tabs.iter().all(|tab| tab.read(cx).pane));
+            })
+            .unwrap();
+        first
+            .read_with(cx, |view, cx| assert!(!view.tabs[0].read(cx).pane))
+            .unwrap();
     }
 
     #[gpui::test]

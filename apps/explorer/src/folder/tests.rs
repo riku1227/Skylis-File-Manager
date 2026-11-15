@@ -1,7 +1,280 @@
 use super::*;
 use std::{cell::Cell, rc::Rc};
 
+#[gpui::test]
+fn hidden_visibility_is_shared_and_inherited_without_listing_again(cx: &mut gpui::TestAppContext) {
+    cx.background_executor.allow_parking();
+    cx.update(|cx| {
+        let preferences = cx.new(|cx| {
+            crate::settings::Preferences::new((Default::default(), Some("memory-only".into())), cx)
+        });
+        cx.set_global(crate::settings::SharedPreferences(preferences));
+    });
+    let first = workflow_window(cx);
+    let second = workflow_window(cx);
+    for window in [first, second] {
+        window
+            .update(cx, |view, _, _| {
+                let mut entries = workflow_entries(&["assets.rs", "folder.rs"]);
+                entries[0].hidden = true;
+                view.entries = entries;
+                view.rebuild_visible(None);
+                assert_eq!(view.visible.len(), 1);
+            })
+            .unwrap();
+    }
+    first
+        .update(cx, |view, w, cx| view.toggle_hidden(&ToggleHidden, w, cx))
+        .unwrap();
+    cx.run_until_parked();
+    second
+        .read_with(cx, |view, _| {
+            assert!(view.show_hidden);
+            assert_eq!(view.visible.len(), 2);
+            assert!(view._listing.is_none());
+        })
+        .unwrap();
+    let third = workflow_window(cx);
+    third
+        .read_with(cx, |view, _| assert!(view.show_hidden))
+        .unwrap();
+    second
+        .update(cx, |view, w, cx| view.toggle_hidden(&ToggleHidden, w, cx))
+        .unwrap();
+    cx.run_until_parked();
+    first
+        .read_with(cx, |view, _| {
+            assert!(!view.show_hidden);
+            assert_eq!(view.visible.len(), 1);
+        })
+        .unwrap();
+}
+
 struct HoverProbe(Rc<Cell<usize>>);
+
+#[gpui::test]
+fn display_sort_is_idempotent_and_preserves_selection(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            view.entries = workflow_entries(&["main.rs", "assets.rs", "folder.rs"]);
+            view.rebuild_visible(None);
+            view.select(0, cx);
+            let selected = view.selected_entry().unwrap().path.clone();
+            view.gallery = true;
+            view.grouped = true;
+            let descending = SortOrder {
+                key: SortKey::Name,
+                ascending: false,
+            };
+            view.apply_sort(descending, cx);
+            view.apply_sort(descending, cx);
+            assert_eq!(view.sort, descending);
+            assert_eq!(
+                view.entries
+                    .iter()
+                    .map(|e| e.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["main.rs", "folder.rs", "assets.rs"]
+            );
+            assert_eq!(view.selected_entry().unwrap().path, selected);
+            assert!(!view.grouped);
+            assert!(view.gallery);
+            view.apply_sort(SortOrder::default(), cx);
+            assert_eq!(view.entries[0].name, "assets.rs");
+            assert_eq!(view.selected_entry().unwrap().path, selected);
+        })
+        .unwrap();
+}
+
+fn click_display_control(visual: &mut gpui::VisualTestContext, selector: &'static str) {
+    let point = visual
+        .debug_bounds(selector)
+        .unwrap_or_else(|| panic!("missing {selector}"))
+        .center();
+    visual.simulate_mouse_down(point, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_up(point, MouseButton::Left, gpui::Modifiers::none());
+}
+
+#[gpui::test]
+fn display_popup_omits_unavailable_controls_and_skips_them_on_keyboard(
+    cx: &mut gpui::TestAppContext,
+) {
+    for location in [
+        Location::Home,
+        Location::Archive {
+            archive: "example.zip".into(),
+            prefix: String::new(),
+        },
+    ] {
+        let home = matches!(location, Location::Home);
+        let window = workflow_window(cx);
+        window
+            .update(cx, |view, w, cx| {
+                view.history = History::new(location);
+                view.open_display_settings(w, cx);
+            })
+            .unwrap();
+        cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        assert!(visual.debug_bounds("display-details").is_none());
+        assert!(visual.debug_bounds("display-gallery").is_none());
+        assert_eq!(visual.debug_bounds("display-sort-name").is_none(), home);
+        assert_eq!(visual.debug_bounds("display-pane").is_none(), home);
+        assert!(visual.debug_bounds("display-hidden").is_some());
+        assert!(visual.debug_bounds("display-density-standard").is_some());
+        // The first keystroke must operate the first visible row, never a hidden row.
+        cx.simulate_keystrokes(window.into(), "right");
+        window
+            .read_with(cx, |view, _| {
+                if home {
+                    assert!(view.show_hidden);
+                } else {
+                    assert_eq!(view.sort.key, SortKey::Modified);
+                }
+            })
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "shift-tab");
+        window
+            .update(cx, |view, w, _| {
+                assert!(!view.display_settings.open);
+                assert!(view.display_settings.trigger_focus.is_focused(w));
+            })
+            .unwrap();
+    }
+}
+
+#[gpui::test]
+fn display_popup_keeps_edits_open_and_esc_does_not_clear_search(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            view.entries = workflow_entries(&["assets.rs", "folder.rs"]);
+            view.query = "rs".into();
+            view.rebuild_visible(None);
+            cx.notify();
+        })
+        .unwrap();
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    click_display_control(&mut visual, "display-settings-trigger");
+    click_display_control(&mut visual, "display-sort-size");
+    click_display_control(&mut visual, "display-sort-descending");
+    click_display_control(&mut visual, "display-hidden");
+    click_display_control(&mut visual, "display-gallery");
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.display_settings.open);
+            assert_eq!(
+                view.sort,
+                SortOrder {
+                    key: SortKey::Size,
+                    ascending: false
+                }
+            );
+            assert!(view.gallery);
+            assert!(view.show_hidden);
+            assert_eq!(view.query, "rs");
+        })
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "escape");
+    window
+        .update(cx, |view, w, _| {
+            assert!(!view.display_settings.open);
+            assert!(view.display_settings.trigger_focus.is_focused(w));
+            assert_eq!(view.query, "rs");
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn display_popup_fits_small_windows_and_trigger_dismisses(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    for (width, height) in [(900., 600.), (480., 360.), (320., 240.)] {
+        visual.simulate_resize(gpui::size(px(width), px(height)));
+        click_display_control(&mut visual, "display-settings-trigger");
+        let bounds = visual
+            .debug_bounds("display-settings-panel")
+            .unwrap_or_else(|| {
+                panic!(
+                    "popup missing at {width}x{height}; trigger {:?}",
+                    visual.debug_bounds("display-settings-trigger")
+                )
+            });
+        assert!(bounds.origin.x >= px(0.) && bounds.origin.y >= px(0.));
+        assert!(bounds.right() <= px(width) && bounds.bottom() <= px(height));
+        cx.simulate_keystrokes(window.into(), "escape");
+    }
+    click_display_control(&mut visual, "display-settings-trigger");
+    click_display_control(&mut visual, "display-settings-trigger");
+    window
+        .read_with(cx, |view, _| assert!(!view.display_settings.open))
+        .unwrap();
+    click_display_control(&mut visual, "display-settings-trigger");
+    let outside = gpui::point(px(4.), px(120.));
+    visual.simulate_mouse_down(outside, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_up(outside, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .update(cx, |view, w, _| {
+            assert!(!view.display_settings.open);
+            assert!(
+                view.focus.is_focused(w),
+                "outside dismissal must leave keyboard navigation usable"
+            );
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn display_popup_owns_bound_file_keys_and_tabs_out(cx: &mut gpui::TestAppContext) {
+    cx.update(|cx| {
+        cx.bind_keys([
+            gpui::KeyBinding::new("right", SelectRight, Some("Explorer")),
+            gpui::KeyBinding::new("down", SelectNext, Some("Explorer")),
+            gpui::KeyBinding::new("enter", OpenSelected, Some("Explorer")),
+            gpui::KeyBinding::new("space", QuickPreview, Some("Explorer")),
+            gpui::KeyBinding::new("escape", ClearSearch, Some("Explorer")),
+            gpui::KeyBinding::new("ctrl-h", ToggleHidden, Some("Explorer")),
+        ]);
+    });
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, w, cx| {
+            view.entries = workflow_entries(&["assets.rs", "folder.rs"]);
+            view.rebuild_visible(None);
+            view.select(0, cx);
+            w.focus(&view.focus, cx);
+        })
+        .unwrap();
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "tab down right down right enter space");
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.display_settings.open);
+            assert!(view.gallery);
+            assert_eq!(view.sort.key, SortKey::Modified);
+            assert_eq!(view.selected_entry().unwrap().name, "assets.rs");
+            assert!(!view.preview_open);
+        })
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "ctrl-h");
+    window
+        .read_with(cx, |view, _| assert!(view.show_hidden))
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "tab tab tab tab tab");
+    window
+        .update(cx, |view, w, _| {
+            assert!(!view.display_settings.open);
+            assert!(view.focus.is_focused(w));
+        })
+        .unwrap();
+}
 impl Render for HoverProbe {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         self.0.set(self.0.get() + 1);
@@ -266,6 +539,7 @@ fn workflow_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderVi
     // Keep headless layout/paint enabled: real input dispatch needs its focus
     // and hit-test trees. The state-only home fixture intentionally skips them.
     cx.background_executor.allow_parking();
+    cx.update(|cx| display_settings::bind_keys(cx));
     let window = cx.add_window(|w, cx| {
         let icons = cx.new(ShellIcons::new);
         FolderView::new(Location::Home, ThemeMode::Light, icons, w, cx)
@@ -879,7 +1153,9 @@ fn context_menu_keeps_its_target_when_listing_inserts_an_earlier_folder(
             );
             view.on_listing_event(ListingEvent::Batch(workflow_entries(&["explorer"])), cx);
             cx.subscribe(&cx.entity(), move |_, _, event: &FolderEvent, _| {
-                let FolderEvent::OpenInTab(path) = event;
+                let FolderEvent::OpenInTab(path) = event else {
+                    return;
+                };
                 captured.borrow_mut().push(path.clone());
             })
         })

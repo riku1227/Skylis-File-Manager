@@ -10,6 +10,8 @@ use std::{
 
 pub struct Preferences {
     pub value: Settings,
+    /// Shared by all windows for this run only; deliberately excluded from Settings encoding.
+    pub show_hidden: bool,
     pub error: Option<String>,
     writable: bool,
     writer: async_channel::Sender<Settings>,
@@ -225,6 +227,7 @@ impl Preferences {
         // Keep a receiver only to replace the pending snapshot without growing the queue.
         Self {
             value: initial.0,
+            show_hidden: false,
             error,
             writable,
             writer: tx,
@@ -255,6 +258,13 @@ impl Preferences {
         }
         cx.notify();
     }
+    pub fn set_show_hidden(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.show_hidden != enabled {
+            self.show_hidden = enabled;
+            cx.notify();
+        }
+    }
+
     pub fn change(&mut self, edit: impl FnOnce(&mut Settings), cx: &mut Context<Self>) {
         edit(&mut self.value);
         if self.writable {

@@ -19,6 +19,7 @@ use crate::media::{MediaCache, MediaScope};
 mod archives;
 mod context_menu;
 mod delete;
+pub(crate) mod display_settings;
 mod name_editor;
 mod name_operations;
 mod scroll_motion;
@@ -53,10 +54,12 @@ const SIDEBAR_WIDTH: Pixels = px(200.);
 
 pub enum FolderEvent {
     OpenInTab(PathBuf),
+    SetPane(bool),
 }
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
+    display_settings: display_settings::DisplaySettings,
     marquee: marquee::MarqueeState,
     motion: scroll_motion::FolderMotion,
     multi_selection: std::collections::BTreeSet<PathBuf>,
@@ -184,8 +187,11 @@ impl FolderView {
         let pinned = preferences.as_ref().map_or_else(Vec::new, |p| {
             home::pinned_places(&p.read(cx).value.pinned_folders)
         });
+        let show_hidden = preferences.as_ref().is_some_and(|p| p.read(cx).show_hidden);
         if let Some(preferences) = preferences {
             cx.observe(&preferences, |this, preferences, cx| {
+                this.set_hidden_visibility(preferences.read(cx).show_hidden, cx);
+                this.compact = preferences.read(cx).value.compact;
                 let paths = &preferences.read(cx).value.pinned_folders;
                 if this.pinned.len() != paths.len()
                     || this
@@ -231,6 +237,7 @@ impl FolderView {
         cx.observe(&transfer_progress, |_, _, cx| cx.notify())
             .detach();
         let mut this = Self {
+            display_settings: display_settings::DisplaySettings::new(cx),
             marquee: Default::default(),
             motion: Default::default(),
             multi_selection: Default::default(),
@@ -289,7 +296,7 @@ impl FolderView {
             launch_selection: false,
             launch_reveal: None,
             sort: SortOrder::default(),
-            show_hidden: false,
+            show_hidden,
             scroll: UniformListScrollHandle::new(),
             scrollbar_drag: None,
             loading: false,
@@ -315,6 +322,7 @@ impl FolderView {
     }
 
     pub fn attach_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_display_settings(cx);
         if self.owner_window != window.window_handle() {
             self.owner_window = window.window_handle();
             self.attach_name_editor_window(window, cx);
@@ -444,6 +452,7 @@ impl FolderView {
     }
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.close_display_settings(cx);
         self.archive_dialog = None;
         self.startup_handoff = None;
         self.launch_selection = false;
@@ -796,7 +805,10 @@ impl FolderView {
         }
     }
 
-    fn refresh(&mut self, _: &Refresh, _: &mut Window, cx: &mut Context<Self>) {
+    fn refresh(&mut self, _: &Refresh, w: &mut Window, cx: &mut Context<Self>) {
+        if self.close_display_settings(cx) {
+            w.focus(&self.focus, cx);
+        }
         self.refresh_drives(cx);
         if self.path().is_some() && !self.loading {
             self.request_refresh(cx);
@@ -808,16 +820,39 @@ impl FolderView {
     }
 
     fn toggle_hidden(&mut self, _: &ToggleHidden, _: &mut Window, cx: &mut Context<Self>) {
+        let enabled = !cx
+            .try_global::<crate::settings::SharedPreferences>()
+            .map_or(self.show_hidden, |p| p.0.read(cx).show_hidden);
+        if let Some(preferences) = cx
+            .try_global::<crate::settings::SharedPreferences>()
+            .map(|p| p.0.clone())
+        {
+            preferences.update(cx, |p, cx| p.set_show_hidden(enabled, cx));
+        }
+        self.set_hidden_visibility(enabled, cx);
+    }
+
+    fn set_hidden_visibility(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.show_hidden == enabled {
+            return;
+        }
         self.launch_reveal = None;
-        self.show_hidden = !self.show_hidden;
+        self.show_hidden = enabled;
         let keep = self.selected_entry().map(|e| e.path.clone());
         self.rebuild_visible(keep.as_deref());
         cx.notify();
     }
 
     fn set_sort(&mut self, key: SortKey, cx: &mut Context<Self>) {
+        self.apply_sort(self.sort.toggled(key), cx);
+    }
+
+    fn apply_sort(&mut self, order: SortOrder, cx: &mut Context<Self>) {
+        if self.sort == order && !self.grouped {
+            return;
+        }
         self.grouped = false;
-        self.sort = self.sort.toggled(key);
+        self.sort = order;
         let keep = self.selected_entry().map(|e| e.path.clone());
         let sort = self.sort;
         self.entries.sort_unstable_by(|a, b| sort.compare(a, b));
@@ -993,7 +1028,8 @@ impl FolderView {
         }
     }
     fn input_focused(&self, window: &Window, cx: &App) -> bool {
-        self.name_editor.is_some()
+        self.display_settings.open
+            || self.name_editor.is_some()
             || self.archive_dialog.is_some()
             || self.search.focus_handle(cx).is_focused(window)
             || self.address.focus_handle(cx).is_focused(window)
@@ -1007,6 +1043,7 @@ impl FolderView {
         cx.notify();
     }
     fn edit_address(&mut self, _: &EditAddress, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_display_settings(cx);
         let text = self
             .path()
             .map(|p| p.display().to_string())
@@ -1117,7 +1154,11 @@ impl FolderView {
             .h(px(36.))
             .flex_1()
             .min_w_0()
-            .px(px(10.))
+            .px(px(if window.viewport_size().width < px(560.) {
+                4.
+            } else {
+                10.
+            }))
             .bg(t.c("surface.field"))
             .border_1()
             .border_color(t.c("border.subtle"))
@@ -1186,7 +1227,11 @@ impl FolderView {
                         .flex()
                         .items_center()
                         .h(px(26.))
-                        .px(px(10.))
+                        .px(px(if window.viewport_size().width < px(560.) {
+                            4.
+                        } else {
+                            10.
+                        }))
                         .max_w(px(180.))
                         .flex_shrink_0()
                         .rounded(px(13.))
@@ -1212,10 +1257,18 @@ impl FolderView {
         div()
             .flex()
             .items_center()
-            .gap(px(10.))
+            .gap(px(if window.viewport_size().width < px(560.) {
+                3.
+            } else {
+                10.
+            }))
             .h(px(44.))
             .flex_shrink_0()
-            .px(px(10.))
+            .px(px(if window.viewport_size().width < px(560.) {
+                4.
+            } else {
+                10.
+            }))
             .bg(t.c("surface.chrome"))
             .border_1()
             .border_color(t.c("border.default"))
@@ -1235,6 +1288,11 @@ impl FolderView {
                             self.history.can_go_back(),
                             t,
                         )
+                        .size(px(if window.viewport_size().width < px(560.) {
+                            24.
+                        } else {
+                            32.
+                        }))
                         .on_click(cx.listener(|this, _, w, cx| this.go_back(&GoBack, w, cx))),
                     )
                     .child(
@@ -1244,14 +1302,29 @@ impl FolderView {
                             self.history.can_go_forward(),
                             t,
                         )
+                        .size(px(if window.viewport_size().width < px(560.) {
+                            24.
+                        } else {
+                            32.
+                        }))
                         .on_click(cx.listener(|this, _, w, cx| this.go_forward(&GoForward, w, cx))),
                     )
                     .child(
                         icon_button("up", "icons/arrow-up.svg", !self.is_home(), t)
+                            .size(px(if window.viewport_size().width < px(560.) {
+                                24.
+                            } else {
+                                32.
+                            }))
                             .on_click(cx.listener(|this, _, w, cx| this.go_up(&GoUp, w, cx))),
                     )
                     .child(
                         icon_button("refresh", "icons/refresh.svg", true, t)
+                            .size(px(if window.viewport_size().width < px(560.) {
+                                24.
+                            } else {
+                                32.
+                            }))
                             .on_click(cx.listener(|this, _, w, cx| this.refresh(&Refresh, w, cx))),
                     ),
             )
@@ -1260,15 +1333,25 @@ impl FolderView {
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.))
-                    .w(px(if window.viewport_size().width < px(1150.) {
+                    .gap(px(if window.viewport_size().width < px(560.) {
+                        3.
+                    } else {
+                        8.
+                    }))
+                    .w(px(if window.viewport_size().width < px(560.) {
+                        76.
+                    } else if window.viewport_size().width < px(1150.) {
                         190.
                     } else {
                         256.
                     }))
                     .flex_shrink_0()
                     .h(px(36.))
-                    .px(px(12.))
+                    .px(px(if window.viewport_size().width < px(560.) {
+                        4.
+                    } else {
+                        12.
+                    }))
                     .rounded(px(18.))
                     .bg(t.c("surface.field"))
                     .border_1()
@@ -1295,34 +1378,10 @@ impl FolderView {
                         )
                     }),
             )
-            .child(
-                div()
-                    .id("view-mode")
-                    .px(px(8.))
-                    .cursor_pointer()
-                    .text_color(t.c("text.secondary"))
-                    .child(if self.gallery {
-                        "詳細表示"
-                    } else {
-                        "ギャラリー"
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| this.set_gallery(!this.gallery, cx))),
-            )
+            .child(self.render_display_trigger(t, cx))
             .child(
                 icon_button("settings", "icons/settings.svg", true, t)
                     .on_click(|_, w, cx| w.dispatch_action(Box::new(OpenSettings), cx)),
-            )
-            .child(
-                icon_button("theme", "icons/sun.svg", true, t)
-                    .on_click(|_, w, cx| w.dispatch_action(Box::new(CycleTheme), cx)),
-            )
-            .child(
-                icon_button("pane", "icons/panel.svg", true, t)
-                    .when(self.pane, |d| d.bg(t.c("accent.soft")))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.pane = !this.pane;
-                        cx.notify()
-                    })),
             )
     }
     fn render_sidebar(
@@ -1856,8 +1915,7 @@ impl FolderView {
                         icon_button("close-pane", "icons/x.svg", true, t)
                             .size(px(22.))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.pane = false;
-                                cx.notify()
+                                this.request_pane(false, cx);
                             })),
                     ),
             );
@@ -2022,7 +2080,7 @@ impl FolderView {
         panel = panel.child(body);
         panel
     }
-    fn render_status(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_status(&self, t: Theme, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .items_center()
@@ -2060,35 +2118,17 @@ impl FolderView {
                 d.child(div().truncate().child(n))
             })
             .child(div().flex_1())
-            .child(
-                div()
-                    .id("density")
-                    .cursor_pointer()
-                    .child(if self.compact {
-                        "コンパクト"
-                    } else {
-                        "標準"
-                    })
-                    .on_click(|_, w, cx| w.dispatch_action(Box::new(ToggleDensity), cx)),
-            )
-            .child(
-                div()
-                    .id("toggle-hidden")
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .cursor_pointer()
-                    .text_color(if self.show_hidden {
-                        t.c("accent.fg")
-                    } else {
-                        t.c("text.secondary")
-                    })
-                    .child(svg().path("icons/eye.svg").size(px(13.)))
-                    .child("隠しファイル")
-                    .on_click(
-                        cx.listener(|this, _, w, cx| this.toggle_hidden(&ToggleHidden, w, cx)),
-                    ),
-            )
+            .when(self.show_hidden, |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(4.))
+                        .text_color(t.c("accent.fg"))
+                        .child(svg().path("icons/eye.svg").size(px(13.)))
+                        .child("隠しファイル表示中"),
+                )
+            })
     }
 }
 impl Drop for FolderView {
@@ -2161,6 +2201,12 @@ impl Render for FolderView {
         div()
             .key_context("Explorer")
             .track_focus(&self.focus)
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
+                if event.keystroke.key == "tab" && !this.input_focused(w, cx) {
+                    w.focus(&this.display_settings.trigger_focus, cx);
+                    cx.stop_propagation();
+                }
+            }))
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
                 this.drag_scrollbar(event.position, cx);
             }))
@@ -2228,6 +2274,7 @@ impl Render for FolderView {
             .on_action(cx.listener(Self::refresh))
             .on_action(cx.listener(Self::toggle_hidden))
             .on_action(cx.listener(|this, _: &FocusSearch, w, cx| {
+                this.close_display_settings(cx);
                 w.focus(&this.search.focus_handle(cx), cx);
                 cx.notify()
             }))
@@ -2381,6 +2428,9 @@ impl Render for FolderView {
             .when(self.context_menu.is_some(), |d| {
                 d.child(self.render_context_menu(t, cx))
             })
+            .when(self.display_settings.open, |d| {
+                d.child(self.render_display_settings(t, window, cx))
+            })
             .when(
                 self.name_editor.is_some() && self.inline_name_target().is_none(),
                 |d| d.child(self.render_name_editor(t, cx)),
@@ -2455,6 +2505,7 @@ pub fn icon_button(
                     "close-pane" => "詳細ペインを閉じる",
                     "clear-search" => "検索をクリア（Esc）",
                     "new-tab" => "新しいタブ（Ctrl+T）",
+                    "display-settings-trigger" => "表示設定",
                     "settings" => "設定（Ctrl+,）",
                     "close-settings" => "設定を閉じる（Esc）",
                     _ => "テーマ切替",
