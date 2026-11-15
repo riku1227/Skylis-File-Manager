@@ -34,6 +34,19 @@ Local changes:
 - The test-support utilities expose the existing `TestAppContext::test_window`
   lookup, add `use_platform_frame_requests` to exercise production callbacks, and
   count platform draw submissions with `TestWindow::presentation_count`.
+- `Window::set_frame_diagnostics_view(Option<EntityId>)` enables a lightweight
+  per-window submission counter; `frame_diagnostics_count()` returns it, or
+  `None` while disabled. Setting the same view does not reset it; changing the
+  view or disabling it drops previous accounting. Enabling never requests a
+  frame, starts a timer, or enables the full profiler.
+- The diagnostic counter excludes draws caused only by the selected HUD view.
+  Coalesced application, forced-refresh, mandatory OS and high-rate-input demand
+  still counts. Application attribution survives intervening HUD/clean draws
+  until a presentation. Counting happens at the platform submission boundary,
+  not during synchronous CPU draws or native frame callbacks. Since the
+  platform draw API returns no result, this is neither a GPU-success count nor
+  physical display FPS. The private `window/frame_diagnostics` module holds only
+  a view ID, a counter and pending attribution, without histories or clocks.
 
 Run the focused patched-core tests from the workspace root (selecting `explorer`
 enables its existing `test-support` dependency feature):
@@ -49,7 +62,8 @@ library and exercises its real frame-request closure using test-support, without
 removing upstream tests or bundling unrelated upstream asset trees. Passing this
 target does not imply the complete upstream test suite passed.
 
-Remove this patch when the selected upstream release offers an equivalent runtime
-API with compatible demand retention, native cadence, power-policy and required
-presentation behavior. Re-run the regression tests against that implementation
-before removing the vendor directory and Cargo patch.
+Remove this patch when the selected upstream release offers equivalent runtime
+frame-limit and opt-in diagnostic APIs with compatible demand retention, native
+cadence, power-policy, required-presentation and diagnostic-exclusion behavior.
+Re-run the regression tests against that implementation before removing the
+vendor directory and Cargo patch.

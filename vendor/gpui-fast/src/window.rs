@@ -1302,6 +1302,7 @@ pub struct Window {
     pub(crate) hovered: Rc<Cell<bool>>,
     pub(crate) needs_present: Rc<Cell<bool>>,
     frame_rate_limit: Rc<Cell<Option<FrameRateLimit>>>,
+    frame_diagnostics: Option<FrameDiagnostics>,
     /// Tracks recent input event timestamps to determine if input is arriving at a high rate.
     /// Used to selectively enable VRR optimization only when input rate exceeds 60fps.
     pub(crate) input_rate_tracker: Rc<RefCell<InputRateTracker>>,
@@ -1351,6 +1352,8 @@ pub(crate) struct InputRateTracker {
     sustain_duration: Duration,
 }
 
+mod frame_diagnostics;
+use frame_diagnostics::FrameDiagnostics;
 mod frame_pacing;
 use frame_pacing::{FramePacer, minimum_frame_interval};
 
@@ -2020,6 +2023,11 @@ impl Window {
                                     // atlas tile references after a GPU device recovery.
                                     window.refresh();
                                 }
+                                if request_frame_options.require_presentation || high_rate_input {
+                                    if let Some(diagnostics) = &mut window.frame_diagnostics {
+                                        diagnostics.record_application_demand();
+                                    }
+                                }
                                 let arena_clear_needed = window.draw(cx);
                                 window.present();
                                 arena_clear_needed.clear(cx);
@@ -2034,7 +2042,14 @@ impl Window {
                     })
                 } else if needs_present {
                     handle
-                        .update(&mut cx, |_, window, _| window.present())
+                        .update(&mut cx, |_, window, _| {
+                            if request_frame_options.require_presentation || high_rate_input {
+                                if let Some(diagnostics) = &mut window.frame_diagnostics {
+                                    diagnostics.record_application_demand();
+                                }
+                            }
+                            window.present();
+                        })
                         .with_context(|| {
                             format!("presenting frame for window {:?}", handle.window_id())
                         })
@@ -2387,6 +2402,7 @@ impl Window {
             hovered,
             needs_present,
             frame_rate_limit,
+            frame_diagnostics: None,
             input_rate_tracker,
             #[cfg(feature = "profiler")]
             window_profiler: profiler::WindowProfiler::new(handle.window_id())?,
@@ -2620,6 +2636,28 @@ impl Window {
     /// This is a policy setting, not a measurement of achieved presentation rate.
     pub fn frame_rate_limit(&self) -> Option<f64> {
         self.frame_rate_limit.get().map(|limit| limit.hertz)
+    }
+
+    /// Enables submission diagnostics, excluding redraws caused only by `view`.
+    ///
+    /// `None` disables accounting. Changing the view resets the count; setting
+    /// the same value is a no-op. This does not request a frame or start a timer.
+    /// Application/OS demand coalesced with a diagnostic update still counts.
+    pub fn set_frame_diagnostics_view(&mut self, view: Option<EntityId>) {
+        if self.frame_diagnostics.as_ref().map(|state| state.view) != view {
+            self.frame_diagnostics = view.map(FrameDiagnostics::new);
+        }
+    }
+
+    /// Returns non-diagnostic submissions since accounting was enabled/reset.
+    ///
+    /// Counts the window's platform submission boundary, not CPU draws, native
+    /// frame callbacks, GPU success, or physical display completions. The
+    /// platform draw API cannot report whether the compositor displayed a frame.
+    pub fn frame_diagnostics_count(&self) -> Option<u64> {
+        self.frame_diagnostics
+            .as_ref()
+            .map(|state| state.submissions)
     }
 
     /// Close this window.
@@ -3862,6 +3900,15 @@ impl Window {
 
     fn invalidate_entities(&mut self) {
         let mut views = self.invalidator.take_views();
+        if let Some(diagnostics) = &mut self.frame_diagnostics {
+            // prepare_frame has already run and may have requested a full
+            // refresh. Inspect the original notify set before adding ancestors.
+            let diagnostic_only =
+                !self.refreshing && views.len() == 1 && views.contains(&diagnostics.view);
+            let application_demand = !diagnostic_only
+                && (self.refreshing || self.invalidator.is_dirty() || !views.is_empty());
+            diagnostics.record_draw(diagnostic_only, application_demand);
+        }
         crate::fast::retained::RetainedState::note_notified(&mut self.retained_state, &views);
         for entity in views.drain() {
             self.mark_view_dirty(entity);
@@ -3876,6 +3923,9 @@ impl Window {
         #[cfg(feature = "profiler")]
         let present_start = Instant::now();
         crate::fast::composition::present(self);
+        if let Some(diagnostics) = &mut self.frame_diagnostics {
+            diagnostics.record_present();
+        }
         #[cfg(feature = "profiler")]
         self.window_profiler.record_present(
             present_start,

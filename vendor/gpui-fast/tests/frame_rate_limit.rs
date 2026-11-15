@@ -22,6 +22,193 @@ impl Render for CountedView {
     }
 }
 
+struct DiagnosticsRoot {
+    content: gpui::Entity<CountedView>,
+    hud: gpui::Entity<CountedView>,
+}
+
+impl Render for DiagnosticsRoot {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        gpui::div()
+            .size_full()
+            .child(self.content.clone())
+            .child(self.hud.clone())
+    }
+}
+
+fn diagnostics_window(cx: &mut TestAppContext) -> gpui::WindowHandle<DiagnosticsRoot> {
+    cx.app
+        .borrow_mut()
+        .open_window(
+            WindowOptions {
+                inactive_frame_interval: None,
+                ..Default::default()
+            },
+            |_, cx| {
+                let content = cx.new(|_| CountedView(Rc::default()));
+                let hud = cx.new(|_| CountedView(Rc::default()));
+                cx.new(|_| DiagnosticsRoot { content, hud })
+            },
+        )
+        .unwrap()
+}
+
+fn diagnostics_count(
+    window: gpui::WindowHandle<DiagnosticsRoot>,
+    cx: &mut TestAppContext,
+) -> Option<u64> {
+    window
+        .update(cx, |_, window, _| window.frame_diagnostics_count())
+        .unwrap()
+}
+
+#[gpui::test]
+fn diagnostics_are_opt_in_local_and_reset_only_when_the_view_changes(cx: &mut TestAppContext) {
+    cx.use_platform_frame_requests();
+    let first = diagnostics_window(cx);
+    let second = diagnostics_window(cx);
+    let platform = cx.test_window(first.into());
+    platform.simulate_frame_request(RequestFrameOptions::default());
+    assert_eq!(diagnostics_count(first, cx), None);
+    assert_eq!(diagnostics_count(second, cx), None);
+    let wakes = platform.frame_wake_count();
+    first
+        .update(cx, |view, window, _| {
+            window.set_frame_diagnostics_view(Some(view.hud.entity_id()));
+        })
+        .unwrap();
+    assert_eq!(diagnostics_count(first, cx), Some(0));
+    assert_eq!(platform.frame_wake_count(), wakes, "enabling only observes");
+    platform.simulate_frame_request(RequestFrameOptions {
+        require_presentation: true,
+        ..Default::default()
+    });
+    assert_eq!(diagnostics_count(first, cx), Some(1));
+    assert_eq!(diagnostics_count(second, cx), None);
+    first
+        .update(cx, |view, window, _| {
+            window.set_frame_diagnostics_view(Some(view.hud.entity_id()));
+            assert_eq!(window.frame_diagnostics_count(), Some(1));
+            window.set_frame_diagnostics_view(Some(view.content.entity_id()));
+            assert_eq!(window.frame_diagnostics_count(), Some(0));
+            window.set_frame_diagnostics_view(None);
+        })
+        .unwrap();
+    platform.simulate_frame_request(RequestFrameOptions {
+        require_presentation: true,
+        ..Default::default()
+    });
+    assert_eq!(diagnostics_count(first, cx), None);
+}
+
+#[gpui::test]
+fn diagnostics_exclude_only_hud_redraws_and_keep_coalesced_application_demand(
+    cx: &mut TestAppContext,
+) {
+    cx.use_platform_frame_requests();
+    let window = diagnostics_window(cx);
+    let platform = cx.test_window(window.into());
+    platform.simulate_frame_request(RequestFrameOptions::default());
+    window
+        .update(cx, |view, window, cx| {
+            window.set_frame_diagnostics_view(Some(view.hud.entity_id()));
+            view.hud.update(cx, |_, cx| cx.notify());
+        })
+        .unwrap();
+    let before = platform.presentation_count();
+    platform.simulate_frame_request(RequestFrameOptions::default());
+    assert_eq!(platform.presentation_count(), before + 1);
+    assert_eq!(diagnostics_count(window, cx), Some(0));
+    platform.simulate_frame_request(RequestFrameOptions::default());
+    assert_eq!(
+        diagnostics_count(window, cx),
+        Some(0),
+        "idle callback is not a frame"
+    );
+    window
+        .update(cx, |view, _, cx| {
+            view.hud.update(cx, |_, cx| cx.notify());
+            view.content.update(cx, |_, cx| cx.notify());
+        })
+        .unwrap();
+    platform.simulate_frame_request(RequestFrameOptions::default());
+    assert_eq!(diagnostics_count(window, cx), Some(1));
+    window
+        .update(cx, |view, _, cx| view.hud.update(cx, |_, cx| cx.notify()))
+        .unwrap();
+    platform.simulate_frame_request(RequestFrameOptions {
+        force_render: true,
+        ..Default::default()
+    });
+    assert_eq!(
+        diagnostics_count(window, cx),
+        Some(2),
+        "forced refresh is independent demand"
+    );
+    window
+        .update(cx, |view, _, cx| view.hud.update(cx, |_, cx| cx.notify()))
+        .unwrap();
+    platform.simulate_frame_request(RequestFrameOptions {
+        require_presentation: true,
+        ..Default::default()
+    });
+    assert_eq!(
+        diagnostics_count(window, cx),
+        Some(3),
+        "OS presentation is independent demand"
+    );
+}
+
+#[gpui::test]
+fn diagnostics_count_presentations_not_synchronous_draws_and_preserve_pending_causes(
+    cx: &mut TestAppContext,
+) {
+    cx.use_platform_frame_requests();
+    let window = diagnostics_window(cx);
+    let platform = cx.test_window(window.into());
+    platform.simulate_frame_request(RequestFrameOptions::default());
+    window
+        .update(cx, |view, window, cx| {
+            window.set_frame_diagnostics_view(Some(view.hud.entity_id()));
+            view.content.update(cx, |_, cx| cx.notify());
+        })
+        .unwrap();
+    window.update(cx, |_, w, cx| w.draw(cx).clear(cx)).unwrap();
+    assert_eq!(diagnostics_count(window, cx), Some(0));
+    window
+        .update(cx, |view, _, cx| view.hud.update(cx, |_, cx| cx.notify()))
+        .unwrap();
+    window.update(cx, |_, w, cx| w.draw(cx).clear(cx)).unwrap();
+    assert_eq!(diagnostics_count(window, cx), Some(0));
+    platform.simulate_frame_request(RequestFrameOptions::default());
+    assert_eq!(
+        diagnostics_count(window, cx),
+        Some(1),
+        "HUD draw cannot erase application work"
+    );
+
+    window
+        .update(cx, |view, _, cx| view.hud.update(cx, |_, cx| cx.notify()))
+        .unwrap();
+    window.update(cx, |_, w, cx| w.draw(cx).clear(cx)).unwrap();
+    window.update(cx, |_, w, cx| w.draw(cx).clear(cx)).unwrap();
+    platform.simulate_frame_request(RequestFrameOptions::default());
+    assert_eq!(
+        diagnostics_count(window, cx),
+        Some(1),
+        "clean synchronous draw is neutral"
+    );
+    platform.simulate_frame_request(RequestFrameOptions {
+        require_presentation: true,
+        ..Default::default()
+    });
+    assert_eq!(
+        diagnostics_count(window, cx),
+        Some(2),
+        "a later native presentation counts"
+    );
+}
+
 #[gpui::test]
 fn runtime_limit_validates_without_changing_or_waking_previous_limit(cx: &mut TestAppContext) {
     let window = cx.add_window(|_, _| CountedView(Rc::default()));
