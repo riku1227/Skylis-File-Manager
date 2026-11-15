@@ -17,6 +17,7 @@ impl FolderView {
         )
     }
     pub(super) fn rebuild_display_rows(&mut self) {
+        self.cancel_marquee();
         self.display_rows.clear();
         self.entry_rows.clear();
         self.entry_rows.resize(self.visible.len(), 0);

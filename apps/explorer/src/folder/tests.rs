@@ -537,3 +537,516 @@ fn context_menu_keeps_its_target_when_listing_inserts_an_earlier_folder(
         [Path::new(env!("CARGO_MANIFEST_DIR")).join("src/folder")]
     );
 }
+
+#[gpui::test]
+fn blank_drag_selects_a_range_without_starting_file_drag(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            view.on_listing_event(
+                ListingEvent::Batch(workflow_entries(&["assets.rs", "explorer.rs", "folder.rs"])),
+                cx,
+            )
+        })
+        .unwrap();
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    let origin = window
+        .read_with(cx, |view, _| {
+            view.scroll.0.borrow().base_handle.bounds().origin
+        })
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    let start = origin + gpui::point(px(120.), px(140.));
+    let end = origin + gpui::point(px(220.), px(32.));
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(selected_file_names(view), ["explorer.rs", "folder.rs"])
+        })
+        .unwrap();
+}
+
+fn marquee_window(
+    cx: &mut gpui::TestAppContext,
+    gallery: bool,
+) -> (gpui::WindowHandle<FolderView>, gpui::Point<Pixels>) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            view.on_listing_event(
+                ListingEvent::Batch(workflow_entries(&["assets.rs", "explorer.rs", "folder.rs"])),
+                cx,
+            );
+            if gallery {
+                view.set_gallery(true, cx);
+            }
+        })
+        .unwrap();
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    let origin = window
+        .read_with(cx, |view, _| {
+            view.scroll.0.borrow().base_handle.bounds().origin
+        })
+        .unwrap();
+    (window, origin)
+}
+
+fn highlighted_file_names(view: &FolderView) -> Vec<&str> {
+    view.visible
+        .iter()
+        .enumerate()
+        .filter(|(ix, _)| view.item_is_selected(*ix))
+        .map(|(_, &index)| view.entries[index].name.as_str())
+        .collect()
+}
+
+#[gpui::test]
+fn marquee_toggle_recomputes_from_baseline_when_the_rectangle_shrinks(
+    cx: &mut gpui::TestAppContext,
+) {
+    // Control on Windows/Linux and Command on macOS share the same gesture.
+    for modifiers in [
+        gpui::Modifiers {
+            control: true,
+            ..Default::default()
+        },
+        gpui::Modifiers {
+            platform: true,
+            ..Default::default()
+        },
+    ] {
+        let (window, origin) = marquee_window(cx, false);
+        window.update(cx, |view, _, cx| view.select(1, cx)).unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        let start = origin + gpui::point(px(120.), px(140.));
+        let expanded = origin + gpui::point(px(220.), px(32.));
+        let shrunk = origin + gpui::point(px(220.), px(62.));
+        visual.simulate_mouse_down(start, MouseButton::Left, modifiers);
+        visual.simulate_mouse_move(expanded, MouseButton::Left, modifiers);
+        window
+            .read_with(cx, |view, _| {
+                assert_eq!(highlighted_file_names(view), ["folder.rs"]);
+                assert_eq!(
+                    selected_file_names(view),
+                    ["explorer.rs"],
+                    "paths stay unchanged until release"
+                );
+            })
+            .unwrap();
+        visual.simulate_mouse_move(shrunk, MouseButton::Left, modifiers);
+        window
+            .read_with(cx, |view, _| {
+                assert_eq!(highlighted_file_names(view), ["explorer.rs", "folder.rs"]);
+            })
+            .unwrap();
+        visual.simulate_mouse_up(shrunk, MouseButton::Left, modifiers);
+        window
+            .read_with(cx, |view, _| {
+                assert_eq!(selected_file_names(view), ["explorer.rs", "folder.rs"]);
+                assert!(!view.marquee_active());
+            })
+            .unwrap();
+    }
+}
+
+#[gpui::test]
+fn marquee_shift_adds_to_selection_and_modified_blank_clicks_preserve_it(
+    cx: &mut gpui::TestAppContext,
+) {
+    let (window, origin) = marquee_window(cx, false);
+    window.update(cx, |view, _, cx| view.select(0, cx)).unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    let blank = origin + gpui::point(px(120.), px(140.));
+    let end = origin + gpui::point(px(220.), px(32.));
+    let shift = gpui::Modifiers {
+        shift: true,
+        ..Default::default()
+    };
+    visual.simulate_mouse_down(blank, MouseButton::Left, shift);
+    visual.simulate_mouse_move(end, MouseButton::Left, shift);
+    visual.simulate_mouse_up(end, MouseButton::Left, shift);
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(
+                selected_file_names(view),
+                ["assets.rs", "explorer.rs", "folder.rs"]
+            );
+        })
+        .unwrap();
+    for modifiers in [
+        shift,
+        gpui::Modifiers {
+            control: true,
+            ..Default::default()
+        },
+    ] {
+        visual.simulate_mouse_down(blank, MouseButton::Left, modifiers);
+        visual.simulate_mouse_up(blank, MouseButton::Left, modifiers);
+        window
+            .read_with(cx, |view, _| assert_eq!(view.multi_selection.len(), 3))
+            .unwrap();
+    }
+    visual.simulate_mouse_down(blank, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_up(blank, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.multi_selection.is_empty());
+            assert!(view.selected.is_none());
+            assert!(view.selection_anchor.is_none());
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn escape_cancels_marquee_and_restores_selection_and_anchor(cx: &mut gpui::TestAppContext) {
+    let (window, origin) = marquee_window(cx, false);
+    window.update(cx, |view, _, cx| view.select(0, cx)).unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    let start = origin + gpui::point(px(120.), px(140.));
+    let end = origin + gpui::point(px(220.), px(32.));
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.marquee_active());
+            assert_eq!(highlighted_file_names(view), ["explorer.rs", "folder.rs"]);
+        })
+        .unwrap();
+    cx.dispatch_action(window.into(), ClearSearch);
+    visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| {
+            assert!(!view.marquee_active());
+            assert_eq!(selected_file_names(view), ["assets.rs"]);
+            assert_eq!(
+                view.selection_anchor.as_ref().unwrap().file_name().unwrap(),
+                "assets.rs"
+            );
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn rebuilding_rows_cancels_marquee_before_its_indices_can_change(cx: &mut gpui::TestAppContext) {
+    let (window, origin) = marquee_window(cx, false);
+    window.update(cx, |view, _, cx| view.select(0, cx)).unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    let start = origin + gpui::point(px(120.), px(140.));
+    let end = origin + gpui::point(px(220.), px(32.));
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .update(cx, |view, _, cx| {
+            assert!(view.marquee_active());
+            view.set_sort(SortKey::Name, cx);
+            assert!(!view.marquee_active());
+        })
+        .unwrap();
+    visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(selected_file_names(view), ["assets.rs"]);
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn gallery_blank_strip_selects_only_the_intersected_columns(cx: &mut gpui::TestAppContext) {
+    let (window, origin) = marquee_window(cx, true);
+    let (columns, width) = window
+        .read_with(cx, |view, _| {
+            (
+                view.gallery_columns,
+                f32::from(view.scroll.0.borrow().base_handle.bounds().size.width),
+            )
+        })
+        .unwrap();
+    assert!(columns >= 2, "fixture needs at least two gallery columns");
+    let tile_width = (width - 20. - 8. * (columns - 1) as f32) / columns as f32;
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    // The label strip above the tiles is blank even when it has no group label.
+    let start = origin + gpui::point(px(12.), px(10.));
+    let end = origin + gpui::point(px(10. + tile_width + 8. + tile_width / 2.), px(80.));
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(selected_file_names(view), ["assets.rs", "explorer.rs"]);
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn marquee_scrolls_with_a_stationary_pointer_and_stops_on_release(cx: &mut gpui::TestAppContext) {
+    assert_marquee_edge_scroll(cx, false);
+}
+
+#[gpui::test]
+fn marquee_scrolls_when_pointer_jumps_outside_the_window(cx: &mut gpui::TestAppContext) {
+    assert_marquee_edge_scroll(cx, true);
+}
+
+fn assert_marquee_edge_scroll(cx: &mut gpui::TestAppContext, outside: bool) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            let template = workflow_entries(&["assets.rs"]).remove(0);
+            // Distinct paths with the same basename keep Entry's private name sort
+            // key valid while supplying more rows than fit in the viewport.
+            view.entries = (0..100)
+                .map(|index| {
+                    let mut entry = template.clone();
+                    entry.path = template
+                        .path
+                        .parent()
+                        .unwrap()
+                        .join(format!("fixture-{index}"))
+                        .join(&entry.name);
+                    entry
+                })
+                .collect();
+            view.rebuild_visible(None);
+            cx.notify();
+        })
+        .unwrap();
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    let bounds = window
+        .read_with(cx, |view, _| view.scroll.0.borrow().base_handle.bounds())
+        .unwrap();
+    let start = bounds.origin + gpui::point(px(4.), px(100.));
+    let end = gpui::point(
+        bounds.origin.x + px(200.),
+        bounds.bottom() + px(if outside { 100. } else { -2. }),
+    );
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    visual.run_until_parked();
+    let before = window
+        .read_with(cx, |view, _| view.scroll.0.borrow().base_handle.offset().y)
+        .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(32));
+    let first = window
+        .read_with(cx, |view, _| view.scroll.0.borrow().base_handle.offset().y)
+        .unwrap();
+    assert!(
+        first < before,
+        "edge scrolling must not require another mouse event"
+    );
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(32));
+    let second = window
+        .read_with(cx, |view, _| view.scroll.0.borrow().base_handle.offset().y)
+        .unwrap();
+    assert!(
+        second < first,
+        "the timer must keep scrolling while the pointer is stationary"
+    );
+    visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+    let released = window
+        .read_with(cx, |view, _| {
+            assert!(!view.marquee_active());
+            assert!(!view.multi_selection.is_empty());
+            view.scroll.0.borrow().base_handle.offset().y
+        })
+        .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(128));
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.scroll.0.borrow().base_handle.offset().y, released)
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn file_rows_still_start_file_drags_instead_of_marquees(cx: &mut gpui::TestAppContext) {
+    let (window, origin) = marquee_window(cx, false);
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    let start = origin + gpui::point(px(120.), px(14.));
+    let end = origin + gpui::point(px(220.), px(45.));
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, cx| {
+            assert!(!view.marquee_active());
+            assert_eq!(selected_file_names(view), ["assets.rs"]);
+            assert!(
+                cx.has_active_drag(),
+                "file row drag handlers must survive the blank-space wrapper"
+            );
+        })
+        .unwrap();
+    // End the synthetic drag without dropping files onto the current folder.
+    cx.update_window(window.into(), |_, w, cx| {
+        cx.stop_active_drag(w);
+    })
+    .unwrap();
+}
+
+#[gpui::test]
+fn grouped_list_header_is_a_blank_start_area_and_never_a_selected_item(
+    cx: &mut gpui::TestAppContext,
+) {
+    let (window, _) = marquee_window(cx, false);
+    window
+        .update(cx, |view, _, cx| {
+            let now = std::time::SystemTime::now();
+            for entry in &mut view.entries {
+                entry.modified = Some(now);
+            }
+            view.grouped = true;
+            view.rebuild_display_rows();
+            cx.notify();
+        })
+        .unwrap();
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    let origin = window
+        .read_with(cx, |view, _| {
+            view.scroll.0.borrow().base_handle.bounds().origin
+        })
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    let start = origin + gpui::point(px(120.), px(12.));
+    let end = origin + gpui::point(px(220.), px(70.));
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(selected_file_names(view), ["assets.rs", "explorer.rs"])
+        })
+        .unwrap();
+}
+
+fn marquee_keeps_baseline_after_selection_action(
+    cx: &mut gpui::TestAppContext,
+    action: impl gpui::Action,
+) {
+    let (window, origin) = marquee_window(cx, false);
+    window.update(cx, |view, _, cx| view.select(0, cx)).unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    let start = origin + gpui::point(px(120.), px(140.));
+    let end = origin + gpui::point(px(220.), px(32.));
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| assert!(view.marquee_active()))
+        .unwrap();
+    cx.dispatch_action(window.into(), action);
+    cx.dispatch_action(window.into(), ClearSearch);
+    visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| {
+            assert!(!view.marquee_active());
+            assert_eq!(
+                selected_file_names(view),
+                ["assets.rs"],
+                "selection keys must not mutate the saved drag baseline"
+            );
+            assert_eq!(
+                view.selection_anchor.as_ref().unwrap().file_name().unwrap(),
+                "assets.rs"
+            );
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn marquee_arrow_then_escape_preserves_starting_selection(cx: &mut gpui::TestAppContext) {
+    marquee_keeps_baseline_after_selection_action(cx, SelectNext);
+}
+
+#[gpui::test]
+fn marquee_select_all_then_escape_preserves_starting_selection(cx: &mut gpui::TestAppContext) {
+    marquee_keeps_baseline_after_selection_action(cx, crate::actions::SelectAllFiles);
+}
+
+#[gpui::test]
+fn marquee_height_resize_cancels_without_another_pointer_event(cx: &mut gpui::TestAppContext) {
+    let (window, origin) = marquee_window(cx, false);
+    window.update(cx, |view, _, cx| view.select(0, cx)).unwrap();
+    let old_size = cx
+        .update_window(window.into(), |_, w, _| w.viewport_size())
+        .unwrap();
+    let old_height = window
+        .read_with(cx, |view, _| {
+            view.scroll.0.borrow().base_handle.bounds().size.height
+        })
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    let start = origin + gpui::point(px(120.), px(140.));
+    let end = origin + gpui::point(px(220.), px(32.));
+    visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+    visual.simulate_mouse_move(end, MouseButton::Left, gpui::Modifiers::none());
+    window
+        .read_with(cx, |view, _| assert!(view.marquee_active()))
+        .unwrap();
+    visual.simulate_resize(gpui::size(old_size.width, old_size.height - px(80.)));
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    cx.run_until_parked();
+    window
+        .read_with(cx, |view, _| {
+            assert!(
+                view.scroll.0.borrow().base_handle.bounds().size.height < old_height,
+                "the fixture must actually resize the selection viewport"
+            );
+            assert!(
+                !view.marquee_active(),
+                "height-only layout changes must cancel without a pointer move"
+            );
+            assert_eq!(selected_file_names(view), ["assets.rs"]);
+            assert_eq!(
+                view.selection_anchor.as_ref().unwrap().file_name().unwrap(),
+                "assets.rs"
+            );
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn marquee_receives_outside_motion_before_its_first_repaint(cx: &mut gpui::TestAppContext) {
+    let (window, origin) = marquee_window(cx, false);
+    let view = window.root(cx).unwrap();
+    let start = origin + gpui::point(px(120.), px(140.));
+    cx.update_window(window.into(), |_, w, cx| {
+        // Real platforms may deliver both events before the next animation
+        // frame. VisualTestContext's per-event draw would conceal this race.
+        w.dispatch_event(
+            gpui::PlatformInput::MouseDown(MouseDownEvent {
+                position: start,
+                button: MouseButton::Left,
+                click_count: 1,
+                ..Default::default()
+            }),
+            cx,
+        );
+        assert!(
+            view.read(cx).marquee_in_progress(),
+            "blank mouse-down must begin the gesture"
+        );
+        w.dispatch_event(
+            gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
+                position: gpui::point(px(-10.), px(-10.)),
+                pressed_button: Some(MouseButton::Left),
+                modifiers: gpui::Modifiers::none(),
+            }),
+            cx,
+        );
+        assert!(
+            view.read(cx).marquee_active(),
+            "outside motion must reach a new gesture before its first repaint"
+        );
+        assert!(!cx.has_active_drag());
+    })
+    .unwrap();
+}

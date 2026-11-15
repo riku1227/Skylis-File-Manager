@@ -298,6 +298,7 @@ impl FolderView {
         let Some(&index) = self.visible.get(ix) else {
             return;
         };
+        cx.stop_propagation();
         let path = self.entries[index].path.clone();
         window.focus(&self.focus, cx);
         if event.modifiers.shift {
@@ -349,7 +350,7 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.input_focused(window, cx) || self.is_home() {
+        if self.input_focused(window, cx) || self.is_home() || self.marquee_in_progress() {
             return;
         }
         self.multi_selection = self

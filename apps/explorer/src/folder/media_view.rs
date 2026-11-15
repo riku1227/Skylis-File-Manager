@@ -222,9 +222,7 @@ impl FolderView {
                             .min_w_0()
                             .p(px(4.))
                             .rounded(px(6.))
-                            .when(self.multi_selection.contains(&entry.path), |d| {
-                                d.bg(t.c("selection.bg"))
-                            })
+                            .when(self.item_is_selected(ix), |d| d.bg(t.c("selection.bg")))
                             .hover(|s| s.bg(t.c("state.hover")))
                             .cursor_pointer()
                             .child(
@@ -333,14 +331,18 @@ impl FolderView {
             .flex_1()
             .min_h_0()
             .child(
-                uniform_list(
-                    "gallery",
-                    self.gallery_rows.len(),
-                    cx.processor(Self::render_gallery_rows),
-                )
-                .flex_1()
-                .min_h_0()
-                .track_scroll(&self.scroll),
+                self.selection_surface(
+                    uniform_list(
+                        "gallery",
+                        self.gallery_rows.len(),
+                        cx.processor(Self::render_gallery_rows),
+                    )
+                    .flex_1()
+                    .min_h_0()
+                    .track_scroll(&self.scroll),
+                    t,
+                    cx,
+                ),
             )
             .child(self.render_scrollbar(t, cx))
             .on_scroll(cx.listener(|_, _, _, cx| cx.notify()))

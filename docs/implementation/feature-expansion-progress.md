@@ -14,10 +14,11 @@ Plan/spec: feature-expansion-design.md. User delegated specification and executi
 - [x] Gallery: 80% image classification, virtualized tile rows, progressive Shell thumbnails and stable cache.
 - [x] Folder sizes: manual/automatic modes, two bounded workers, partial totals and navigation cancellation.
 - [x] Integration review and regression tests; temporary self-contained graphical HTML guide.
+- [x] Follow-up: rubber-band selection in list/gallery, modifier modes, edge scrolling and file D&D coexistence (see range-selection.md).
 
 ## Verification on Windows
 
-`cargo test --workspace --locked`: 103 passed, 0 failed, 2 ignored (environment-dependent native Shell and WSL smoke tests). `cargo fmt --all --check` and `git diff --check` pass. `cargo build -p explorer --locked` builds the debug application.
+`cargo test --workspace --locked`: 123 passed, 0 failed, 2 ignored (environment-dependent native Shell and WSL smoke tests), including 20 added range-selection checks. `cargo fmt --all --check` and `git diff --check` pass. `cargo build -p explorer --locked` builds the debug application.
 
 Native GUI checks used generated files under `target/ui-fixtures`, leaving ordinary user files unchanged:
 
@@ -28,6 +29,7 @@ Native GUI checks used generated files under `target/ui-fixtures`, leaving ordin
 - Scrollbar dragging moved from the beginning to entries around 200; rows and icons rendered at the new position.
 - Tab reordering, shortcut detachment into two native windows and menu-based merge succeeded. State-preserving transfers and overlapping-window destination selection also have GPUI tests.
 - Settings displayed all five preferences. The live GUI check did not alter saved preferences. A discovered Alt+F4 interception was fixed, regression tested and verified to close the rebuilt native window.
+- Range selection worked from lower blank space in reverse direction, from the gutter of a 240-file list, and across four images in two gallery rows. Input tests also cover stationary/outside-pointer scrolling, modifier shrink, file D&D, Escape and cancellation during keyboard input or height-only resizing.
 
 ## Boundaries and follow-up verification
 
@@ -38,6 +40,8 @@ The automation driver cannot drag outside the selected window's bounds. Native o
 Cancellation stops queued work and discards late results; an OS call already running may finish before its worker can stop. Requested copy/move operations deliberately outlive navigation and are cancelled in the OS progress dialog. External Windows drops conservatively copy; internal Shift-drop moves. Unsupported previews fall back to metadata/default app; no undocumented PowerToys integration is invoked.
 
 Temporary guide: `target/feature-guide/index.html` (not committed). Previewed at 728px and 390px with no console errors. Contains all 11 feature explanations and interactive diagrams. Native menu evidence: `target/feature-guide/native-menu.jpg`.
+
+Range-selection supplement: `target/feature-guide/range-selection.html` (not committed), linked from the main guide. Interactive list/gallery model, modifier modes and the lazy selection flow; previewed at 728px and 390px without console errors.
 
 ## Workspace
 
