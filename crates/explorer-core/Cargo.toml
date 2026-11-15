@@ -7,6 +7,15 @@ publish.workspace = true
 # GPUIには依存しない。ファイルシステム・ソート・履歴などUI非依存のロジック。
 [dependencies]
 chrono.workspace = true
+zip = { version = "=9.6.0", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64"] }
+sevenz-rust2 = { version = "=0.25.0", default-features = false, features = ["compress"] }
+encoding_rs = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

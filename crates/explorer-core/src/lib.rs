@@ -1,5 +1,6 @@
 //! エクスプローラーのUI非依存コア。GPUIの型はここに持ち込まない。
 
+pub mod archive;
 pub mod entry;
 pub mod folder_size;
 pub mod format;

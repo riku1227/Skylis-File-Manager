@@ -21,6 +21,8 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage
 [patch.crates-io]
 # Pinned core-only runtime frame limit; see vendor/gpui-fast/SKYLIS-PATCH.md.
 gpui-fast = { path = "vendor/gpui-fast" }
+# Bound untrusted 7z metadata before allocations; see vendor/sevenz-rust2/SKYLIS-PATCH.md.
+sevenz-rust2 = { path = "vendor/sevenz-rust2" }
 
 [profile.release]
 debug = "line-tables-only"
