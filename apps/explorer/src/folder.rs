@@ -4,6 +4,7 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
+mod scrollbar;
 mod grouping;
 use grouping::DisplayRow;
 use explorer_core::history::breadcrumbs;
@@ -63,6 +64,7 @@ pub struct FolderView {
     sort: SortOrder,
     show_hidden: bool,
     scroll: UniformListScrollHandle,
+    scrollbar_drag: Option<f32>,
     loading: bool,
     stats: Option<ListingStats>,
     error: Option<String>,
@@ -163,6 +165,7 @@ impl FolderView {
             sort: SortOrder::default(),
             show_hidden: false,
             scroll: UniformListScrollHandle::new(),
+            scrollbar_drag: None,
             loading: false,
             stats: None,
             error: None,
@@ -1120,6 +1123,7 @@ impl FolderView {
                     .justify_end()
                     .child(col("h-size", "サイズ", SortKey::Size, cx)),
             )
+            .child(div().w(px(12.)).flex_shrink_0())
     }
     fn narrow(&self, window: &Window) -> bool {
         self.pane && window.viewport_size().width < px(1200.)
@@ -1259,7 +1263,7 @@ impl FolderView {
             )
             .into_any_element();
         }
-        uniform_list(
+        let list = uniform_list(
             "entries",
             self.display_rows.len(),
             cx.processor(Self::render_rows),
@@ -1267,8 +1271,9 @@ impl FolderView {
         .flex_1()
         .min_h_0()
         .py(px(2.))
-        .track_scroll(&self.scroll)
-        .into_any_element()
+        .track_scroll(&self.scroll);
+        div().flex().flex_1().min_h_0().child(list).child(self.render_scrollbar(t,cx))
+            .on_scroll(cx.listener(|_,_,_,cx| cx.notify())).into_any_element()
     }
     fn render_inspector(
         &self,
@@ -1553,6 +1558,9 @@ impl Render for FolderView {
         div()
             .key_context("Explorer")
             .track_focus(&self.focus)
+            .on_mouse_move(cx.listener(|this,event: &gpui::MouseMoveEvent,_,cx| this.drag_scrollbar(event.position,cx)))
+            .on_mouse_up(MouseButton::Left,cx.listener(|this,_,_,cx| { this.scrollbar_drag = None; cx.notify(); }))
+            .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,_,cx| { this.scrollbar_drag = None; cx.notify(); }))
             .on_action(cx.listener(Self::edit_address))
             .on_action(cx.listener(Self::select_prev))
             .on_action(cx.listener(Self::select_next))
