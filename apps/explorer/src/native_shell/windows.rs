@@ -290,7 +290,7 @@ fn run(
     Ok(MenuOutcome::Invoked)
 }
 
-fn context_menu(target: &Target, owner: HWND) -> anyhow::Result<IContextMenu> {
+pub(super) fn context_menu(target: &Target, owner: HWND) -> anyhow::Result<IContextMenu> {
     unsafe {
         match target {
             Target::Selection(paths) => {

@@ -1,7 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod archive_jobs;
 mod assets;
 mod diagnostics;
+mod directory_watch;
 mod explorer;
+mod file_open;
+mod file_operation_progress;
 mod folder;
 mod folder_integration;
 mod launch_request;

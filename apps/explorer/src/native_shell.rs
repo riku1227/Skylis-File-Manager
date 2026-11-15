@@ -5,8 +5,10 @@
 //! forcibly interrupted safely. The application may refresh its listing after `Invoked`.
 use std::path::{Path, PathBuf};
 
+mod properties;
 #[cfg(windows)]
 mod windows;
+pub use properties::show as properties;
 
 /// Shell parsing accepts Windows separators, unlike Rust filesystem APIs that also
 /// accept `/`. Keep the exact Unicode/UTF-16 path and do no I/O or symlink resolution.

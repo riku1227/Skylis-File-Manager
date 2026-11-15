@@ -13,8 +13,10 @@ anyhow.workspace = true
 chrono.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "ico"] }
 unicode-segmentation = "1.12"
+notify = "8.2.0"
 
 [target.'cfg(windows)'.dependencies]
+windows-core = "0.61.2"
 windows-sys = { workspace = true, features = ["Win32_System_ProcessStatus", "Win32_System_Threading", "Win32_Security"] }
 windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Memory", "Win32_System_Com_StructuredStorage", "Win32_System_DataExchange", "Win32_System_LibraryLoader", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
 raw-window-handle = "0.6"
