@@ -48,6 +48,7 @@ mod actions {
             CopyFiles,
             CutFiles,
             PasteFiles,
+            RenameSelected,
             DetachTab,
             MergeWindowTabs,
             ClearSearch
@@ -82,6 +83,7 @@ fn main() {
                 KeyBinding::new("alt-right", GoForward, ctx),
                 KeyBinding::new("alt-up", GoUp, ctx),
                 KeyBinding::new("f5", Refresh, ctx),
+                KeyBinding::new("f2", RenameSelected, ctx),
                 KeyBinding::new("ctrl-r", Refresh, ctx),
                 KeyBinding::new("ctrl-h", ToggleHidden, ctx),
                 KeyBinding::new("ctrl-f", FocusSearch, ctx),

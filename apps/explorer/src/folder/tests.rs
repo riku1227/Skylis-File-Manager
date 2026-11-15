@@ -1480,3 +1480,39 @@ fn standalone_preview_tracks_source_selection_and_closes_on_navigation(
         .read_with(cx, |view, _| assert!(!view.preview_open))
         .unwrap();
 }
+
+#[gpui::test]
+fn name_editor_consumes_enter_and_escape_before_folder_actions(cx: &mut gpui::TestAppContext) {
+    cx.update(|cx| {
+        cx.bind_keys([
+            gpui::KeyBinding::new("enter", OpenSelected, Some("Explorer")),
+            gpui::KeyBinding::new("escape", ClearSearch, Some("Explorer")),
+        ])
+    });
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, window, cx| {
+            view.begin_name_edit(
+                super::name_operations::NameOperation::Folder(PathBuf::from("C:\\")),
+                window,
+                cx,
+            );
+            let editor = view.name_editor.as_ref().unwrap();
+            editor.input.update(cx, |input, cx| {
+                input.set_text("..".into(), false, window, cx)
+            });
+        })
+        .unwrap();
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "enter");
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.name_editor.as_ref().unwrap().error.is_some())
+        })
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "escape");
+    window
+        .read_with(cx, |view, _| assert!(view.name_editor.is_none()))
+        .unwrap();
+}

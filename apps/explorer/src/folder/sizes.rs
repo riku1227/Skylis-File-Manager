@@ -37,10 +37,6 @@ impl FolderView {
         self.sizes.automatic = Some(automatic);
     }
 
-    pub(super) fn stop_sizes(&mut self, cx: &mut Context<Self>) {
-        self.cancel_sizes(cx);
-        self.sizes.suspended = true;
-    }
     pub(super) fn cancel_sizes(&mut self, cx: &mut Context<Self>) {
         self.sizes.suspended = false;
         self.sizes.token.cancel();

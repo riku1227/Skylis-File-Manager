@@ -17,6 +17,8 @@ mod preview_window;
 mod wsl;
 use crate::media::{MediaCache, MediaScope};
 mod context_menu;
+mod name_editor;
+mod name_operations;
 mod scroll_motion;
 mod scrollbar;
 use context_menu::ContextMenu;
@@ -69,6 +71,8 @@ pub struct FolderView {
     gallery_columns: usize,
     gallery_rows: Vec<(Option<explorer_core::date_group::DateGroup>, Vec<usize>)>,
     context_menu: Option<ContextMenu>,
+    name_editor: Option<name_editor::NameEditor>,
+    menu_generation: usize,
     menu_focus: FocusHandle,
     _shell_menu: Option<Task<()>>,
     pub mode: ThemeMode,
@@ -224,6 +228,8 @@ impl FolderView {
             gallery_columns: 1,
             gallery_rows: Vec::new(),
             context_menu: None,
+            name_editor: None,
+            menu_generation: 0,
             menu_focus: cx.focus_handle(),
             _shell_menu: None,
             mode,
@@ -351,6 +357,7 @@ impl FolderView {
     // ───────────── 読み込み ─────────────
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.name_editor = None;
         self.cancel_scroll_motion();
         self.cancel_address(cx);
         self.cancel_sizes(cx);
@@ -762,7 +769,8 @@ impl FolderView {
         }
     }
     fn input_focused(&self, window: &Window, cx: &App) -> bool {
-        self.search.focus_handle(cx).is_focused(window)
+        self.name_editor.is_some()
+            || self.search.focus_handle(cx).is_focused(window)
             || self.address.focus_handle(cx).is_focused(window)
     }
     pub fn cancel_address(&mut self, cx: &mut Context<Self>) {
@@ -1911,6 +1919,7 @@ impl Render for FolderView {
             )
             .on_action(cx.listener(Self::select_all))
             .on_action(cx.listener(Self::copy_files))
+            .on_action(cx.listener(Self::rename_selected))
             .on_action(cx.listener(Self::cut_files))
             .on_action(cx.listener(Self::paste_files))
             .on_drag_move(cx.listener(Self::promote_file_drag))
@@ -2047,6 +2056,9 @@ impl Render for FolderView {
             .child(self.render_status(t, cx))
             .when(self.context_menu.is_some(), |d| {
                 d.child(self.render_context_menu(t, cx))
+            })
+            .when(self.name_editor.is_some(), |d| {
+                d.child(self.render_name_editor(t, cx))
             })
     }
 }
