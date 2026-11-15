@@ -4,17 +4,17 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
-mod context_menu;
-use context_menu::ContextMenu;
 mod transfers;
 use transfers::FileDrag;
-mod media_view;
-use crate::media::{MediaCache, MediaScope};
 mod sizes;
 use sizes::SizeState;
 mod wsl;
-mod scrollbar;
 mod grouping;
+mod media_view;
+use crate::media::{MediaCache, MediaScope};
+mod scrollbar;
+mod context_menu;
+use context_menu::ContextMenu;
 use grouping::DisplayRow;
 use explorer_core::history::breadcrumbs;
 use explorer_core::location::{Location, resolve_address};
@@ -45,16 +45,20 @@ pub enum FolderEvent { OpenInTab(PathBuf) }
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
-    context_menu: Option<ContextMenu>,
-    menu_focus: FocusHandle,
-    _shell_menu: Option<Task<()>>,
     multi_selection: std::collections::BTreeSet<PathBuf>,
     selection_anchor: Option<PathBuf>,
+    sizes: SizeState,
     media: Entity<MediaCache>,
     media_scope: MediaScope,
     preview_scope: MediaScope,
     preview_open: bool,
-    sizes: SizeState,
+    gallery: bool,
+    gallery_override: Option<bool>,
+    gallery_columns: usize,
+    gallery_rows: Vec<(Option<explorer_core::date_group::DateGroup>,Vec<usize>)>,
+    context_menu: Option<ContextMenu>,
+    menu_focus: FocusHandle,
+    _shell_menu: Option<Task<()>>,
     pub mode: ThemeMode,
     pub pane: bool,
     pub compact: bool,
@@ -112,6 +116,7 @@ impl FolderView {
     ) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
+
         let search = cx.new(TextInput::new);
         cx.observe(&search, |this, search, cx| {
             let query = search.read(cx).content.to_string();
@@ -144,6 +149,7 @@ impl FolderView {
             cx.observe(&preferences, |this, preferences, cx| {
                 let automatic = preferences.read(cx).value.automatic_sizes;
                 this.update_size_mode(automatic,cx);
+                this.choose_auto_gallery(cx);
                 let enabled = preferences.read(cx).value.group_downloads;
                 if this.group_downloads != enabled {
                     this.group_downloads = enabled;
@@ -159,10 +165,13 @@ impl FolderView {
         };
         cx.observe(&media, |_,_,cx|cx.notify()).detach();
         let mut this = Self {
-            context_menu: None, menu_focus: cx.focus_handle(), _shell_menu: None,
             multi_selection: Default::default(), selection_anchor: None,
-            media, media_scope: MediaScope::new(), preview_scope: MediaScope::new(), preview_open: false,
             sizes: SizeState::default(),
+            media, media_scope: MediaScope::new(), preview_scope: MediaScope::new(), preview_open: false,
+            gallery: false, gallery_override: None, gallery_columns: 1, gallery_rows: Vec::new(),
+            context_menu: None,
+            menu_focus: cx.focus_handle(),
+            _shell_menu: None,
             mode,
             pane: true,
             compact: false,
@@ -261,10 +270,15 @@ impl FolderView {
     // ───────────── 読み込み ─────────────
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
-        self.context_menu=None;self._shell_menu=None;
-        self.cancel_sizes(cx);
         self.cancel_address(cx);
-        self.media_scope.cancel();self.preview_scope.cancel();self.preview_open=false;
+        self.cancel_sizes(cx);
+        self.media_scope.cancel();
+        self.preview_scope.cancel();
+        self.preview_open = false;
+        self.gallery = self.gallery_override.unwrap_or(false);
+        self.gallery_rows.clear();
+        self.context_menu = None;
+        self._shell_menu = None;
         // 前の列挙を止める（タスクをdropすると受信側も閉じ、列挙スレッドは次のsendで終了する）
         self.cancel.cancel();
         self.cancel = CancelToken::new();
@@ -274,7 +288,8 @@ impl FolderView {
         self.group_date = chrono::Local::now().date_naive();
         self.display_rows.clear();
         self.entry_rows.clear();
-        self.multi_selection.clear();self.selection_anchor=None;
+        self.multi_selection.clear();
+        self.selection_anchor = None;
         self.entries.clear();
         self.visible.clear();
         self.selected = None;
@@ -347,6 +362,7 @@ impl FolderView {
             ListingEvent::Done(stats) => {
                 self.loading = false;
                 self.stats = Some(stats);
+                self.choose_auto_gallery(cx);
                 self.pending_select = None;
             }
             ListingEvent::Failed(kind, msg) => {
@@ -413,6 +429,7 @@ impl FolderView {
         if &location == self.history.current() {
             return;
         }
+        self.gallery_override = None;
         self.history.push(location.clone(), self.selected_name());
         self.clear_query(window, cx);
         self.load(location, None, cx);
@@ -453,6 +470,7 @@ impl FolderView {
 
     fn go_back(&mut self, _: &GoBack, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((path, sel)) = self.history.go_back(self.selected_name()) {
+            self.gallery_override = None;
             self.clear_query(window, cx);
             self.load(path, sel, cx);
         }
@@ -460,6 +478,7 @@ impl FolderView {
 
     fn go_forward(&mut self, _: &GoForward, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((path, sel)) = self.history.go_forward(self.selected_name()) {
+            self.gallery_override = None;
             self.clear_query(window, cx);
             self.load(path, sel, cx);
         }
@@ -474,6 +493,7 @@ impl FolderView {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned());
             let location = Location::Folder(parent.to_path_buf());
+            self.gallery_override = None;
             self.history.push(location.clone(), self.selected_name());
             self.clear_query(window, cx);
             self.load(location, came_from, cx);
@@ -543,20 +563,21 @@ impl FolderView {
 
     fn page_rows(&self) -> isize {
         let h = self.scroll.0.borrow().base_handle.bounds().size.height;
-        ((h / px(if self.compact { 24. } else { 28. })).floor() as isize - 1).max(1)
+        let row_height=if self.gallery {if self.compact {156.} else {172.}} else if self.compact {24.} else {28.};
+        ((h / px(row_height)).floor() as isize - 1).max(1) * if self.gallery {self.gallery_columns as isize} else {1}
     }
 
     fn select_prev(&mut self, _: &SelectPrev, window: &mut Window, cx: &mut Context<Self>) {
         if self.input_focused(window, cx) {
             return;
         }
-        self.move_selection(-1, cx);
+        self.move_selection(if self.gallery && !self.preview_open { -(self.gallery_columns as isize) } else {-1}, cx);
     }
     fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
         if self.input_focused(window, cx) {
             return;
         }
-        self.move_selection(1, cx);
+        self.move_selection(if self.gallery && !self.preview_open { self.gallery_columns as isize } else {1}, cx);
     }
     fn select_first(&mut self, _: &SelectFirst, window: &mut Window, cx: &mut Context<Self>) {
         if self.input_focused(window, cx) {
@@ -911,6 +932,11 @@ impl FolderView {
                                 })),
                         )
                     }),
+            )
+            .child(
+                div().id("view-mode").px(px(8.)).cursor_pointer().text_color(t.c("text.secondary"))
+                    .child(if self.gallery { "詳細表示" } else { "ギャラリー" })
+                    .on_click(cx.listener(|this,_,_,cx|this.set_gallery(!this.gallery,cx))),
             )
             .child(
                 icon_button("settings", "icons/settings.svg", true, t)
@@ -1594,11 +1620,6 @@ impl FolderView {
 }
 impl Drop for FolderView {
     fn drop(&mut self) {
-        self.cancel.cancel();
-    }
-}
-impl Drop for FolderView {
-    fn drop(&mut self) {
         self.media_scope.cancel();
         self.preview_scope.cancel();
         self.cancel.cancel();
@@ -1634,7 +1655,9 @@ impl Render for FolderView {
             } else { let _=crate::media::quicklook::close(window); }
         }
 
-
+        let content_width = f32::from(window.viewport_size().width) - f32::from(SIDEBAR_WIDTH) - if self.pane { 280. } else { 0. } - 40.;
+        let columns = (content_width / if self.compact {112.} else {128.}).floor().max(1.) as usize;
+        if columns != self.gallery_columns { self.gallery_columns = columns; self.rebuild_display_rows(); }
         div()
             .key_context("Explorer")
             .track_focus(&self.focus)
@@ -1646,9 +1669,11 @@ impl Render for FolderView {
             .on_action(cx.listener(Self::cut_files))
             .on_action(cx.listener(Self::paste_files))
             .on_drag_move(cx.listener(Self::promote_file_drag))
-            .on_action(cx.listener(Self::keyboard_context_menu))
             .on_action(cx.listener(Self::toggle_preview))
+            .on_action(cx.listener(Self::keyboard_context_menu))
             .on_action(cx.listener(Self::edit_address))
+            .on_action(cx.listener(|this,_:&SelectLeft,w,cx|{if !this.input_focused(w,cx) && (this.gallery || this.preview_open) {this.move_selection(-1,cx);}}))
+            .on_action(cx.listener(|this,_:&SelectRight,w,cx|{if !this.input_focused(w,cx) && (this.gallery || this.preview_open) {this.move_selection(1,cx);}}))
             .on_action(cx.listener(Self::select_prev))
             .on_action(cx.listener(Self::select_next))
             .on_action(cx.listener(Self::select_first))
@@ -1721,8 +1746,8 @@ impl Render for FolderView {
                             .map(|d| Self::file_drop_target(d, self.path().map(Path::to_path_buf), t, cx))
                             .when(self.is_home(), |d| d.child(self.render_home(t, window, cx)))
                             .when(!self.is_home(), |d| {
-                                d.on_mouse_down(MouseButton::Right,cx.listener(|this,event,w,cx|this.open_context_menu(None,event,w,cx))).child(self.render_header(t, self.narrow(window), cx))
-                                    .child(self.render_list(t, cx))
+                                d.on_mouse_down(MouseButton::Right,cx.listener(|this,event,w,cx|this.open_context_menu(None,event,w,cx))).when(!self.gallery, |d| d.child(self.render_header(t, self.narrow(window), cx)))
+                                    .child(if self.gallery && !self.visible.is_empty() { self.render_gallery(t,cx) } else { self.render_list(t,cx) })
                             }),
                     )
                     .when(self.pane && !self.is_home(), |d| {

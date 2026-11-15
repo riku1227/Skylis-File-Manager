@@ -51,4 +51,55 @@ impl FolderView {
             .into_any_element()
     }
 
+    pub(super) fn set_gallery(&mut self,enabled:bool,cx:&mut Context<Self>) {
+        self.gallery = enabled; self.gallery_override = Some(enabled); self.media_scope.cancel();
+        self.rebuild_display_rows(); self.scroll.scroll_to_item(0,ScrollStrategy::Top); cx.notify();
+    }
+    pub(super) fn choose_auto_gallery(&mut self,cx:&mut Context<Self>) {
+        if self.gallery_override.is_none() {
+            let enabled = cx.try_global::<crate::settings::SharedPreferences>().is_none_or(|p|p.0.read(cx).value.auto_gallery);
+            self.gallery = enabled && crate::media::should_use_gallery(self.visible.iter().map(|&i|&self.entries[i]));
+            self.rebuild_display_rows();
+        }
+    }
+    pub(super) fn render_gallery_rows(&mut self,range:Range<usize>,w:&mut Window,cx:&mut Context<Self>)->Vec<AnyElement> {
+        let t = self.theme(w);
+        range.filter_map(|row| {
+            let (label,indices) = self.gallery_rows.get(row)?.clone();
+            let well = if self.compact {96.} else {112.};
+            let mut tiles = div().flex().gap(px(8.)).w_full();
+            for ix in indices {
+                let entry = self.entries[self.visible[ix]].clone();
+                let thumb = self.media.update(cx,|media,cx| media.get_thumbnail(&entry,(well*w.scale_factor()).ceil() as u32,&self.media_scope,cx));
+                let picture = thumb.map(|image|img(image).size_full().object_fit(gpui::ObjectFit::Contain).into_any_element())
+                    .unwrap_or_else(||self.object_icon(&entry.path,entry.is_dir_like(),48.,w,cx));
+                tiles=tiles.child(div().id(("gallery-item",ix)).flex_1().min_w_0().p(px(4.)).rounded(px(6.))
+                    .when(self.multi_selection.contains(&entry.path),|d|d.bg(t.c("selection.bg")))
+                    .hover(|s|s.bg(t.c("state.hover"))).cursor_pointer()
+                    .child(div().h(px(well)).w_full().flex().items_center().justify_center().overflow_hidden().child(picture))
+                    .child(div().mt(px(4.)).h(px(18.)).truncate().child(entry.name.clone()))
+                     .on_drag(self.file_drag(ix,cx),|drag,_,_,cx| {drag.resolve(cx);cx.new(|_|drag.clone())})
+                    .external_drag_payload(|drag:&FileDrag,_,cx|drag.external_payload(cx))
+                    .when(entry.kind==EntryKind::Dir,|d| {
+                        let destination=entry.path.clone();let external=destination.clone();
+                        d.on_drop(cx.listener(move |this,drag:&FileDrag,w,cx| {cx.stop_propagation();let kind=if w.modifiers().shift {crate::file_operations::TransferKind::Move} else {crate::file_operations::TransferKind::Copy};this.receive_files(drag.paths(cx),destination.clone(),kind,w,cx);}))
+                            .on_drop(cx.listener(move |this,drag:&gpui::ExternalPaths,w,cx| {cx.stop_propagation();this.receive_files(drag.paths().to_vec(),external.clone(),crate::file_operations::TransferKind::Copy,w,cx);}))
+                    })
+                    .on_mouse_down(MouseButton::Left,cx.listener(move |this,event:&MouseDownEvent,w,cx|this.pointer_select(ix,event,w,cx)))
+                    .on_mouse_down(MouseButton::Right,cx.listener(move |this,event,w,cx|this.open_context_menu(Some(ix),event,w,cx)))
+                    .on_click(cx.listener(move |this,event:&ClickEvent,w,cx|{this.finish_pointer_click(ix,event,cx);if event.click_count()==2 {this.open_entry(ix,w,cx);}}))) ;
+            }
+            // Empty cells retain a stable grid width on the final row.
+            let count=self.gallery_rows[row].1.len();
+            for _ in count..self.gallery_columns {tiles=tiles.child(div().flex_1().min_w_0());}
+            Some(div().h(px(if self.compact {156.} else {172.})).px(px(10.)).w_full()
+                .child(div().h(px(22.)).flex().items_center().text_size(px(11.)).text_color(t.c("text.muted")).child(label.map(|g|g.label()).unwrap_or("")))
+                .child(tiles).into_any_element())
+        }).collect()
+    }
+    pub(super) fn render_gallery(&self,t:Theme,cx:&mut Context<Self>)->AnyElement {
+        div().flex().flex_1().min_h_0()
+            .child(uniform_list("gallery",self.gallery_rows.len(),cx.processor(Self::render_gallery_rows)).flex_1().min_h_0().track_scroll(&self.scroll))
+            .child(self.render_scrollbar(t,cx)).on_scroll(cx.listener(|_,_,_,cx|cx.notify())).into_any_element()
+    }
 }

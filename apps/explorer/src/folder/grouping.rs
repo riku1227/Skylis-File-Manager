@@ -12,6 +12,23 @@ impl FolderView {
         self.display_rows.clear();
         self.entry_rows.clear();
         self.entry_rows.resize(self.visible.len(), 0);
+        self.gallery_rows.clear();
+        if self.gallery {
+            let mut previous = None;
+            for (ix,&i) in self.visible.iter().enumerate() {
+                let group = self.grouped.then(||self.group_for(&self.entries[i]));
+                let new_group = group != previous;
+                if new_group || self.gallery_rows.last().is_none_or(|(_,items)|items.len() >= self.gallery_columns) {
+                    self.gallery_rows.push((if new_group {group} else {None},Vec::new()));
+                }
+                let row = self.gallery_rows.len()-1;
+                self.gallery_rows[row].1.push(ix);
+                self.entry_rows[ix]=row;
+                previous=group;
+            }
+            return;
+        }
+
         let mut header = None;
         let mut previous = None;
         for (ix, &i) in self.visible.iter().enumerate() {

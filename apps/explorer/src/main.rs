@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod assets;
+mod size_service;
+mod native_shell;
 mod explorer;
 mod folder;
 mod search;
@@ -13,6 +15,8 @@ mod actions {
         explorer,
         [
             SelectPrev,
+            SelectLeft,
+            SelectRight,
             SelectNext,
             SelectFirst,
             SelectLast,
@@ -34,14 +38,14 @@ mod actions {
             FocusSearch,
             EditAddress,
             OpenSettings,
-            DetachTab,
-            MergeWindowTabs,
+            ShowContextMenu,
             QuickPreview,
             SelectAllFiles,
             CopyFiles,
             CutFiles,
             PasteFiles,
-            ShowContextMenu,
+            DetachTab,
+            MergeWindowTabs,
             ClearSearch
         ]
     );
@@ -60,6 +64,8 @@ fn main() {
             let ctx = Some("Explorer");
             cx.bind_keys([
                 KeyBinding::new("up", SelectPrev, ctx),
+                KeyBinding::new("left", SelectLeft, ctx),
+                KeyBinding::new("right", SelectRight, ctx),
                 KeyBinding::new("down", SelectNext, ctx),
                 KeyBinding::new("home", SelectFirst, ctx),
                 KeyBinding::new("end", SelectLast, ctx),
@@ -89,10 +95,11 @@ fn main() {
                 KeyBinding::new("cmd-q", Quit, None),
             ]);
             cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, Some("ExplorerTabs")), KeyBinding::new("cmd-,", OpenSettings, Some("ExplorerTabs"))]);
+            cx.bind_keys([KeyBinding::new("shift-f10", ShowContextMenu, ctx), KeyBinding::new("menu", ShowContextMenu, ctx)]);
             cx.bind_keys([KeyBinding::new("ctrl-shift-n", DetachTab, Some("ExplorerTabs")), KeyBinding::new("cmd-shift-n", DetachTab, Some("ExplorerTabs"))]);
-            cx.bind_keys([KeyBinding::new("space",QuickPreview,ctx)]);
-            cx.bind_keys([KeyBinding::new("ctrl-a",SelectAllFiles,ctx),KeyBinding::new("cmd-a",SelectAllFiles,ctx),KeyBinding::new("ctrl-c",CopyFiles,ctx),KeyBinding::new("ctrl-x",CutFiles,ctx),KeyBinding::new("ctrl-v",PasteFiles,ctx),KeyBinding::new("cmd-c",CopyFiles,ctx),KeyBinding::new("cmd-v",PasteFiles,ctx)]);
-            cx.bind_keys([KeyBinding::new("shift-f10",ShowContextMenu,ctx),KeyBinding::new("menu",ShowContextMenu,ctx)]);
+            cx.bind_keys([KeyBinding::new("space", QuickPreview, ctx)]);
+            cx.bind_keys([KeyBinding::new("ctrl-a",SelectAllFiles,ctx),KeyBinding::new("cmd-a",SelectAllFiles,ctx),KeyBinding::new("ctrl-c",CopyFiles,ctx),KeyBinding::new("ctrl-x",CutFiles,ctx),KeyBinding::new("ctrl-v",PasteFiles,ctx)]);
+            cx.bind_keys([KeyBinding::new("cmd-c",CopyFiles,ctx),KeyBinding::new("cmd-v",PasteFiles,ctx)]);
             search::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
             let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
@@ -113,10 +120,6 @@ fn main() {
             cx.activate(true);
         });
 }
-
-mod size_service;
-
-mod native_shell;
 
 mod media;
 
