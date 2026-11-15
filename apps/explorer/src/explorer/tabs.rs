@@ -276,6 +276,16 @@ impl Explorer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.finish_tab_drag_with_hit_test(position, w, cx, target_is_under_pointer);
+    }
+
+    fn finish_tab_drag_with_hit_test(
+        &mut self,
+        position: Point<Pixels>,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+        is_under_pointer: impl Fn(&Window, Point<Pixels>) -> bool,
+    ) {
         let Some(id) = self.dragging_tab.take() else {
             return;
         };
@@ -284,7 +294,12 @@ impl Explorer {
             return;
         };
         cx.stop_active_drag(w);
-        if let Some(slot) = self.tab_drop_slot_at(position, w) {
+        let screen = screen_position(position, w);
+        // Local coordinates alone do not identify the drop target: another
+        // Skylis window can cover this window's strip or content area.
+        if is_under_pointer(w, screen)
+            && let Some(slot) = self.tab_drop_slot_at(position, w)
+        {
             let to = reordered_index(index, slot, self.tabs.len());
             let tab = self.tabs.remove(index);
             self.tabs.insert(to, tab);
@@ -292,12 +307,6 @@ impl Explorer {
             self.switch(to, w, cx);
             return;
         }
-        // A drop elsewhere inside this window cancels; it must not create a window over a file row.
-        if Bounds::new(Point::default(), w.viewport_size()).contains(&position) {
-            cx.notify();
-            return;
-        }
-        let screen = screen_position(position, w);
         let current = w.window_handle();
         for handle in cx.windows().into_iter().filter(|handle| *handle != current) {
             let Some(handle) = handle.downcast::<Explorer>() else {
@@ -306,7 +315,7 @@ impl Explorer {
             let target = handle
                 .update(cx, |target, window, _| {
                     let local = screen / screen_scale(window) - window.bounds().origin;
-                    if target_is_under_pointer(window, screen) {
+                    if is_under_pointer(window, screen) {
                         target.tab_drop_slot_at(local, window)
                     } else {
                         None
@@ -318,6 +327,12 @@ impl Explorer {
                 self.transfer_tab(index, handle, slot, w, cx);
                 return;
             }
+        }
+        // Check overlapping destination strips first. A drop elsewhere inside
+        // the source still cancels rather than creating a window over a file row.
+        if Bounds::new(Point::default(), w.viewport_size()).contains(&position) {
+            cx.notify();
+            return;
         }
         let origin = screen / screen_scale(w) - point(px(90.), px(18.));
         if self.tabs.len() == 1 && move_existing_window(w, origin, cx) {
@@ -576,12 +591,53 @@ mod tests {
                 view.tab_strip
                     .set(Bounds::new(point(px(10.), px(6.)), size(px(700.), px(28.))));
                 view.dragging_tab = Some(first);
-                view.finish_tab_drag(point(px(650.), px(14.)), w, cx);
+                // Headless windows have no native HWND for WindowFromPoint.
+                view.finish_tab_drag_with_hit_test(point(px(650.), px(14.)), w, cx, |_, _| true);
                 assert_eq!(view.tabs[2].entity_id(), first);
                 assert_eq!(view.active, 2);
                 assert!(view.dragging_tab.is_none());
             })
             .unwrap();
+    }
+
+    #[gpui::test]
+    fn overlapping_front_window_receives_drop_inside_source_tab_strip(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let source = test_window(cx);
+        let target = test_window(cx);
+        target
+            .update(cx, |view, _, _| {
+                view.tab_strip
+                    .set(Bounds::new(point(px(10.), px(6.)), size(px(700.), px(28.))));
+            })
+            .unwrap();
+        let moved = source
+            .update(cx, |view, w, cx| {
+                view.open_tab_at(Location::Home, w, cx);
+                let moved = view.tabs[1].entity_id();
+                view.tab_strip
+                    .set(Bounds::new(point(px(10.), px(6.)), size(px(700.), px(28.))));
+                view.dragging_tab = Some(moved);
+                view.finish_tab_drag_with_hit_test(point(px(40.), px(14.)), w, cx, |window, _| {
+                    window.window_handle() == target.into()
+                });
+                assert_eq!(
+                    view.tabs.len(),
+                    1,
+                    "the covered source must not reorder or cancel"
+                );
+                moved
+            })
+            .unwrap();
+        target
+            .read_with(cx, |view, _| {
+                assert_eq!(view.tabs.len(), 2);
+                assert_eq!(view.tabs[0].entity_id(), moved);
+                assert_eq!(view.active, 0);
+            })
+            .unwrap();
+        assert_eq!(cx.update(|cx| cx.windows().len()), 2);
     }
 
     #[gpui::test]
