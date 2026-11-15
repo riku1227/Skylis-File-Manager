@@ -16,6 +16,17 @@ required by the published manifest.
 
 Local changes:
 
+- Native `FileDropEvent` entry, motion and release sample platform modifier state
+  and propagate it into the translated mouse events. Windows OLE drag loops can
+  consume key messages, so cached keyboard state is insufficient for Ctrl/Shift
+  drop behavior. `TestWindow::set_modifiers` lets tests change this state without
+  delivering a keyboard event. The regression is in Skylis `folder::transfers`.
+- The upstream Windows platform backend still advertises `DROPEFFECT_COPY` for
+  inbound native drags. Skylis chooses the actual file operation on its worker;
+  the OS drag cursor can therefore still display a copy badge for a move. This
+  patch does not claim to fix native effect negotiation or change source-owned
+  deletion semantics.
+
 - `Window::set_frame_rate_limit(Option<f64>) -> anyhow::Result<()>` and its getter
   provide a per-window runtime limit without changing `WindowOptions`.
 - A shared cell connects the window to the existing frame-request closure.

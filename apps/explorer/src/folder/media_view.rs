@@ -201,6 +201,7 @@ impl FolderView {
                 let mut tiles = div().flex().gap(px(8.)).w_full();
                 for ix in indices {
                     let entry = self.entries[self.visible[ix]].clone();
+                    let dragging = self.is_drag_source(&entry.path, cx);
                     let thumb = self.media.update(cx, |media, cx| {
                         media.get_thumbnail(
                             &entry,
@@ -226,7 +227,10 @@ impl FolderView {
                             .min_w_0()
                             .p(px(4.))
                             .rounded(px(6.))
-                            .when(self.item_is_selected(ix), |d| d.bg(t.c("selection.bg")))
+                            .when(self.item_is_selected(ix) && !dragging, |d| {
+                                d.bg(t.c("selection.bg"))
+                            })
+                            .when(dragging, |d| d.opacity(0.45))
                             .hover(|s| s.bg(t.c("state.hover")))
                             .cursor_pointer()
                             .child(

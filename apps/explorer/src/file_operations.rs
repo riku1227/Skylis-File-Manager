@@ -18,7 +18,23 @@ pub use windows_io::{
 pub enum TransferKind {
     Copy,
     Move,
+    /// ドロップ時の既定動作。各項目の実ボリュームをワーカーで判定する。
+    Automatic,
 }
+
+impl TransferKind {
+    pub fn from_drop_modifiers(control: bool, shift: bool) -> Self {
+        if control {
+            Self::Copy
+        } else if shift {
+            Self::Move
+        } else {
+            Self::Automatic
+        }
+    }
+}
+
+mod volume;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TransferOutcome {
@@ -230,13 +246,14 @@ fn windows_transfer(
         let destination = shell_item(&prepared.destination)?;
         for path in &prepared.paths {
             let source = shell_item(path)?;
-            match kind {
+            match volume::resolve(kind, path, &prepared.destination) {
                 TransferKind::Copy => {
                     operation.CopyItem(&source, &destination, PCWSTR::null(), None)?
                 }
                 TransferKind::Move => {
                     operation.MoveItem(&source, &destination, PCWSTR::null(), None)?
                 }
+                TransferKind::Automatic => unreachable!("volume policy resolves automatic intent"),
             }
         }
         let result = operation.PerformOperations();
@@ -253,6 +270,20 @@ fn windows_transfer(
 
 #[cfg(target_os = "macos")]
 fn macos_transfer(prepared: &Prepared, kind: TransferKind) -> anyhow::Result<TransferOutcome> {
+    if kind == TransferKind::Automatic {
+        // 同じバッチ内の別ボリュームも、項目ごとに既定動作を選ぶ。
+        for path in &prepared.paths {
+            let resolved = volume::resolve(kind, path, &prepared.destination);
+            let single = Prepared {
+                paths: vec![path.clone()],
+                destination: prepared.destination.clone(),
+            };
+            if macos_transfer(&single, resolved)? == TransferOutcome::Aborted {
+                return Ok(TransferOutcome::Aborted);
+            }
+        }
+        return Ok(TransferOutcome::Completed);
+    }
     // A fixed script receives paths only as argv: quoting and shell syntax in filenames cannot
     // become executable code. Finder preserves macOS metadata. Replacement stays disabled.
     // macOS may ask for Automation permission; denial is reported to the application.
@@ -286,6 +317,7 @@ fn macos_transfer(prepared: &Prepared, kind: TransferKind) -> anyhow::Result<Tra
         .arg(match kind {
             TransferKind::Copy => "copy",
             TransferKind::Move => "move",
+            TransferKind::Automatic => unreachable!(),
         })
         .args(&prepared.paths)
         .output()

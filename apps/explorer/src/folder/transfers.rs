@@ -2,6 +2,33 @@ use super::*;
 use crate::file_operations::{self, TransferKind, TransferOutcome};
 use std::{cell::OnceCell, collections::BTreeSet, rc::Rc};
 
+/// 弱参照だけを保持し、終了したドラッグの選択や画像を残さない。
+struct DragFeedback {
+    source: gpui::EntityId,
+    payload: std::rc::Weak<OnceCell<ResolvedDrag>>,
+}
+impl gpui::Global for DragFeedback {}
+impl DragFeedback {
+    fn contains(&self, source: gpui::EntityId, path: &Path, active: bool) -> bool {
+        active
+            && self.source == source
+            && self
+                .payload
+                .upgrade()
+                .is_some_and(|payload| payload.get().is_some_and(|payload| payload.contains(path)))
+    }
+}
+
+/// 表示済みパスだけで明らかに無効な対象を除外する。実パスの検証はワーカーで再実施。
+fn valid_drop_paths(paths: &[PathBuf], destination: &Path) -> bool {
+    !paths.is_empty()
+        && paths.iter().all(|path| {
+            destination != path
+                && !destination.starts_with(path)
+                && path.parent() != Some(destination)
+        })
+}
+
 /// Cheap per-row descriptor. The selection is frozen once when a drag actually starts,
 /// rather than cloning a potentially huge selection for every visible row on every frame.
 #[derive(Clone)]
@@ -16,13 +43,31 @@ pub(super) struct FileDrag {
 struct ResolvedDrag {
     paths: Vec<PathBuf>,
     directories: BTreeSet<PathBuf>,
+    sorted_paths: Vec<usize>,
+}
+impl ResolvedDrag {
+    fn new(paths: Vec<PathBuf>, directories: BTreeSet<PathBuf>) -> Self {
+        // パス本体を複製せず、可視行の半透明判定をO(log n)にする。
+        let mut sorted_paths: Vec<_> = (0..paths.len()).collect();
+        sorted_paths.sort_unstable_by(|&a, &b| paths[a].cmp(&paths[b]));
+        Self {
+            paths,
+            directories,
+            sorted_paths,
+        }
+    }
+    fn contains(&self, path: &Path) -> bool {
+        self.sorted_paths
+            .binary_search_by(|&i| self.paths[i].as_path().cmp(path))
+            .is_ok()
+    }
 }
 
 impl FileDrag {
     /// Call in the on_drag constructor before creating the drag view, outside a source
     /// entity update. Later drop callbacks may update that same entity, so they must read
     /// the frozen payload rather than re-enter the source to obtain its current selection.
-    pub(super) fn resolve(&self, cx: &App) {
+    pub(super) fn resolve(&self, cx: &mut App) {
         self.payload.get_or_init(|| {
             let Some(source) = self.source.upgrade() else {
                 return self.fallback();
@@ -43,7 +88,11 @@ impl FileDrag {
             if self.is_dir && selected.contains(&self.item) {
                 directories.insert(self.item.clone());
             }
-            ResolvedDrag { paths, directories }
+            ResolvedDrag::new(paths, directories)
+        });
+        cx.set_global(DragFeedback {
+            source: self.source.entity_id(),
+            payload: Rc::downgrade(&self.payload),
         });
     }
 
@@ -58,7 +107,7 @@ impl FileDrag {
         } else {
             BTreeSet::new()
         };
-        ResolvedDrag { paths, directories }
+        ResolvedDrag::new(paths, directories)
     }
 
     fn payload(&self) -> &ResolvedDrag {
@@ -94,8 +143,9 @@ impl Render for FileDrag {
             .border_color(theme.c("border.subtle"))
             .bg(theme.c("surface.raised"))
             .text_color(theme.c("text.primary"))
+            .opacity(0.88)
             .child(format!(
-                "{} 項目をコピー · Shiftで移動",
+                "{} 項目 · Ctrlでコピー / Shiftで移動",
                 self.payload().paths.len()
             ))
     }
@@ -113,7 +163,7 @@ struct TransferContext {
 impl TransferContext {
     fn affected_directories(&self, kind: TransferKind) -> BTreeSet<PathBuf> {
         let mut directories = BTreeSet::from([self.destination.clone()]);
-        if kind == TransferKind::Move {
+        if kind != TransferKind::Copy {
             directories.extend(self.sources.iter().cloned());
         }
         directories
@@ -198,6 +248,14 @@ impl Drop for NativeDragLease {
 }
 
 impl FolderView {
+    pub(super) fn is_drag_source(&self, path: &Path, cx: &Context<Self>) -> bool {
+        let active = cx.has_active_drag();
+        #[cfg(windows)]
+        let active = active || NATIVE_DRAG_ACTIVE.load(std::sync::atomic::Ordering::Acquire);
+        cx.try_global::<DragFeedback>()
+            .is_some_and(|feedback| feedback.contains(cx.entity_id(), path, active))
+    }
+
     /// Bind only a known folder destination. Home, toolbar gaps and other non-folder
     /// surfaces deliberately have no fallback to the currently displayed directory.
     /// Paths come from existing view data; validation remains on the transfer worker.
@@ -207,36 +265,53 @@ impl FolderView {
         theme: Theme,
         cx: &mut Context<Self>,
     ) -> E {
+        Self::file_drop_receiver(element, destination, cx)
+            .drag_over::<FileDrag>(move |style, _, _, _| style.bg(theme.c("accent.soft")))
+            .drag_over::<gpui::ExternalPaths>(move |style, _, _, _| {
+                style.bg(theme.c("accent.soft"))
+            })
+    }
+
+    /// 背景にもドロップできるが、一覧全体を青く塗ることはしない。
+    pub(super) fn file_drop_receiver<E: gpui::InteractiveElement>(
+        element: E,
+        destination: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> E {
         let Some(destination) = destination else {
             return element;
         };
         let external_destination = destination.clone();
+        let hover_destination = destination.clone();
         element
+            .can_drop(move |drag, _, _| {
+                if let Some(drag) = drag.downcast_ref::<FileDrag>() {
+                    valid_drop_paths(&drag.payload().paths, &hover_destination)
+                } else if let Some(drag) = drag.downcast_ref::<gpui::ExternalPaths>() {
+                    valid_drop_paths(drag.paths(), &hover_destination)
+                } else {
+                    false
+                }
+            })
             .on_drop(cx.listener(move |this, drag: &FileDrag, window, cx| {
                 cx.stop_propagation();
-                let kind = if window.modifiers().shift {
-                    TransferKind::Move
-                } else {
-                    TransferKind::Copy
-                };
+                let modifiers = window.modifiers();
+                let kind = TransferKind::from_drop_modifiers(modifiers.control, modifiers.shift);
                 this.receive_files(drag.paths(cx), destination.clone(), kind, window, cx);
             }))
             .on_drop(
                 cx.listener(move |this, drag: &gpui::ExternalPaths, window, cx| {
                     cx.stop_propagation();
+                    let modifiers = window.modifiers();
                     this.receive_files(
                         drag.paths().to_vec(),
                         external_destination.clone(),
-                        TransferKind::Copy,
+                        TransferKind::from_drop_modifiers(modifiers.control, modifiers.shift),
                         window,
                         cx,
                     );
                 }),
             )
-            .drag_over::<FileDrag>(move |style, _, _, _| style.bg(theme.c("accent.soft")))
-            .drag_over::<gpui::ExternalPaths>(move |style, _, _, _| {
-                style.bg(theme.c("accent.soft"))
-            })
     }
 
     pub(super) fn observe_file_transfers(&mut self, cx: &mut Context<Self>) {
@@ -432,10 +507,10 @@ impl FolderView {
                     NATIVE_DROP_ACCEPTED.store(true, std::sync::atomic::Ordering::Release);
                 }
                 self.notice = Some(
-                    if kind == TransferKind::Copy {
-                        "コピーしています…"
-                    } else {
-                        "移動しています…"
+                    match kind {
+                        TransferKind::Copy => "コピーしています…",
+                        TransferKind::Move => "移動しています…",
+                        TransferKind::Automatic => "ファイルを転送しています…",
                     }
                     .into(),
                 );
@@ -453,7 +528,7 @@ impl FolderView {
                     #[cfg(not(windows))]
                     let _ = cut_sequence;
                     let text = clipboard_error.unwrap_or_else(|| match result {
-                                Ok(TransferOutcome::Completed) => if kind == TransferKind::Copy { "ファイルをコピーしました" } else { "ファイルを移動しました" }.into(),
+                                Ok(TransferOutcome::Completed) => match kind { TransferKind::Copy => "ファイルをコピーしました", TransferKind::Move => "ファイルを移動しました", TransferKind::Automatic => "ファイルを転送しました" }.into(),
                                 Ok(TransferOutcome::Aborted) => "ファイル操作を中止しました。一部は完了している場合があります".into(),
                                 Err(error) => error,
                             });
@@ -527,6 +602,15 @@ impl FolderView {
         let Some(destination) = self.path().map(Path::to_path_buf) else {
             return;
         };
+        self.paste_into(destination, window, cx);
+    }
+
+    pub(super) fn paste_into(
+        &mut self,
+        destination: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         #[cfg(windows)]
         match file_operations::read_file_clipboard() {
             Ok(Some(files)) => self.start_transfer(
@@ -593,6 +677,7 @@ impl FolderView {
                 .filter_map(|path| path.parent().map(Path::to_path_buf))
                 .collect();
             let request = file_operations::NativeFileDrag::new(paths, window);
+            let payload = drag.payload.clone();
             cx.stop_active_drag(window);
             match request {
                 Err(error) => {
@@ -606,9 +691,14 @@ impl FolderView {
                     let events = file_transfer_events(cx);
                     cx.spawn(async move |_, cx| {
                         let _lease = lease;
+                        let _payload = payload;
                         // Foreground future, outside any GPUI entity/window/app update borrow.
                         // SHDoDragDrop's nested event loop may deliver a drop into another Skylis view.
                         let result = request.run();
+                        drop(_lease);
+                        drop(_payload);
+                        // Escapeや外へのドロップでも、元ウィンドウの半透明表示を解除する。
+                        let _ = cx.update(|cx| cx.refresh_windows());
                         let completion = match result {
                             Ok(Some(_))
                                 if !NATIVE_DROP_ACCEPTED
@@ -646,6 +736,66 @@ impl FolderView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[gpui::test]
+    fn native_drop_samples_modifiers_at_release_without_keyboard_events(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use gpui::InputEvent;
+        cx.background_executor.allow_parking();
+        cx.skip_drawing();
+        let handle = cx.add_window(|window, cx| {
+            let icons = cx.new(ShellIcons::new);
+            FolderView::new(Location::Home, ThemeMode::Light, icons, window, cx)
+        });
+        let platform = cx.test_window(handle.into());
+        let position = gpui::point(px(10.), px(10.));
+        let steps = [
+            (
+                gpui::Modifiers {
+                    shift: true,
+                    ..Default::default()
+                },
+                gpui::FileDropEvent::Entered {
+                    position,
+                    paths: gpui::ExternalPaths(
+                        [PathBuf::from("C:\\source.txt")].into_iter().collect(),
+                    ),
+                },
+            ),
+            (
+                gpui::Modifiers {
+                    control: true,
+                    ..Default::default()
+                },
+                gpui::FileDropEvent::Pending { position },
+            ),
+            (
+                gpui::Modifiers::default(),
+                gpui::FileDropEvent::Submit { position },
+            ),
+        ];
+        for (modifiers, event) in steps {
+            platform.set_modifiers(modifiers);
+            handle
+                .update(cx, |_, window, cx| {
+                    window.dispatch_event(event.to_platform_input(), cx);
+                    assert_eq!(window.modifiers(), modifiers);
+                })
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn drop_feedback_rejects_self_children_and_same_parent() {
+        let source = PathBuf::from("root/source");
+        let paths = vec![source.clone()];
+        assert!(!valid_drop_paths(&paths, &source));
+        assert!(!valid_drop_paths(&paths, &source.join("child")));
+        assert!(!valid_drop_paths(&paths, Path::new("root")));
+        assert!(valid_drop_paths(&paths, Path::new("other")));
+        assert!(!valid_drop_paths(&[], Path::new("other")));
+    }
 
     #[gpui::test]
     fn drag_payload_is_lazy_and_freezes_selection_and_directory_metadata(
@@ -690,7 +840,7 @@ mod tests {
             drag.payload.get().is_none(),
             "rendering a row must not clone the selection"
         );
-        cx.read(|cx| drag.resolve(cx));
+        cx.update(|cx| drag.resolve(cx));
         let clone = drag.clone();
         assert!(Rc::ptr_eq(&drag.payload, &clone.payload));
         window
@@ -713,7 +863,20 @@ mod tests {
                 panic!("missing native file payload");
             };
             assert_eq!(files.entries(), expected);
+            let feedback = cx.global::<DragFeedback>();
+            assert!(feedback.contains(drag.source.entity_id(), &expected[0].0, true));
+            assert!(
+                !feedback.contains(drag.source.entity_id(), &expected[0].0, false),
+                "drop/cancel clears feedback even before the drag view is released"
+            );
         });
+        let payload = Rc::downgrade(&drag.payload);
+        drop(drag);
+        drop(clone);
+        assert!(
+            payload.upgrade().is_none(),
+            "feedback must not retain completed payloads"
+        );
     }
 
     fn folder(name: &str) -> Location {

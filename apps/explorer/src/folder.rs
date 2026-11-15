@@ -1356,7 +1356,8 @@ impl FolderView {
                 };
                 let &i = self.visible.get(ix)?;
                 let e = self.entries[i].clone();
-                let selected = self.item_is_selected(ix);
+                let dragging = self.is_drag_source(&e.path, cx);
+                let selected = self.item_is_selected(ix) && !dragging;
                 let name_color = if selected && focused {
                     t.c("selection.fg")
                 } else {
@@ -1368,6 +1369,7 @@ impl FolderView {
                     t.c("text.muted")
                 };
                 let row = row_surface(t, selected, focused)
+                    .when(dragging, |d| d.opacity(0.45))
                     .child(
                         div()
                             .flex()
@@ -1958,7 +1960,7 @@ impl Render for FolderView {
                             .rounded(px(10.))
                             .overflow_hidden()
                             .map(|d| {
-                                Self::file_drop_target(d, self.path().map(Path::to_path_buf), t, cx)
+                                Self::file_drop_receiver(d, self.path().map(Path::to_path_buf), cx)
                             })
                             .when(self.is_home(), |d| d.child(self.render_home(t, window, cx)))
                             .when(!self.is_home(), |d| {

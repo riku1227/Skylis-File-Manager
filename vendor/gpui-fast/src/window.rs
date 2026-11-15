@@ -6033,6 +6033,9 @@ impl Window {
             PlatformInput::FileDrop(file_drop) => match file_drop {
                 FileDropEvent::Entered { position, paths } => {
                     self.mouse_position = position;
+                    // Native drag loops may consume keyboard messages. Read the platform
+                    // state for each drag event, including the final button release.
+                    self.modifiers = self.platform_window.modifiers();
                     let source_window = self.handle.window_id();
                     if !cx.restore_platform_drag(source_window) && cx.active_drag.is_none() {
                         cx.active_drag = Some(AnyDrag {
@@ -6046,24 +6049,26 @@ impl Window {
                     PlatformInput::MouseMove(MouseMoveEvent {
                         position,
                         pressed_button: Some(MouseButton::Left),
-                        modifiers: Modifiers::default(),
+                        modifiers: self.modifiers,
                     })
                 }
                 FileDropEvent::Pending { position } => {
                     self.mouse_position = position;
+                    self.modifiers = self.platform_window.modifiers();
                     PlatformInput::MouseMove(MouseMoveEvent {
                         position,
                         pressed_button: Some(MouseButton::Left),
-                        modifiers: Modifiers::default(),
+                        modifiers: self.modifiers,
                     })
                 }
                 FileDropEvent::Submit { position } => {
                     cx.activate(true);
                     self.mouse_position = position;
+                    self.modifiers = self.platform_window.modifiers();
                     PlatformInput::MouseUp(MouseUpEvent {
                         button: MouseButton::Left,
                         position,
-                        modifiers: Modifiers::default(),
+                        modifiers: self.modifiers,
                         click_count: 1,
                     })
                 }

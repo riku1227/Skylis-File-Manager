@@ -83,12 +83,17 @@ pub fn write_file_clipboard(
     kind: TransferKind,
     window: &gpui::Window,
 ) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        kind != TransferKind::Automatic,
+        "クリップボードにはコピーか切り取りを指定してください"
+    );
     let bytes = encode_paths(paths)?;
     let files = GlobalMemory::new(&bytes)?;
     let effect = GlobalMemory::new(
         &(match kind {
             TransferKind::Copy => DROPEFFECT_COPY.0,
             TransferKind::Move => DROPEFFECT_MOVE.0,
+            TransferKind::Automatic => unreachable!(),
         })
         .to_le_bytes(),
     )?;

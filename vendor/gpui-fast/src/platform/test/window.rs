@@ -60,6 +60,7 @@ pub(crate) struct TestWindowState {
     appearance: WindowAppearance,
     external_drag_files: Vec<(PathBuf, bool)>,
     start_external_drag_result: bool,
+    modifiers: crate::Modifiers,
 }
 
 #[derive(Clone)]
@@ -137,6 +138,7 @@ impl TestWindow {
             appearance: WindowAppearance::Light,
             external_drag_files: Vec::new(),
             start_external_drag_result: false,
+            modifiers: crate::Modifiers::default(),
         })))
     }
     pub fn simulate_close(&self) {
@@ -144,6 +146,11 @@ impl TestWindow {
         if let Some(callback) = callback {
             callback();
         }
+    }
+
+    /// Set OS modifier state without delivering a keyboard event (for native drag loops).
+    pub fn set_modifiers(&self, modifiers: crate::Modifiers) {
+        self.0.lock().modifiers = modifiers;
     }
 
     pub fn simulate_scheduled_frame(&self) -> bool {
@@ -388,7 +395,7 @@ impl PlatformWindow for TestWindow {
     }
 
     fn modifiers(&self) -> crate::Modifiers {
-        crate::Modifiers::default()
+        self.0.lock().modifiers
     }
 
     fn capslock(&self) -> crate::Capslock {
