@@ -4,12 +4,14 @@ mod diagnostics;
 mod explorer;
 mod folder;
 mod folder_integration;
+mod launch_request;
 mod motion;
 mod motion_preferences;
 mod native_shell;
 mod search;
 mod settings;
 mod settings_data;
+mod shell_handoff;
 mod shell_icons;
 mod size_service;
 mod theme;
@@ -60,6 +62,10 @@ use gpui::{
     App, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
 };
 fn main() {
+    if launch_request::current().shell_command_server {
+        shell_handoff::run_command_server();
+        return;
+    }
     let preferences = settings::load();
     gpui_platform::application()
         .with_assets(assets::Assets)

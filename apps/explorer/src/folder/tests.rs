@@ -286,6 +286,31 @@ fn workflow_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderVi
     window
 }
 
+#[gpui::test]
+fn launch_select_reveals_only_its_hidden_target_without_changing_hidden_preference(
+    cx: &mut gpui::TestAppContext,
+) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            let mut entries = workflow_entries(&["assets.rs", "folder.rs", "main.rs"]);
+            entries[0].hidden = true;
+            entries[1].hidden = true;
+            view.configure_launch(Some("assets.rs".into()), None, None, cx);
+            view.on_listing_event(ListingEvent::Batch(entries), cx);
+            assert!(!view.show_hidden);
+            assert_eq!(view.selected_entry().unwrap().name, "assets.rs");
+            assert_eq!(view.visible.len(), 2);
+            assert!(
+                !view
+                    .visible
+                    .iter()
+                    .any(|&i| view.entries[i].name == "folder.rs")
+            );
+        })
+        .unwrap();
+}
+
 fn scroll_window(cx: &mut gpui::TestAppContext, gallery: bool) -> gpui::WindowHandle<FolderView> {
     cx.update(|cx| crate::motion_preferences::set_wheel_scroll_lines_for_test(cx, 3));
     let window = workflow_window(cx);

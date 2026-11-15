@@ -61,6 +61,100 @@ trait Registry {
     fn delete_empty_key(&self, key: &str) -> Result<bool, String>;
 }
 const JOURNAL: &str = "Software\\Skylis\\FolderIntegrationBackupV1";
+const WIN_E_JOURNAL: &str = "Software\\Skylis\\WinEIntegrationBackupV1";
+const SWITCH_JOURNAL: &str = "Software\\Skylis\\SwitchIntegrationBackupV1";
+pub const SWITCH_CLSID: &str = "{8459D65F-75C4-4AA0-B873-147A17E12C60}";
+
+#[derive(Clone, Copy, Debug)]
+pub enum Integration {
+    Folders,
+    WinE,
+    Switch,
+}
+
+// V1's value and key indices are persisted. Keep plan() and its key order frozen.
+// New registrations have their own journal, including when upgrading an enabled V1.
+fn capability_plan(kind: Integration, exe: &Path) -> Result<Vec<Change>, String> {
+    let base = plan(exe)?;
+    if matches!(kind, Integration::Folders) {
+        return Ok(base);
+    }
+    let exe = exe.to_str().ok_or("実行ファイルのパスを登録できません")?;
+    let win_e = "Software\\Classes\\CLSID\\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\\shell\\opennewwindow\\command";
+    let background = "Software\\Classes\\Directory\\Background\\shell\\Skylis.Switch";
+    if matches!(kind, Integration::WinE) {
+        return Ok(vec![
+            Change {
+                key: win_e.into(),
+                name: "",
+                value: Value::string(&format!("\"{exe}\" --home")),
+            },
+            Change {
+                key: win_e.into(),
+                name: "DelegateExecute",
+                value: Value::string(""),
+            },
+        ]);
+    }
+    Ok(vec![
+        Change {
+            key: format!("Software\\Classes\\CLSID\\{SWITCH_CLSID}\\LocalServer32"),
+            name: "",
+            value: Value::string(&format!("\"{exe}\" --shell-command-server")),
+        },
+        Change {
+            key: background.into(),
+            name: "",
+            value: Value::string("Skylisへ切り替え"),
+        },
+        Change {
+            key: background.into(),
+            name: "Icon",
+            value: Value::string(&format!("\"{exe}\",0")),
+        },
+        Change {
+            key: format!("{background}\\command"),
+            name: "",
+            value: Value::string(&format!("\"{exe}\" --switch-explorer \"%V\\.\"")),
+        },
+        Change {
+            key: format!("{background}\\command"),
+            name: "DelegateExecute",
+            value: Value::string(SWITCH_CLSID),
+        },
+    ])
+}
+
+fn journal(kind: Integration) -> &'static str {
+    match kind {
+        Integration::Folders => JOURNAL,
+        Integration::WinE => WIN_E_JOURNAL,
+        Integration::Switch => SWITCH_JOURNAL,
+    }
+}
+struct ScopedRegistry<'a, R> {
+    registry: &'a R,
+    journal: &'static str,
+}
+impl<R: Registry> Registry for ScopedRegistry<'_, R> {
+    fn read(&self, key: &str, name: &str) -> Result<Option<Value>, String> {
+        self.registry
+            .read(if key == JOURNAL { self.journal } else { key }, name)
+    }
+    fn write(&self, key: &str, name: &str, value: Option<&Value>) -> Result<(), String> {
+        self.registry
+            .write(if key == JOURNAL { self.journal } else { key }, name, value)
+    }
+    fn key_exists(&self, key: &str) -> Result<bool, String> {
+        self.registry.key_exists(key)
+    }
+    fn create_key(&self, key: &str) -> Result<bool, String> {
+        self.registry.create_key(key)
+    }
+    fn delete_empty_key(&self, key: &str) -> Result<bool, String> {
+        self.registry.delete_empty_key(key)
+    }
+}
 const KEY_PREEXISTING: u8 = 0;
 const KEY_PENDING: u8 = 1;
 const KEY_CREATED: u8 = 2;
@@ -250,46 +344,82 @@ fn install(registry: &impl Registry, changes: &[Change]) -> Result<(), String> {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct Status {
+pub struct CapabilityStatus {
     pub enabled: bool,
     pub can_restore: bool,
 }
 
+fn plan_status(registry: &impl Registry, changes: &[Change]) -> Result<CapabilityStatus, String> {
+    let mut status = CapabilityStatus {
+        enabled: true,
+        can_restore: false,
+    };
+    for (i, change) in changes.iter().enumerate() {
+        status.enabled &= registry.read(&change.key, change.name)?.as_ref() == Some(&change.value);
+        status.can_restore |= registry.read(JOURNAL, &i.to_string())?.is_some();
+    }
+    for i in 0..key_paths(changes).len() {
+        status.can_restore |= registry.read(JOURNAL, &format!("key:{i}"))?.is_some();
+    }
+    Ok(status)
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Status {
+    pub folders: CapabilityStatus,
+    pub win_e: CapabilityStatus,
+    pub switch: CapabilityStatus,
+}
+impl Status {
+    pub fn get(&self, kind: Integration) -> &CapabilityStatus {
+        match kind {
+            Integration::Folders => &self.folders,
+            Integration::WinE => &self.win_e,
+            Integration::Switch => &self.switch,
+        }
+    }
+}
 pub fn query() -> Result<Status, String> {
     #[cfg(windows)]
     {
-        let changes = plan(&std::env::current_exe().map_err(|e| e.to_string())?)?;
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let registry = windows::Registry;
-        let mut status = Status {
-            enabled: true,
-            can_restore: false,
+        let status = |kind| {
+            plan_status(
+                &ScopedRegistry {
+                    registry: &registry,
+                    journal: journal(kind),
+                },
+                &capability_plan(kind, &exe)?,
+            )
         };
-        for (i, change) in changes.iter().enumerate() {
-            status.enabled &=
-                registry.read(&change.key, change.name)?.as_ref() == Some(&change.value);
-            status.can_restore |= registry.read(JOURNAL, &i.to_string())?.is_some();
-        }
-        for i in 0..key_paths(&changes).len() {
-            status.can_restore |= registry.read(JOURNAL, &format!("key:{i}"))?.is_some();
-        }
-        Ok(status)
+        Ok(Status {
+            folders: status(Integration::Folders)?,
+            win_e: status(Integration::WinE)?,
+            switch: status(Integration::Switch)?,
+        })
     }
     #[cfg(not(windows))]
     {
         Err("この連携はWindowsのみ対応しています".into())
     }
 }
-pub fn set_enabled(enabled: bool) -> Result<Status, String> {
+pub fn set_enabled(kind: Integration, enabled: bool) -> Result<Status, String> {
     #[cfg(windows)]
     {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _guard = LOCK.lock().map_err(|_| "フォルダー連携が使用中です")?;
         let _process_guard = windows::lock()?;
-        let changes = plan(&std::env::current_exe().map_err(|e| e.to_string())?)?;
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let changes = capability_plan(kind, &exe)?;
+        let registry = ScopedRegistry {
+            registry: &windows::Registry,
+            journal: journal(kind),
+        };
         let result = if enabled {
-            install(&windows::Registry, &changes)
+            install(&registry, &changes)
         } else {
-            restore(&windows::Registry, &changes)
+            restore(&registry, &changes)
         };
         // SAFETY: no pointer parameters are used for an association-change notification.
         unsafe {
@@ -305,7 +435,7 @@ pub fn set_enabled(enabled: bool) -> Result<Status, String> {
     }
     #[cfg(not(windows))]
     {
-        let _ = enabled;
+        let _ = (kind, enabled);
         Err("この連携はWindowsのみ対応しています".into())
     }
 }
@@ -687,6 +817,81 @@ mod tests {
             Path::new("/opt/Skylis/explorer")
         })
         .unwrap()
+    }
+    #[test]
+    fn capabilities_have_independent_journals_and_do_not_reindex_v1() {
+        let registry = Fake::default();
+        let exe = if cfg!(windows) {
+            Path::new("C:\\Program Files\\Skylis\\explorer.exe")
+        } else {
+            Path::new("/opt/Skylis/explorer")
+        };
+        let base = plan(exe).unwrap();
+        assert_eq!(base.len(), 10);
+        assert_eq!(
+            base[0].key,
+            "Software\\Classes\\Directory\\shell\\Skylis.Open"
+        );
+        assert_eq!(base[4].key, "Software\\Classes\\Directory\\shell");
+        assert_eq!(base[5].key, "Software\\Classes\\Drive\\shell\\Skylis.Open");
+        assert_eq!(base[9].key, "Software\\Classes\\Drive\\shell");
+        install(&registry, &base).unwrap();
+        let before: HashMap<_, _> = registry
+            .0
+            .borrow()
+            .iter()
+            .filter(|((key, _), _)| key == JOURNAL)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        for kind in [Integration::WinE, Integration::Switch] {
+            let changes = capability_plan(kind, exe).unwrap();
+            assert!(
+                changes
+                    .iter()
+                    .all(|c| !c.key.starts_with("Software\\Classes\\Folder\\"))
+            );
+            let scoped = ScopedRegistry {
+                registry: &registry,
+                journal: journal(kind),
+            };
+            install(&scoped, &changes).unwrap();
+            assert!(plan_status(&scoped, &changes).unwrap().enabled);
+            restore(&scoped, &changes).unwrap();
+            assert!(!plan_status(&scoped, &changes).unwrap().enabled);
+            assert!(!plan_status(&scoped, &changes).unwrap().can_restore);
+            let after: HashMap<_, _> = registry
+                .0
+                .borrow()
+                .iter()
+                .filter(|((key, _), _)| key == JOURNAL)
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            assert_eq!(before, after);
+            assert!(plan_status(&registry, &base).unwrap().enabled);
+        }
+        restore(&registry, &base).unwrap();
+        assert!(registry.0.borrow().is_empty());
+    }
+    #[test]
+    fn extension_restoration_preserves_foreign_commands_and_their_journal() {
+        let registry = Fake::default();
+        let exe = if cfg!(windows) {
+            Path::new("C:\\Skylis\\explorer.exe")
+        } else {
+            Path::new("/opt/skylis")
+        };
+        let changes = capability_plan(Integration::WinE, exe).unwrap();
+        let scoped = ScopedRegistry {
+            registry: &registry,
+            journal: WIN_E_JOURNAL,
+        };
+        install(&scoped, &changes).unwrap();
+        let foreign = Value::string("foreign.exe");
+        registry.write(&changes[0].key, "", Some(&foreign)).unwrap();
+        assert!(restore(&scoped, &changes).is_err());
+        assert_eq!(registry.read(&changes[0].key, "").unwrap(), Some(foreign));
+        assert!(registry.read(WIN_E_JOURNAL, "0").unwrap().is_some());
+        assert!(registry.read(JOURNAL, "0").unwrap().is_none());
     }
     #[test]
     fn registration_restores_exact_prior_types_and_absence() {

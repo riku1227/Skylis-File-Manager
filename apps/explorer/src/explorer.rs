@@ -6,7 +6,6 @@ use crate::{
 };
 use explorer_core::location::Location;
 use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, img, prelude::*, px, svg};
-use std::path::PathBuf;
 mod settings_panel;
 mod tabs;
 use tabs::TabDrag;
@@ -37,32 +36,34 @@ pub struct Explorer {
 }
 impl Explorer {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let args: Vec<_> = std::env::args_os().skip(1).collect();
-        let mut path = None;
+        let request = crate::launch_request::current();
         let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
-        let mut mode = preferences.read(cx).value.theme.into();
+        let mode = match request.theme {
+            Some(crate::launch_request::ThemeArgument::Light) => ThemeMode::Light,
+            Some(crate::launch_request::ThemeArgument::Dark) => ThemeMode::Dark,
+            Some(crate::launch_request::ThemeArgument::System) => ThemeMode::System,
+            None => preferences.read(cx).value.theme.into(),
+        };
         let compact = preferences.read(cx).value.compact;
-        let mut i = 0;
-        while i < args.len() {
-            if args[i] == "--theme" && i + 1 < args.len() {
-                i += 1;
-                mode = match args[i].to_str() {
-                    Some("dark") => ThemeMode::Dark,
-                    Some("light") => ThemeMode::Light,
-                    _ => ThemeMode::System,
-                };
-            } else if (args[i] == "--path" || args[i] == "--shell-folder") && i + 1 < args.len() {
-                i += 1;
-                path = Some(PathBuf::from(&args[i]));
-            } else if !args[i].to_string_lossy().starts_with('-') {
-                path = Some(PathBuf::from(&args[i]));
-            }
-            i += 1;
-        }
         let icons = cx.new(ShellIcons::new);
-        let start = path.map(Location::Folder).unwrap_or(Location::Home);
+        let start = request
+            .path
+            .clone()
+            .map(Location::Folder)
+            .unwrap_or(Location::Home);
+        let handoff = request
+            .handoff_token
+            .as_deref()
+            .and_then(crate::shell_handoff::PendingHandoff::from_token);
+        let notice = request.error.clone().or_else(|| {
+            ((request.switch_explorer || request.handoff_token.is_some()) && handoff.is_none())
+                .then(|| crate::shell_handoff::RETAINED_NOTICE.into())
+        });
         let folder = cx.new(|cx| FolderView::new(start, mode, icons.clone(), window, cx));
-        folder.update(cx, |folder, _| folder.compact = compact);
+        folder.update(cx, |folder, cx| {
+            folder.compact = compact;
+            folder.configure_launch(request.selected_name.clone(), handoff, notice, cx);
+        });
         Self::with_tabs(vec![folder], icons, mode, compact, window, cx)
     }
 

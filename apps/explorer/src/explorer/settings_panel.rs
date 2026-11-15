@@ -197,47 +197,90 @@ impl Explorer {
                 )
             });
         if self.settings_category == 4 {
-            let enabled = integration.as_ref().is_some_and(|s| s.enabled);
-            body = body.child(div().text_size(px(14.)).font_weight(gpui::FontWeight::SEMIBOLD).child("フォルダーをSkylisで開く"))
-                .child(div().mt(px(10.)).text_color(t.c("text.secondary")).child("ほかのアプリから通常のフォルダーを開いたときに、Skylisを使います。現在のユーザーに適用され、ここから元に戻せます。"))
-                .child(div().mt(px(10.)).text_size(px(12.)).text_color(t.c("text.muted")).child("explorer.exeを直接起動するアプリ、Win+E、ゴミ箱などの特殊な場所は対象外です。登録後はSkylisの実行ファイルを移動しないでください。"))
-                .child(div().mt(px(16.)).child(if integration_busy { "確認・変更中…" } else if enabled { "Skylisを使用中" } else { "Windowsの設定を使用中" }))
+            use crate::folder_integration::Integration;
+            body = body.child(div().text_color(t.c("text.secondary")).child("現在のユーザーに適用します。それぞれ個別に元へ戻せます。登録後はSkylisの実行ファイルを移動しないでください。"))
                 .when_some(integration_error, |d, error| d.child(div().mt(px(12.)).text_color(t.c("danger.fg")).child(error)));
-            for (id, label, install, available) in [
-                ("enable-folder-integration", "Skylisを使う", true, !enabled),
+            for (index, kind, title, description) in [
                 (
-                    "restore-folder-integration",
-                    "元の設定に戻す",
-                    false,
-                    integration.as_ref().is_some_and(|s| s.can_restore),
+                    0usize,
+                    Integration::Folders,
+                    "フォルダーをSkylisで開く",
+                    "ほかのアプリから通常のフォルダーを開く要求に対応します。explorer.exeを直接指定するアプリや特殊な場所は対象外です。",
+                ),
+                (
+                    1,
+                    Integration::WinE,
+                    "Win+EでSkylisを開く",
+                    "WindowsキーとEでSkylisのホームを開きます。フォルダーの関連付けとは独立した設定です。",
+                ),
+                (
+                    2,
+                    Integration::Switch,
+                    "Explorerに切り替えメニューを追加",
+                    "フォルダー背景の右クリック（Windows 11では「その他のオプション」）に「Skylisへ切り替え」を追加します。読み込み成功後、呼び出し元が単一タブと確認できたときだけ元のウィンドウを閉じます。確認できない場合は残します。",
                 ),
             ] {
-                body = body.child(
-                    div()
-                        .id(id)
-                        .mt(px(12.))
-                        .px(px(14.))
-                        .py(px(10.))
-                        .rounded(px(6.))
-                        .border_1()
-                        .border_color(t.c("button.border"))
-                        .bg(t.c("button.bg"))
-                        .when(!integration_busy && available, |d| {
-                            d.cursor_pointer().hover(|s| s.bg(t.c("state.hover")))
-                        })
-                        .opacity(if integration_busy || !available {
-                            0.45
-                        } else {
-                            1.
-                        })
-                        .child(label)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if !integration_busy && available {
-                                this.preferences
-                                    .update(cx, |p, cx| p.set_folder_integration(install, cx));
-                            }
-                        })),
-                );
+                let status = integration.as_ref().map(|s| s.get(kind));
+                let enabled = status.is_some_and(|s| s.enabled);
+                body = body
+                    .child(
+                        div()
+                            .mt(px(24.))
+                            .text_size(px(14.))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .mt(px(8.))
+                            .text_size(px(12.))
+                            .text_color(t.c("text.secondary"))
+                            .child(description),
+                    )
+                    .child(div().mt(px(10.)).child(if integration_busy {
+                        "確認・変更中…"
+                    } else if enabled {
+                        "有効"
+                    } else {
+                        "無効"
+                    }));
+                for (button, label, install, available) in [
+                    (0usize, "有効にする", true, !enabled),
+                    (
+                        1,
+                        "元の設定に戻す",
+                        false,
+                        status.is_some_and(|s| s.can_restore),
+                    ),
+                ] {
+                    body = body.child(
+                        div()
+                            .id(("shell-integration", index * 2 + button))
+                            .mt(px(10.))
+                            .px(px(14.))
+                            .py(px(10.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(t.c("button.border"))
+                            .bg(t.c("button.bg"))
+                            .when(!integration_busy && available, |d| {
+                                d.cursor_pointer().hover(|s| s.bg(t.c("state.hover")))
+                            })
+                            .opacity(if integration_busy || !available {
+                                0.45
+                            } else {
+                                1.
+                            })
+                            .child(label)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if !integration_busy && available {
+                                    this.preferences.update(cx, |p, cx| {
+                                        p.set_folder_integration(kind, install, cx)
+                                    });
+                                }
+                            })),
+                    );
+                }
             }
         }
         for i in range.clone() {

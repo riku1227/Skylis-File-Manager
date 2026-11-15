@@ -106,6 +106,9 @@ pub struct FolderView {
     selected: Option<usize>,
     /// 列挙中に現れたら選択したい項目名（戻る/上へ で元のフォルダーを選択するため）
     pending_select: Option<String>,
+    startup_handoff: Option<crate::shell_handoff::PendingHandoff>,
+    launch_selection: bool,
+    launch_reveal: Option<String>,
     sort: SortOrder,
     show_hidden: bool,
     scroll: UniformListScrollHandle,
@@ -259,6 +262,9 @@ impl FolderView {
             group_downloads,
             selected: None,
             pending_select: None,
+            startup_handoff: None,
+            launch_selection: false,
+            launch_reveal: None,
             sort: SortOrder::default(),
             show_hidden: false,
             scroll: UniformListScrollHandle::new(),
@@ -356,7 +362,51 @@ impl FolderView {
 
     // ───────────── 読み込み ─────────────
 
+    pub(crate) fn configure_launch(
+        &mut self,
+        selected_name: Option<String>,
+        handoff: Option<crate::shell_handoff::PendingHandoff>,
+        notice: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.launch_selection = selected_name.is_some();
+        if selected_name.is_some() {
+            self.launch_reveal = selected_name.clone();
+            self.pending_select = selected_name;
+            self.rebuild_visible(None);
+        }
+        self.startup_handoff = handoff;
+        self.notice = notice;
+        cx.notify();
+    }
+
+    fn finish_launch(&mut self, cx: &mut Context<Self>) {
+        if self.launch_selection && self.pending_select.is_some() {
+            self.notice = Some("指定された項目が見つからないため、親フォルダーを開きました".into());
+        }
+        self.launch_selection = false;
+        if let Some(handoff) = self.startup_handoff.as_mut() {
+            let receiver = handoff.complete();
+            let generation = self.cancel.clone();
+            cx.spawn(async move |view, cx| {
+                if let Ok(message) = receiver.recv().await {
+                    let _ = view.update(cx, |view, cx| {
+                        if !generation.is_cancelled() {
+                            view.startup_handoff = None;
+                            view.notice = Some(message);
+                            cx.notify();
+                        }
+                    });
+                }
+            })
+            .detach();
+        }
+    }
+
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.startup_handoff = None;
+        self.launch_selection = false;
+        self.launch_reveal = None;
         self.name_editor = None;
         self.cancel_scroll_motion();
         self.cancel_address(cx);
@@ -452,9 +502,15 @@ impl FolderView {
                 self.loading = false;
                 self.stats = Some(stats);
                 self.choose_auto_gallery(cx);
+                if !stats.cancelled {
+                    self.finish_launch(cx);
+                } else {
+                    self.startup_handoff = None;
+                }
                 self.pending_select = None;
             }
             ListingEvent::Failed(kind, msg) => {
+                self.startup_handoff = None;
                 self.loading = false;
                 self.error = Some(match kind {
                     std::io::ErrorKind::PermissionDenied => {
@@ -471,12 +527,16 @@ impl FolderView {
     /// visible を作り直し、選択を同じパスの項目に合わせ直す
     fn rebuild_visible(&mut self, keep: Option<&Path>) {
         let show_hidden = self.show_hidden;
+        let revealed = self.launch_reveal.as_deref();
         let query = self.query.to_lowercase();
         self.visible = self
             .entries
             .iter()
             .enumerate()
-            .filter(|(_, e)| (show_hidden || !e.hidden) && e.name.to_lowercase().contains(&query))
+            .filter(|(_, e)| {
+                (show_hidden || !e.hidden || revealed == Some(e.name.as_str()))
+                    && e.name.to_lowercase().contains(&query)
+            })
             .map(|(i, _)| i)
             .collect();
         self.apply_grouping();
@@ -599,6 +659,7 @@ impl FolderView {
     }
 
     fn toggle_hidden(&mut self, _: &ToggleHidden, _: &mut Window, cx: &mut Context<Self>) {
+        self.launch_reveal = None;
         self.show_hidden = !self.show_hidden;
         let keep = self.selected_entry().map(|e| e.path.clone());
         self.rebuild_visible(keep.as_deref());

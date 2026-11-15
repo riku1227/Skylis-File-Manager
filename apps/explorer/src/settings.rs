@@ -18,7 +18,8 @@ pub struct Preferences {
     pub folder_integration: Option<crate::folder_integration::Status>,
     pub integration_busy: bool,
     pub integration_error: Option<String>,
-    integration_sender: async_channel::Sender<Option<bool>>,
+    integration_sender:
+        async_channel::Sender<Option<(crate::folder_integration::Integration, bool)>>,
     _integration_result: Task<()>,
 }
 
@@ -179,14 +180,17 @@ impl Preferences {
                 }
             }
         });
-        let (integration_sender, integration_requests) = async_channel::bounded::<Option<bool>>(1);
+        let (integration_sender, integration_requests) =
+            async_channel::bounded::<Option<(crate::folder_integration::Integration, bool)>>(1);
         let (integration_results, integration_receiver) = async_channel::bounded(1);
         let spawned = std::thread::Builder::new()
             .name("folder-integration".into())
             .spawn(move || {
                 while let Ok(request) = integration_requests.recv_blocking() {
                     let result = match request {
-                        Some(enabled) => crate::folder_integration::set_enabled(enabled),
+                        Some((kind, enabled)) => {
+                            crate::folder_integration::set_enabled(kind, enabled)
+                        }
                         None => crate::folder_integration::query(),
                     };
                     let result = match result {
@@ -233,11 +237,16 @@ impl Preferences {
             _integration_result: integration_result,
         }
     }
-    pub fn set_folder_integration(&mut self, enabled: bool, cx: &mut Context<Self>) {
+    pub fn set_folder_integration(
+        &mut self,
+        kind: crate::folder_integration::Integration,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
         if self.integration_busy {
             return;
         }
-        match self.integration_sender.try_send(Some(enabled)) {
+        match self.integration_sender.try_send(Some((kind, enabled))) {
             Ok(()) => {
                 self.integration_busy = true;
                 self.integration_error = None;
