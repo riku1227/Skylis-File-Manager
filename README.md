@@ -8,6 +8,8 @@ Windows / macOS向けの、軽快でコンパクトなファイルマネージ�
 
 ## 起動
 
+初めてビルドする場合は、[Windowsのビルド環境構築](docs/implementation/windows-build.md)を参照してください。RustのMSVCツールチェーン、Visual StudioのC++ビルドツール、Windows SDKが必要です。
+
 ```powershell
 cargo run --release -p explorer -- --theme light --path "C:\Users"
 cargo run --release -p explorer -- --theme dark --path "C:\Users"
@@ -44,9 +46,9 @@ Windowsではホームに「ゴミ箱」カードがあります。ダブルク�
 ファイル列挙・ソート・履歴は `explorer-core`、表示と入力は `apps/explorer`。Windowsのアイコンはワーカースレッドで取得し、色を変えずに表示します。GPUI Fastの依存入口はルートCargo.tomlに集約しています。
 
 ```powershell
-cargo test --workspace
-cargo check --workspace
-cargo build --release -p explorer
+cargo test --workspace --locked
+cargo check --workspace --locked
+cargo build --release --locked -p explorer
 ```
 
 HTML試作の検証スクリプトを実行する場合は、別途Node.js・Playwright・Google Chromeが必要です。Playwrightは通常のNode.jsモジュール解決を使い、既存のインストールを指定する場合は `PLAYWRIGHT_PATH` を設定できます。これらはRustアプリのビルドには不要です。
