@@ -118,6 +118,9 @@ impl Explorer {
         if cfg!(windows) {
             categories.push(("Windows連携", "icons/link.svg", 8..8));
         }
+        if cfg!(target_os = "macos") {
+            categories.push(("macOSアクセス権限", "icons/link.svg", 8..8));
+        }
         let category_count = categories.len();
         let mut nav = div()
             .id("settings-navigation")
@@ -196,7 +199,7 @@ impl Explorer {
                         .child(error),
                 )
             });
-        if self.settings_category == 4 {
+        if cfg!(windows) && self.settings_category == 4 {
             use crate::folder_integration::Integration;
             body = body.child(div().text_color(t.c("text.secondary")).child("現在のユーザーに適用します。それぞれ個別に元へ戻せます。登録後はSkylisの実行ファイルを移動しないでください。"))
                 .when_some(integration_error, |d, error| d.child(div().mt(px(12.)).text_color(t.c("danger.fg")).child(error)));
@@ -281,6 +284,51 @@ impl Explorer {
                             })),
                     );
                 }
+            }
+        }
+        if cfg!(target_os = "macos") && self.settings_category == 4 {
+            use crate::macos_permissions::{Action, Observation};
+            let observation = self.tabs[self.active].read(cx).permission_observation;
+            let status = match observation {
+                Observation::Unknown => {
+                    "未確認：フルディスクアクセスの許可状態は自動判定できません。"
+                }
+                Observation::Denied => {
+                    "現在のフォルダーでアクセスが拒否されました。FDA不足とは断定できません。"
+                }
+                Observation::Accessible => {
+                    "現在のフォルダーの列挙は成功しました。FDA全体の許可状態は未確認です。"
+                }
+                Observation::OtherFailure => {
+                    "現在のフォルダーで別のエラーが発生しました。FDAの許可状態は未確認です。"
+                }
+            };
+            body = body.child(div().id("permission-status").debug_selector(|| "permission-status".into()).mb(px(16.)).child(status))
+                .child(div().mb(px(16.)).child("「ファイルとフォルダ」は書類・デスクトップ等の個別アクセス、「フルディスクアクセス」は保護されたデータへの広いアクセスです。通常のフォルダーではFDAは不要です。拒否はPOSIX権限やACLが原因の場合もあります。"))
+                .child(div().mb(px(16.)).child("システム設定 → プライバシーとセキュリティ → フルディスクアクセスを開き、必要な場合だけ＋で実行中のSkylis.appを追加してください。変更後はアプリを終了して再起動し、対象フォルダーでF5を押してください。再試行はそのフォルダーだけを再列挙し、FDA全体を検査しません。"))
+                .child(div().mb(px(16.)).child("ローカルのアドホック署名は再ビルドで変わります。OSに再認識されない場合は、システム設定で現在の.appを手動で追加し直してください。"));
+            for (index, label, action) in [
+                (0, "システム設定を開く", Action::OpenPrivacy),
+                (1, "実行中の.appをFinderに表示", Action::RevealBundle),
+            ] {
+                body = body.child(
+                    div()
+                        .id(("macos-permission-action", index as usize))
+                        .p(px(12.))
+                        .mb(px(8.))
+                        .rounded(px(6.))
+                        .bg(t.c("button.bg"))
+                        .opacity(if p.permission_busy { 0.45 } else { 1. })
+                        .cursor_pointer()
+                        .child(label)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.preferences
+                                .update(cx, |p, cx| p.permission_action(action, cx));
+                        })),
+                );
+            }
+            if let Some(message) = &p.permission_message {
+                body = body.child(div().mt(px(8.)).child(message.clone()));
             }
         }
         for i in range.clone() {
@@ -393,11 +441,7 @@ impl Explorer {
                                 .mb(px(10.))
                                 .text_size(px(13.))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .child(if i == 0 {
-                                    "テーマ"
-                                } else {
-                                    "表示密度"
-                                }),
+                                .child(if i == 0 { "テーマ" } else { "表示密度" }),
                         )
                         .child(choices)
                         .child(

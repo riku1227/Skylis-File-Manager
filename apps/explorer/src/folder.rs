@@ -130,6 +130,7 @@ pub struct FolderView {
     loading: bool,
     stats: Option<ListingStats>,
     error: Option<String>,
+    pub(crate) permission_observation: crate::macos_permissions::Observation,
     notice: Option<String>,
     cancel: CancelToken,
     _listing: Option<Task<()>>,
@@ -302,6 +303,7 @@ impl FolderView {
             loading: false,
             stats: None,
             error: None,
+            permission_observation: Default::default(),
             notice: None,
             cancel: CancelToken::new(),
             _listing: None,
@@ -487,6 +489,7 @@ impl FolderView {
         self.loading = true;
         self.stats = None;
         self.error = None;
+        self.permission_observation = Default::default();
         self.notice = None;
         self.title_dirty = true;
         self.scroll.scroll_to_item(0, ScrollStrategy::Top);
@@ -522,10 +525,15 @@ impl FolderView {
             return;
         }
 
+        let listing_token = self.cancel.clone();
         self._listing = Some(cx.spawn(async move |this, cx| {
             while let Ok(ev) = rx.recv().await {
                 if this
-                    .update(cx, |this, cx| this.on_listing_event(ev, cx))
+                    .update(cx, |this, cx| {
+                        if !listing_token.is_cancelled() {
+                            this.on_listing_event(ev, cx);
+                        }
+                    })
                     .is_err()
                 {
                     break;
@@ -557,6 +565,7 @@ impl FolderView {
                 }
             }
             ListingEvent::Done(stats) => {
+                self.permission_observation.record(Ok(()), stats.cancelled);
                 self.loading = false;
                 self.stats = Some(stats);
                 self.choose_auto_gallery(cx);
@@ -568,6 +577,7 @@ impl FolderView {
                 self.pending_select = None;
             }
             ListingEvent::Failed(kind, msg) => {
+                self.permission_observation.record(Err(kind), false);
                 self.startup_handoff = None;
                 self.loading = false;
                 self.error = Some(match kind {
@@ -1097,6 +1107,13 @@ impl FolderView {
                     Ok(()) => {
                         this.editing_address = false;
                         this.address_error = None;
+                        window.focus(&this.focus, cx);
+                        this.navigate_to(path, window, cx);
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                        // Attempt the requested location through the listing path so the denial
+                        // retains its kind and offers the same recovery UI as sidebar navigation.
+                        this.editing_address = false;
                         window.focus(&this.focus, cx);
                         this.navigate_to(path, window, cx);
                     }
@@ -1836,7 +1853,37 @@ impl FolderView {
     fn render_list(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
         if let Some(err) = &self.error {
             return self
-                .selection_surface(empty_state(err.clone(), t.c("danger.fg")), t, cx)
+                .selection_surface(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(12.))
+                        .child(empty_state(err.clone(), t.c("danger.fg")))
+                        .when(
+                            cfg!(target_os = "macos")
+                                && self.permission_observation
+                                    == crate::macos_permissions::Observation::Denied,
+                            |d| {
+                                d.child(
+                                    div()
+                                        .id("permission-recovery")
+                                        .cursor_pointer()
+                                        .p(px(12.))
+                                        .text_color(t.c("accent.fg"))
+                                        .child("アクセス権限の設定を開く")
+                                        .on_click(cx.listener(|_, _, window, cx| {
+                                            window.dispatch_action(
+                                                Box::new(crate::OpenPermissions),
+                                                cx,
+                                            )
+                                        })),
+                                )
+                            },
+                        ),
+                    t,
+                    cx,
+                )
                 .into_any_element();
         }
         if self.visible.is_empty() {
@@ -2080,7 +2127,7 @@ impl FolderView {
         panel = panel.child(body);
         panel
     }
-    fn render_status(&self, t: Theme, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_status(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .items_center()
@@ -2117,6 +2164,22 @@ impl FolderView {
             .when_some(self.notice.clone(), |d, n| {
                 d.child(div().truncate().child(n))
             })
+            .when(
+                cfg!(target_os = "macos")
+                    && self.permission_observation == crate::macos_permissions::Observation::Denied,
+                |d| {
+                    d.child(
+                        div()
+                            .id("status-permission-recovery")
+                            .cursor_pointer()
+                            .text_color(t.c("accent.fg"))
+                            .child("アクセス権限の設定")
+                            .on_click(cx.listener(|_, _, w, cx| {
+                                w.dispatch_action(Box::new(crate::OpenPermissions), cx)
+                            })),
+                    )
+                },
+            )
             .child(div().flex_1())
             .when(self.show_hidden, |d| {
                 d.child(

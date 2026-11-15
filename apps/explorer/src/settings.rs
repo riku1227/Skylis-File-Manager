@@ -19,6 +19,9 @@ pub struct Preferences {
     _result: Task<()>,
     pub folder_integration: Option<crate::folder_integration::Status>,
     pub integration_busy: bool,
+    pub permission_busy: bool,
+    pub permission_message: Option<String>,
+    permission_task: Option<Task<()>>,
     pub integration_error: Option<String>,
     integration_sender:
         async_channel::Sender<Option<(crate::folder_integration::Integration, bool)>>,
@@ -235,10 +238,47 @@ impl Preferences {
             _result: result,
             folder_integration: None,
             integration_busy,
+            permission_busy: false,
+            permission_message: None,
+            permission_task: None,
             integration_error,
             integration_sender,
             _integration_result: integration_result,
         }
+    }
+    pub fn permission_action(
+        &mut self,
+        action: crate::macos_permissions::Action,
+        cx: &mut Context<Self>,
+    ) {
+        if self.permission_busy {
+            return;
+        }
+        let (tx, rx) = async_channel::bounded(1);
+        match std::thread::Builder::new()
+            .name("macos-permission-action".into())
+            .spawn(move || {
+                let _ = tx.send_blocking(crate::macos_permissions::perform(action));
+            }) {
+            Err(error) => self.permission_message = Some(error.to_string()),
+            Ok(_) => {
+                self.permission_busy = true;
+                self.permission_message = None;
+                self.permission_task = Some(cx.spawn(async move |this, cx| {
+                    let result = rx.recv().await;
+                    let _ = this.update(cx, |this, cx| {
+                        this.permission_busy = false;
+                        this.permission_message = Some(match result {
+                            Ok(Ok(message)) => message,
+                            Ok(Err(error)) => error,
+                            Err(error) => error.to_string(),
+                        });
+                        cx.notify();
+                    });
+                }));
+            }
+        }
+        cx.notify();
     }
     pub fn set_folder_integration(
         &mut self,

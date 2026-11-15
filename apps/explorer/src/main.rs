@@ -9,6 +9,7 @@ mod file_operation_progress;
 mod folder;
 mod folder_integration;
 mod launch_request;
+mod macos_permissions;
 mod motion;
 mod motion_preferences;
 mod native_shell;
@@ -49,6 +50,7 @@ mod actions {
             FocusSearch,
             EditAddress,
             OpenSettings,
+            OpenPermissions,
             ShowContextMenu,
             QuickPreview,
             SelectAllFiles,

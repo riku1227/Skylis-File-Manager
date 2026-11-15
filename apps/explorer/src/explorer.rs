@@ -495,6 +495,15 @@ impl Render for Explorer {
                     cx.notify();
                 }
             }))
+            .on_action(cx.listener(|this, _: &crate::OpenPermissions, w, cx| {
+                if cfg!(target_os = "macos") {
+                    this.settings_category = 4;
+                    this.settings_open = true;
+                    this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
+                    w.focus(&this.settings_focus, cx);
+                    cx.notify();
+                }
+            }))
             .on_action(cx.listener(|this, _: &OpenSettings, w, cx| {
                 this.settings_open = !this.settings_open;
                 if this.settings_open {
@@ -676,6 +685,38 @@ mod tests {
                 bubbled_keys: Vec::new(),
             }
         })
+    }
+
+    #[cfg(target_os = "macos")]
+    #[gpui::test]
+    fn permission_action_opens_category_and_keeps_unknown(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        window
+            .update(cx, |probe, w, cx| {
+                probe.explorer.update(cx, |view, w_cx| {
+                    view.close_settings(w, w_cx);
+                });
+                w.dispatch_action(Box::new(crate::OpenPermissions), cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let status = visual.debug_bounds("permission-status").unwrap();
+        let body = visual.debug_bounds("settings-body").unwrap();
+        assert!(status.top() >= body.top() && status.bottom() <= body.bottom());
+        window
+            .read_with(cx, |probe, cx| {
+                let view = probe.explorer.read(cx);
+                assert!(view.settings_open);
+                assert_eq!(view.settings_category, 4);
+                assert_eq!(
+                    view.tabs[view.active].read(cx).permission_observation,
+                    crate::macos_permissions::Observation::Unknown
+                );
+                assert!(!view.preferences.read(cx).permission_busy);
+            })
+            .unwrap();
     }
 
     #[gpui::test]
@@ -939,7 +980,11 @@ mod tests {
                 p.explorer.read(cx).preferences.read(cx).value.clone()
             })
             .unwrap();
-        let last_category = if cfg!(windows) { 4 } else { 3 };
+        let last_category = if cfg!(any(windows, target_os = "macos")) {
+            4
+        } else {
+            3
+        };
         for (key, category) in [("up", last_category), ("down", 0), ("down", 1)] {
             cx.simulate_keystrokes(window.into(), key);
             window

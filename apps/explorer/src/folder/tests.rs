@@ -1880,3 +1880,28 @@ fn rename_edits_the_filename_in_list_and_gallery_without_opening_the_file(
             .unwrap();
     }
 }
+
+#[gpui::test]
+fn listing_denial_is_distinct_and_navigation_clears_evidence(cx: &mut gpui::TestAppContext) {
+    use crate::macos_permissions::Observation;
+    let window = home_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            view.on_listing_event(
+                ListingEvent::Failed(std::io::ErrorKind::PermissionDenied, "fixture".into()),
+                cx,
+            );
+            assert_eq!(view.permission_observation, Observation::Denied);
+            assert!(view.error.is_some());
+            view.load(Location::Home, None, cx);
+            assert_eq!(view.permission_observation, Observation::Unknown);
+            assert!(view.error.is_none());
+            view.on_listing_event(
+                ListingEvent::Failed(std::io::ErrorKind::NotFound, "fixture".into()),
+                cx,
+            );
+            assert_eq!(view.permission_observation, Observation::OtherFailure);
+            assert!(view.error.as_ref().unwrap().contains("見つかりません"));
+        })
+        .unwrap();
+}
