@@ -3,6 +3,8 @@ mod assets;
 mod explorer;
 mod folder;
 mod search;
+mod settings;
+mod settings_data;
 mod shell_icons;
 mod theme;
 mod theme_tokens;
@@ -31,6 +33,7 @@ mod actions {
             ToggleDensity,
             FocusSearch,
             EditAddress,
+            OpenSettings,
             ClearSearch
         ]
     );
@@ -40,9 +43,12 @@ use gpui::{
     App, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
 };
 fn main() {
+    let preferences = settings::load();
     gpui_platform::application()
         .with_assets(assets::Assets)
-        .run(|cx: &mut App| {
+        .run(move |cx: &mut App| {
+            let preferences = cx.new(|cx| settings::Preferences::new(preferences, cx));
+            cx.set_global(settings::SharedPreferences(preferences));
             let ctx = Some("Explorer");
             cx.bind_keys([
                 KeyBinding::new("up", SelectPrev, ctx),
@@ -74,6 +80,7 @@ fn main() {
                 KeyBinding::new("cmd-f", FocusSearch, ctx),
                 KeyBinding::new("cmd-q", Quit, None),
             ]);
+            cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, Some("ExplorerTabs")), KeyBinding::new("cmd-,", OpenSettings, Some("ExplorerTabs"))]);
             search::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
             let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);

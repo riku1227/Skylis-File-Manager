@@ -823,6 +823,10 @@ impl FolderView {
                     }),
             )
             .child(
+                icon_button("settings", "icons/settings.svg", true, t)
+                    .on_click(|_, w, cx| w.dispatch_action(Box::new(OpenSettings), cx)),
+            )
+            .child(
                 icon_button("theme", "icons/sun.svg", true, t)
                     .tooltip({
                         let text = format!("テーマ: {}（クリックで切替）", self.mode.label());

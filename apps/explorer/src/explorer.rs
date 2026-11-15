@@ -7,6 +7,7 @@ use crate::{
 use explorer_core::location::Location;
 use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, img, prelude::*, px, svg};
 use std::path::PathBuf;
+mod settings_panel;
 
 /// Each tab owns its entity and asynchronous listing. Switching never redirects a pending batch.
 pub struct Explorer {
@@ -15,12 +16,18 @@ pub struct Explorer {
     mode: ThemeMode,
     compact: bool,
     icons: Entity<ShellIcons>,
+    preferences: Entity<crate::settings::Preferences>,
+    settings_open: bool,
+    settings_focus: FocusHandle,
+    last_saved_theme: crate::settings_data::ThemePreference,
 }
 impl Explorer {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let args: Vec<_> = std::env::args_os().skip(1).collect();
         let mut path = None;
-        let mut mode = ThemeMode::System;
+        let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
+        let mut mode = preferences.read(cx).value.theme.into();
+        let compact = preferences.read(cx).value.compact;
         let mut i = 0;
         while i < args.len() {
             if args[i] == "--theme" && i + 1 < args.len() {
@@ -41,6 +48,24 @@ impl Explorer {
         let icons = cx.new(ShellIcons::new);
         let start = path.map(Location::Folder).unwrap_or(Location::Home);
         let folder = cx.new(|cx| FolderView::new(start, mode, icons.clone(), window, cx));
+        folder.update(cx, |folder, _| folder.compact = compact);
+        cx.observe(&preferences, |this, preferences, cx| {
+            let value = preferences.read(cx).value.clone();
+            if this.last_saved_theme != value.theme {
+                this.mode = value.theme.into();
+                this.last_saved_theme = value.theme;
+            }
+            this.compact = value.compact;
+            for tab in &this.tabs {
+                tab.update(cx, |tab, cx| {
+                    tab.mode = this.mode;
+                    tab.compact = this.compact;
+                    cx.notify();
+                });
+            }
+            cx.notify();
+        })
+        .detach();
         cx.observe(&folder, |_, _, cx| cx.notify()).detach();
         cx.observe_window_appearance(window, |_, _, cx| cx.notify())
             .detach();
@@ -48,8 +73,12 @@ impl Explorer {
             tabs: vec![folder],
             active: 0,
             mode,
-            compact: false,
+            compact,
             icons,
+            last_saved_theme: preferences.read(cx).value.theme,
+            preferences,
+            settings_open: false,
+            settings_focus: cx.focus_handle(),
         }
     }
     fn switch(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -87,24 +116,14 @@ impl Explorer {
         self.switch((self.active + self.tabs.len() - 1) % self.tabs.len(), w, cx)
     }
     fn cycle_theme(&mut self, _: &CycleTheme, _: &mut Window, cx: &mut Context<Self>) {
-        self.mode = self.mode.next();
-        for tab in &self.tabs {
-            tab.update(cx, |tab, cx| {
-                tab.mode = self.mode;
-                cx.notify()
-            })
-        }
-        cx.notify();
+        let mode = self.mode.next();
+        self.preferences
+            .update(cx, |p, cx| p.change(|s| s.theme = mode.into(), cx));
     }
     fn density(&mut self, _: &ToggleDensity, _: &mut Window, cx: &mut Context<Self>) {
-        self.compact = !self.compact;
-        for tab in &self.tabs {
-            tab.update(cx, |tab, cx| {
-                tab.compact = self.compact;
-                cx.notify()
-            })
-        }
-        cx.notify();
+        let compact = !self.compact;
+        self.preferences
+            .update(cx, |p, cx| p.change(|s| s.compact = compact, cx));
     }
 }
 fn after_close(active: usize, closed: usize, remaining: usize) -> usize {
@@ -209,6 +228,15 @@ impl Render for Explorer {
             .text_color(t.c("text.primary"))
             .font_family("Segoe UI")
             .text_size(px(12.))
+            .on_action(cx.listener(|this, _: &OpenSettings, w, cx| {
+                this.settings_open = !this.settings_open;
+                if this.settings_open {
+                    w.focus(&this.settings_focus, cx);
+                } else {
+                    w.focus(&this.tabs[this.active].focus_handle(cx), cx);
+                }
+                cx.notify();
+            }))
             .on_action(cx.listener(Self::new_tab))
             .on_action(cx.listener(Self::close_tab))
             .on_action(cx.listener(Self::next_tab))
@@ -246,7 +274,10 @@ impl Render for Explorer {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .child(self.tabs[self.active].clone()),
+                    .when(!self.settings_open, |d| {
+                        d.child(self.tabs[self.active].clone())
+                    })
+                    .when(self.settings_open, |d| d.child(self.render_settings(t, cx))),
             )
     }
 }
