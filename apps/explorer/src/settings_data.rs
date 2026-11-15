@@ -1,4 +1,7 @@
 //! Small versioned preferences; no UI types or unbounded configuration parsing.
+use std::path::{Path, PathBuf};
+
+pub const MAX_PINS: usize = 32;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ThemePreference {
     Light,
@@ -17,6 +20,7 @@ pub struct Settings {
     pub high_refresh_rate: bool,
     pub smooth_scroll: bool,
     pub performance_overlay: bool,
+    pub pinned_folders: Vec<PathBuf>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -29,6 +33,7 @@ impl Default for Settings {
             high_refresh_rate: true,
             smooth_scroll: true,
             performance_overlay: false,
+            pinned_folders: Vec::new(),
         }
     }
 }
@@ -64,6 +69,15 @@ impl Settings {
                 "high_refresh_rate" => settings.high_refresh_rate = boolean()?,
                 "smooth_scroll" => settings.smooth_scroll = boolean()?,
                 "performance_overlay" => settings.performance_overlay = boolean()?,
+                "pin" => {
+                    let path = decode_pin(value)?;
+                    if !settings.pinned_folders.iter().any(|p| same_pin(p, &path)) {
+                        if settings.pinned_folders.len() == MAX_PINS {
+                            return Err("ピン留めは32件までです".into());
+                        }
+                        settings.pinned_folders.push(path);
+                    }
+                }
                 _ => (),
             }
         }
@@ -78,7 +92,7 @@ impl Settings {
             ThemePreference::Dark => "dark",
             ThemePreference::System => "system",
         };
-        format!(
+        let mut text = format!(
             "version=1\ntheme={theme}\ncompact={}\ngroup_downloads={}\nauto_gallery={}\nautomatic_sizes={}\nhigh_refresh_rate={}\nsmooth_scroll={}\nperformance_overlay={}\n",
             self.compact,
             self.group_downloads,
@@ -87,12 +101,109 @@ impl Settings {
             self.high_refresh_rate,
             self.smooth_scroll,
             self.performance_overlay
-        )
+        );
+        for path in &self.pinned_folders {
+            text.push_str("pin=");
+            for byte in path.to_string_lossy().as_bytes() {
+                use std::fmt::Write;
+                let _ = write!(text, "{byte:02x}");
+            }
+            text.push('\n');
+        }
+        text
     }
+    pub fn toggle_pin(&mut self, path: &Path) -> Result<(), String> {
+        if let Some(index) = self.pinned_folders.iter().position(|p| same_pin(p, path)) {
+            self.pinned_folders.remove(index);
+            return Ok(());
+        }
+        if !path.is_absolute()
+            || path
+                .to_str()
+                .is_none_or(|p| p.contains('\0') || p.len() > 4096)
+        {
+            return Err("このパスはピン留めできません".into());
+        }
+        if self.pinned_folders.len() >= MAX_PINS {
+            return Err("ピン留めは32件までです".into());
+        }
+        self.pinned_folders.push(path.to_path_buf());
+        if self.encode().len() > 16_384 {
+            self.pinned_folders.pop();
+            return Err("ピン留めするパスが長すぎます".into());
+        }
+        Ok(())
+    }
+}
+
+pub fn same_pin(a: &Path, b: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        a.to_string_lossy()
+            .trim_end_matches(['\\', '/'])
+            .eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches(['\\', '/']))
+    }
+    #[cfg(not(windows))]
+    {
+        a == b
+    }
+}
+
+fn decode_pin(value: &str) -> Result<PathBuf, String> {
+    if value.len() % 2 != 0 || value.len() > 8192 || !value.is_ascii() {
+        return Err("ピン留め設定が不正です".into());
+    }
+    let bytes: Result<Vec<_>, _> = (0..value.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&value[i..i + 2], 16))
+        .collect();
+    let text = String::from_utf8(bytes.map_err(|_| "ピン留め設定が不正です")?)
+        .map_err(|_| "ピン留め設定が不正です")?;
+    let path = PathBuf::from(&text);
+    if !path.is_absolute() || text.contains('\0') {
+        return Err("ピン留めには絶対パスが必要です".into());
+    }
+    Ok(path)
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pins_round_trip_unicode_and_separators_without_injection() {
+        let root = if cfg!(windows) {
+            "C:\\資料=記録"
+        } else {
+            "/資料=記録"
+        };
+        let mut settings = Settings::default();
+        settings.toggle_pin(Path::new(root)).unwrap();
+        assert_eq!(Settings::decode(&settings.encode()).unwrap(), settings);
+        settings.toggle_pin(Path::new(root)).unwrap();
+        assert!(settings.pinned_folders.is_empty());
+        assert!(settings.toggle_pin(Path::new("relative")).is_err());
+        assert!(Settings::decode("version=1\npin=ff\n").is_err());
+    }
+    #[test]
+    fn pins_limit_is_enforced_before_mutation() {
+        let mut settings = Settings::default();
+        for n in 0..MAX_PINS {
+            let path = if cfg!(windows) {
+                format!("C:\\folder{n}")
+            } else {
+                format!("/folder{n}")
+            };
+            settings.toggle_pin(Path::new(&path)).unwrap();
+        }
+        let before = settings.clone();
+        let path = if cfg!(windows) {
+            "C:\\overflow"
+        } else {
+            "/overflow"
+        };
+        assert!(settings.toggle_pin(Path::new(path)).is_err());
+        assert_eq!(settings, before);
+        assert_eq!(Settings::decode(&settings.encode()).unwrap(), settings);
+    }
     #[test]
     fn performance_display_rejects_invalid_values() {
         assert!(Settings::decode("version=1\nperformance_overlay=sometimes\n").is_err());

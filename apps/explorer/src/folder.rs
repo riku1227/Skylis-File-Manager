@@ -113,6 +113,7 @@ pub struct FolderView {
     cancel: CancelToken,
     _listing: Option<Task<()>>,
     favorites: Vec<Place>,
+    pinned: Vec<Place>,
     drives: Vec<Place>,
     drive_space: HashMap<PathBuf, Option<DriveSpace>>,
     title_dirty: bool,
@@ -161,8 +162,25 @@ impl FolderView {
         let group_downloads = preferences
             .as_ref()
             .map_or(true, |p| p.read(cx).value.group_downloads);
+        let pinned = preferences.as_ref().map_or_else(Vec::new, |p| {
+            home::pinned_places(&p.read(cx).value.pinned_folders)
+        });
         if let Some(preferences) = preferences {
             cx.observe(&preferences, |this, preferences, cx| {
+                let paths = &preferences.read(cx).value.pinned_folders;
+                if this.pinned.len() != paths.len()
+                    || this
+                        .pinned
+                        .iter()
+                        .zip(paths)
+                        .any(|(place, path)| place.path != *path)
+                {
+                    this.pinned = home::pinned_places(paths);
+                    if this.is_home() {
+                        this.selected = None;
+                    }
+                    cx.notify();
+                }
                 if !preferences.read(cx).value.smooth_scroll {
                     this.cancel_scroll_motion();
                 }
@@ -246,6 +264,7 @@ impl FolderView {
             cancel: CancelToken::new(),
             _listing: None,
             favorites: platform::favorite_places(),
+            pinned,
             drives: platform::drives(),
             drive_space: HashMap::new(),
             title_dirty: true,
@@ -1114,9 +1133,13 @@ impl FolderView {
                 })),
         );
         for (title, places) in [
+            ("ピン留め", &self.pinned),
             ("よく使う場所", &self.favorites),
             ("ストレージ", &self.drives),
         ] {
+            if places.is_empty() {
+                continue;
+            }
             panel = panel.child(
                 div()
                     .px(px(10.))
@@ -1128,6 +1151,7 @@ impl FolderView {
             );
             for (i, place) in places.iter().enumerate() {
                 let path = place.path.clone();
+                let unpin_path = path.clone();
                 let active = self.path() == Some(path.as_path());
                 let drive = title == "ストレージ";
                 let space = self.drive_space.get(&path);
@@ -1208,7 +1232,16 @@ impl FolderView {
                 panel =
                     panel.child(
                         div()
-                            .id((if drive { "drive" } else { "fav" }, i))
+                            .id((
+                                if drive {
+                                    "drive"
+                                } else if title == "ピン留め" {
+                                    "pin"
+                                } else {
+                                    "fav"
+                                },
+                                i,
+                            ))
                             .flex()
                             .items_start()
                             .gap(px(10.))
@@ -1231,6 +1264,14 @@ impl FolderView {
                             .cursor_pointer()
                             .child(self.object_icon(&path, true, 18., window, cx))
                             .child(label)
+                            .when(title == "ピン留め", |d| {
+                                d.child(icon_button("unpin", "icons/x.svg", true, t).on_click(
+                                    cx.listener(move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.toggle_pin_path(unpin_path.clone(), cx);
+                                    }),
+                                ))
+                            })
                             .map(|d| Self::file_drop_target(d, Some(path.clone()), t, cx))
                             .on_click(cx.listener(move |this, _, w, cx| {
                                 this.navigate_to(path.clone(), w, cx)

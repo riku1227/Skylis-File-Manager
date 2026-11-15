@@ -24,6 +24,7 @@ enum Command {
     Reveal,
     Share,
     Services,
+    Pin,
 }
 
 impl FolderView {
@@ -105,6 +106,10 @@ impl FolderView {
             commands.push(("貼り付け", Command::Paste));
         }
         commands.push(("サイズ計算を中止", Command::CancelSize));
+        if self.selected_entry().is_some_and(Entry::is_dir_like) || self.context_menu.as_ref().is_some_and(|m| m.item.is_none()) {
+            let path = self.context_menu.as_ref().and_then(|m| m.target.as_deref()).or(self.path());
+            commands.push((if path.is_some_and(|p| self.is_pinned(p)) { "ピン留めを外す" } else { "よく使う場所にピン留め" }, Command::Pin));
+        }
         commands.push(("パスをコピー", Command::CopyPath));
         commands.push(("更新", Command::Refresh));
         if cfg!(windows) {
@@ -184,6 +189,7 @@ impl FolderView {
                         .join("\n"),
                 ));
             }
+            Command::Pin => { if let Some(path) = path { self.toggle_pin_path(path, cx); } }
             Command::Refresh => self.refresh(&Refresh, window, cx),
             Command::Shell => {
                 let Some(path) = path else {

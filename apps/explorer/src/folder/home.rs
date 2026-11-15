@@ -1,6 +1,45 @@
 use super::*;
 
+pub(super) fn pinned_places(paths: &[PathBuf]) -> Vec<Place> {
+    paths
+        .iter()
+        .map(|path| Place {
+            label: path
+                .file_name()
+                .unwrap_or(path.as_os_str())
+                .to_string_lossy()
+                .into_owned(),
+            path: path.clone(),
+            icon: platform::PlaceIcon::Documents,
+        })
+        .collect()
+}
+
 impl FolderView {
+    pub(super) fn is_pinned(&self, path: &Path) -> bool {
+        self.pinned
+            .iter()
+            .any(|p| crate::settings_data::same_pin(&p.path, path))
+    }
+    pub(super) fn toggle_pin_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let Some(preferences) = cx
+            .try_global::<crate::settings::SharedPreferences>()
+            .map(|p| p.0.clone())
+        else {
+            return;
+        };
+        let mut error = None;
+        preferences.update(cx, |preferences, cx| {
+            preferences.change(
+                |s| {
+                    error = s.toggle_pin(&path).err();
+                },
+                cx,
+            )
+        });
+        self.notice = error;
+        cx.notify();
+    }
     pub(super) fn recycle_bin_index(&self) -> Option<usize> {
         (cfg!(windows)
             && ("ゴミ箱".contains(&self.query)
@@ -10,8 +49,11 @@ impl FolderView {
 
     pub(super) fn home_places(&self) -> Vec<Place> {
         let query = self.query.to_lowercase();
-        self.drives
+        let mut places: Vec<Place> = Vec::new();
+        for place in self
+            .pinned
             .iter()
+            .chain(self.drives.iter())
             .chain(self.favorites.iter())
             .filter(|place| {
                 place.label.to_lowercase().contains(&query)
@@ -19,8 +61,15 @@ impl FolderView {
                     || (place.icon == platform::PlaceIcon::Home
                         && "ユーザーフォルダー".contains(&query))
             })
-            .cloned()
-            .collect()
+        {
+            if !places
+                .iter()
+                .any(|p| crate::settings_data::same_pin(&p.path, &place.path))
+            {
+                places.push(place.clone());
+            }
+        }
+        places
     }
 
     pub(super) fn render_home(
@@ -42,12 +91,17 @@ impl FolderView {
             .flex()
             .flex_col()
             .gap(px(24.));
-        for (title, drives) in [("ドライブ", true), ("フォルダーと場所", false)] {
+        for (title, section) in [("ピン留め", 0), ("ドライブ", 1), ("フォルダーと場所", 2)]
+        {
             let mut cards = div().flex().flex_wrap().gap(px(12.));
             let mut count = 0;
             for (index, place) in places.iter().enumerate() {
                 let drive = place.icon == platform::PlaceIcon::Drive;
-                if drive != drives {
+                let pinned = self.is_pinned(&place.path);
+                if (section == 0 && !pinned)
+                    || (section == 1 && (!drive || pinned))
+                    || (section == 2 && (drive || pinned))
+                {
                     continue;
                 }
                 count += 1;
@@ -164,7 +218,9 @@ impl FolderView {
                         })),
                 );
             }
-            if !drives && let Some(index) = self.recycle_bin_index() {
+            if section == 2
+                && let Some(index) = self.recycle_bin_index()
+            {
                 count += 1;
                 let selected = self.selected == Some(index);
                 let image = self.icons.update(cx, |icons, cx| {
