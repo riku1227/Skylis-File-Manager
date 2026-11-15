@@ -34,6 +34,8 @@ mod actions {
             FocusSearch,
             EditAddress,
             OpenSettings,
+            DetachTab,
+            MergeWindowTabs,
             ClearSearch
         ]
     );
@@ -81,6 +83,7 @@ fn main() {
                 KeyBinding::new("cmd-q", Quit, None),
             ]);
             cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, Some("ExplorerTabs")), KeyBinding::new("cmd-,", OpenSettings, Some("ExplorerTabs"))]);
+            cx.bind_keys([KeyBinding::new("ctrl-shift-n", DetachTab, Some("ExplorerTabs")), KeyBinding::new("cmd-shift-n", DetachTab, Some("ExplorerTabs"))]);
             search::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
             let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);

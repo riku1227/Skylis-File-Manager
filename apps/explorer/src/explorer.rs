@@ -8,6 +8,8 @@ use explorer_core::location::Location;
 use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, img, prelude::*, px, svg};
 use std::path::PathBuf;
 mod settings_panel;
+mod tabs;
+use tabs::TabDrag;
 
 /// Each tab owns its entity and asynchronous listing. Switching never redirects a pending batch.
 pub struct Explorer {
@@ -20,6 +22,13 @@ pub struct Explorer {
     settings_open: bool,
     settings_focus: FocusHandle,
     last_saved_theme: crate::settings_data::ThemePreference,
+    tab_subscriptions: std::collections::HashMap<gpui::EntityId, Vec<gpui::Subscription>>,
+    tab_scroll: gpui::ScrollHandle,
+    tab_strip: std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>,
+    dragging_tab: Option<gpui::EntityId>,
+    drop_slot: Option<usize>,
+    tab_menu: Option<(gpui::EntityId, gpui::Point<gpui::Pixels>)>,
+    tab_error: Option<String>,
 }
 impl Explorer {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -49,6 +58,18 @@ impl Explorer {
         let start = path.map(Location::Folder).unwrap_or(Location::Home);
         let folder = cx.new(|cx| FolderView::new(start, mode, icons.clone(), window, cx));
         folder.update(cx, |folder, _| folder.compact = compact);
+        Self::with_tabs(vec![folder], icons, mode, compact, window, cx)
+    }
+
+    fn with_tabs(
+        tabs: Vec<Entity<FolderView>>,
+        icons: Entity<ShellIcons>,
+        mode: ThemeMode,
+        compact: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
         cx.observe(&preferences, |this, preferences, cx| {
             let value = preferences.read(cx).value.clone();
             if this.last_saved_theme != value.theme {
@@ -66,11 +87,18 @@ impl Explorer {
             cx.notify();
         })
         .detach();
-        cx.observe(&folder, |_, _, cx| cx.notify()).detach();
         cx.observe_window_appearance(window, |_, _, cx| cx.notify())
             .detach();
-        Self {
-            tabs: vec![folder],
+        cx.observe_window_activation(window, |this, window, cx| {
+            if !window.is_window_active() && this.dragging_tab.take().is_some() {
+                this.clear_tab_drop_indicators(window, cx);
+                cx.stop_active_drag(window);
+                cx.notify();
+            }
+        })
+        .detach();
+        let mut this = Self {
+            tabs,
             active: 0,
             mode,
             compact,
@@ -79,7 +107,19 @@ impl Explorer {
             preferences,
             settings_open: false,
             settings_focus: cx.focus_handle(),
+            tab_subscriptions: Default::default(),
+            tab_scroll: gpui::ScrollHandle::new(),
+            tab_strip: Default::default(),
+            dragging_tab: None,
+            drop_slot: None,
+            tab_menu: None,
+            tab_error: None,
+        };
+        for tab in this.tabs.clone() {
+            this.watch_tab(&tab, window, cx);
         }
+        this.switch(0, window, cx);
+        this
     }
     fn switch(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if index >= self.tabs.len() {
@@ -93,16 +133,18 @@ impl Explorer {
     fn new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
         let folder =
             cx.new(|cx| FolderView::new(Location::Home, self.mode, self.icons.clone(), window, cx));
-        cx.observe(&folder, |_, _, cx| cx.notify()).detach();
+        self.watch_tab(&folder, window, cx);
         folder.update(cx, |folder, _| folder.compact = self.compact);
         self.tabs.push(folder);
+        self.settings_open = false;
         self.switch(self.tabs.len() - 1, window, cx);
     }
     fn close(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if self.tabs.len() == 1 {
+        if self.tabs.len() == 1 || index >= self.tabs.len() {
             return;
         }
-        self.tabs.remove(index);
+        let removed = self.tabs.remove(index);
+        self.tab_subscriptions.remove(&removed.entity_id());
         self.active = after_close(self.active, index, self.tabs.len());
         self.switch(self.active, window, cx);
     }
@@ -141,16 +183,43 @@ impl Focusable for Explorer {
 impl Render for Explorer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = Theme::resolve(self.mode, window.appearance());
+        if self.tabs.is_empty() {
+            return div().into_any_element();
+        }
         window.set_window_title(&self.tabs[self.active].read(cx).label());
         let mut tabs = div()
             .id("tabs")
+            .relative()
             .flex()
             .items_center()
             .gap(px(4.))
             .min_w_0()
+            .w(px(self.tabs.len() as f32 * 184.))
             .max_w_full()
-            .overflow_x_scroll();
+            .overflow_x_scroll()
+            .track_scroll(&self.tab_scroll)
+            .child(
+                gpui::canvas(
+                    {
+                        let bounds = self.tab_strip.clone();
+                        let scroll = self.tab_scroll.clone();
+                        move |rect, _, _| {
+                            bounds.set(gpui::Bounds::new(rect.origin - scroll.offset(), rect.size))
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            );
         for (i, tab) in self.tabs.iter().enumerate() {
+            let id = tab.entity_id();
+            let owner = cx.weak_entity();
+            let drag = TabDrag {
+                id,
+                label: tab.read(cx).label(),
+                mode: self.mode,
+            };
             let current = i == self.active;
             let path = tab.read(cx).path().map(std::path::Path::to_path_buf);
             let image = path.as_ref().and_then(|path| {
@@ -160,7 +229,34 @@ impl Render for Explorer {
             });
             tabs = tabs.child(
                 div()
-                    .id(("tab", i))
+                    .id(("tab", id))
+                    .on_drag(drag, move |drag, _, _, cx| {
+                        let _ = owner.update(cx, |this, cx| {
+                            this.dragging_tab = Some(drag.id);
+                            this.tab_menu = None;
+                            cx.notify();
+                        });
+                        cx.new(|_| drag.clone())
+                    })
+                    .on_mouse_down(
+                        gpui::MouseButton::Middle,
+                        cx.listener(move |this, _, w, cx| {
+                            cx.stop_propagation();
+                            if let Some(index) =
+                                this.tabs.iter().position(|tab| tab.entity_id() == id)
+                            {
+                                this.close(index, w, cx);
+                            }
+                        }),
+                    )
+                    .on_mouse_down(
+                        gpui::MouseButton::Right,
+                        cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            this.tab_menu = Some((id, event.position));
+                            cx.notify();
+                        }),
+                    )
                     .h(px(28.))
                     .w(px(180.))
                     .flex_shrink_0()
@@ -197,7 +293,7 @@ impl Render for Explorer {
                     .child(div().flex_1().truncate().child(tab.read(cx).label()))
                     .child(
                         div()
-                            .id(("close-tab", i))
+                            .id(("close-tab", id))
                             .size(px(18.))
                             .flex_shrink_0()
                             .flex()
@@ -213,13 +309,35 @@ impl Render for Explorer {
                             )
                             .on_click(cx.listener(move |this, _, w, cx| {
                                 cx.stop_propagation();
-                                this.close(i, w, cx)
+                                if let Some(index) =
+                                    this.tabs.iter().position(|tab| tab.entity_id() == id)
+                                {
+                                    this.close(index, w, cx)
+                                }
                             })),
                     )
-                    .on_click(cx.listener(move |this, _, w, cx| this.switch(i, w, cx))),
+                    .on_click(cx.listener(move |this, _, w, cx| {
+                        if let Some(index) = this.tabs.iter().position(|tab| tab.entity_id() == id)
+                        {
+                            this.switch(index, w, cx)
+                        }
+                    })),
+            );
+        }
+        if let Some(slot) = self.drop_slot {
+            tabs = tabs.child(
+                div()
+                    .absolute()
+                    .left(px(slot as f32 * 184.))
+                    .top(px(2.))
+                    .w(px(2.))
+                    .h(px(24.))
+                    .bg(t.c("focus.ring")),
             );
         }
         div()
+            .id("explorer")
+            .relative()
             .key_context("ExplorerTabs")
             .size_full()
             .flex()
@@ -228,6 +346,47 @@ impl Render for Explorer {
             .text_color(t.c("text.primary"))
             .font_family("Segoe UI")
             .text_size(px(12.))
+            .on_drag_move::<TabDrag>(cx.listener(
+                |this, event: &gpui::DragMoveEvent<TabDrag>, w, cx| {
+                    this.update_tab_drop_indicator(event.event.position, w, cx);
+                },
+            ))
+            .on_mouse_up(
+                gpui::MouseButton::Left,
+                cx.listener(|this, event: &gpui::MouseUpEvent, w, cx| {
+                    this.finish_tab_drag(event.position, w, cx)
+                }),
+            )
+            .on_mouse_up_out(
+                gpui::MouseButton::Left,
+                cx.listener(|this, event: &gpui::MouseUpEvent, w, cx| {
+                    this.finish_tab_drag(event.position, w, cx)
+                }),
+            )
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
+                if event.keystroke.key == "escape"
+                    && (this.dragging_tab.is_some() || this.tab_menu.is_some())
+                {
+                    this.dragging_tab = None;
+                    this.tab_menu = None;
+                    this.clear_tab_drop_indicators(w, cx);
+                    cx.stop_active_drag(w);
+                    cx.stop_propagation();
+                    cx.notify();
+                }
+            }))
+            .on_action(cx.listener(Self::detach_tab))
+            .on_action(cx.listener(Self::merge_windows))
+            .capture_action(cx.listener(|this, _: &ClearSearch, w, cx| {
+                if this.dragging_tab.is_some() || this.tab_menu.is_some() {
+                    this.dragging_tab = None;
+                    this.tab_menu = None;
+                    this.clear_tab_drop_indicators(w, cx);
+                    cx.stop_active_drag(w);
+                    cx.stop_propagation();
+                    cx.notify();
+                }
+            }))
             .on_action(cx.listener(|this, _: &OpenSettings, w, cx| {
                 this.settings_open = !this.settings_open;
                 if this.settings_open {
@@ -279,6 +438,13 @@ impl Render for Explorer {
                     })
                     .when(self.settings_open, |d| d.child(self.render_settings(t, cx))),
             )
+            .when_some(self.tab_error.clone(), |d, message| {
+                d.child(div().px(px(12.)).py(px(6.)).child(message))
+            })
+            .when(self.tab_menu.is_some(), |d| {
+                d.child(gpui::deferred(self.render_tab_menu(t, window, cx)).with_priority(2))
+            })
+            .into_any_element()
     }
 }
 #[cfg(test)]

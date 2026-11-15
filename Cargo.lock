@@ -1418,6 +1418,8 @@ dependencies = [
  "gpui-fast",
  "gpui-fast-platform",
  "image",
+ "libc",
+ "raw-window-handle",
  "unicode-segmentation",
  "windows-sys 0.59.0",
 ]

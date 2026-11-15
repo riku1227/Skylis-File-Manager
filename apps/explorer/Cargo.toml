@@ -16,6 +16,7 @@ unicode-segmentation = "1.12"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
+raw-window-handle = "0.6"
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }

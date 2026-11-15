@@ -35,6 +35,9 @@ const COL_KIND: Pixels = px(136.);
 const COL_SIZE: Pixels = px(92.);
 const SIDEBAR_WIDTH: Pixels = px(200.);
 
+pub enum FolderEvent { OpenInTab(PathBuf) }
+impl gpui::EventEmitter<FolderEvent> for FolderView {}
+
 pub struct FolderView {
     sizes: SizeState,
     pub mode: ThemeMode,
@@ -44,6 +47,7 @@ pub struct FolderView {
     query: String,
     icons: Entity<ShellIcons>,
     focus: FocusHandle,
+    _window_subscriptions: Vec<gpui::Subscription>,
     history: History<Location>,
     address: Entity<TextInput>,
     editing_address: bool,
@@ -93,12 +97,6 @@ impl FolderView {
     ) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        cx.on_focus(&focus, window, |_, _, cx| cx.notify()).detach();
-        cx.on_blur(&focus, window, |_, _, cx| cx.notify()).detach();
-        // OSのライト/ダーク切り替えに追従
-        cx.observe_window_appearance(window, |_, _, cx| cx.notify())
-            .detach();
-
         let search = cx.new(TextInput::new);
         cx.observe(&search, |this, search, cx| {
             let query = search.read(cx).content.to_string();
@@ -116,10 +114,6 @@ impl FolderView {
             input.placeholder = "フォルダーのパスを入力…".into();
             input
         });
-        cx.on_blur(&address.focus_handle(cx), window, |this, _, cx| {
-            this.cancel_address(cx);
-        })
-        .detach();
         cx.observe(&address, |this, _, cx| {
             this.address_generation = this.address_generation.wrapping_add(1);
             this._address_validation = None;
@@ -163,6 +157,7 @@ impl FolderView {
             query: String::new(),
             icons,
             focus,
+            _window_subscriptions: Vec::new(),
             history: History::new(start.clone()),
             entries: Vec::new(),
             visible: Vec::new(),
@@ -188,10 +183,26 @@ impl FolderView {
             drive_space: HashMap::new(),
             title_dirty: true,
         };
+        this.attach_window(window,cx);
         this.refresh_drives(cx);
         this.discover_wsl(cx);
         this.load(start, None, cx);
         this
+    }
+
+    pub fn attach_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self._window_subscriptions.clear();
+        self._window_subscriptions.push(cx.on_focus(&self.focus, window, |this, _, cx| {
+            let date = chrono::Local::now().date_naive();
+            if date != this.group_date {
+                this.group_date = date;
+                this.rebuild_display_rows();
+            }
+            cx.notify();
+        }));
+        self._window_subscriptions.push(cx.on_blur(&self.focus, window, |_, _, cx| cx.notify()));
+        self._window_subscriptions.push(cx.observe_window_appearance(window, |_,_,cx| cx.notify()));
+        self._window_subscriptions.push(cx.on_blur(&self.address.focus_handle(cx), window, |this,_,cx| this.cancel_address(cx)));
     }
 
     fn refresh_drives(&mut self, cx: &mut Context<Self>) {
