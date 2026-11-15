@@ -4,6 +4,8 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
+mod context_menu;
+use context_menu::ContextMenu;
 mod transfers;
 use transfers::FileDrag;
 mod media_view;
@@ -43,6 +45,9 @@ pub enum FolderEvent { OpenInTab(PathBuf) }
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
+    context_menu: Option<ContextMenu>,
+    menu_focus: FocusHandle,
+    _shell_menu: Option<Task<()>>,
     multi_selection: std::collections::BTreeSet<PathBuf>,
     selection_anchor: Option<PathBuf>,
     media: Entity<MediaCache>,
@@ -154,6 +159,7 @@ impl FolderView {
         };
         cx.observe(&media, |_,_,cx|cx.notify()).detach();
         let mut this = Self {
+            context_menu: None, menu_focus: cx.focus_handle(), _shell_menu: None,
             multi_selection: Default::default(), selection_anchor: None,
             media, media_scope: MediaScope::new(), preview_scope: MediaScope::new(), preview_open: false,
             sizes: SizeState::default(),
@@ -255,6 +261,7 @@ impl FolderView {
     // ───────────── 読み込み ─────────────
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.context_menu=None;self._shell_menu=None;
         self.cancel_sizes(cx);
         self.cancel_address(cx);
         self.media_scope.cancel();self.preview_scope.cancel();self.preview_open=false;
@@ -1281,6 +1288,7 @@ impl FolderView {
                         .when(e.kind==EntryKind::Dir,|d| {
                             Self::file_drop_target(d, Some(e.path.clone()), t, cx)
                         })
+                        .on_mouse_down(MouseButton::Right, cx.listener(move |this,event,w,cx| this.open_context_menu(Some(ix),event,w,cx)))
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |this, event: &MouseDownEvent, w, cx| this.pointer_select(ix,event,w,cx)),
@@ -1322,7 +1330,8 @@ impl FolderView {
         .flex_1()
         .min_h_0()
         .py(px(2.))
-        .track_scroll(&self.scroll);
+        .track_scroll(&self.scroll)
+        .on_mouse_down(MouseButton::Right, cx.listener(|this,event,w,cx| this.open_context_menu(None,event,w,cx)));
         div().flex().flex_1().min_h_0().child(list).child(self.render_scrollbar(t,cx))
             .on_scroll(cx.listener(|_,_,_,cx| cx.notify())).into_any_element()
     }
@@ -1637,6 +1646,7 @@ impl Render for FolderView {
             .on_action(cx.listener(Self::cut_files))
             .on_action(cx.listener(Self::paste_files))
             .on_drag_move(cx.listener(Self::promote_file_drag))
+            .on_action(cx.listener(Self::keyboard_context_menu))
             .on_action(cx.listener(Self::toggle_preview))
             .on_action(cx.listener(Self::edit_address))
             .on_action(cx.listener(Self::select_prev))
@@ -1711,7 +1721,7 @@ impl Render for FolderView {
                             .map(|d| Self::file_drop_target(d, self.path().map(Path::to_path_buf), t, cx))
                             .when(self.is_home(), |d| d.child(self.render_home(t, window, cx)))
                             .when(!self.is_home(), |d| {
-                                d.child(self.render_header(t, self.narrow(window), cx))
+                                d.on_mouse_down(MouseButton::Right,cx.listener(|this,event,w,cx|this.open_context_menu(None,event,w,cx))).child(self.render_header(t, self.narrow(window), cx))
                                     .child(self.render_list(t, cx))
                             }),
                     )
@@ -1735,6 +1745,7 @@ impl Render for FolderView {
             })
             .child(self.render_status(t, cx))
             .when(self.preview_open && !cfg!(target_os="macos"),|d|d.child(self.render_preview(t,cx)))
+            .when(self.context_menu.is_some(), |d| d.child(self.render_context_menu(t,cx)))
     }
 }
 // Shared by real list rows and the hover regression probe.
