@@ -12,3 +12,6 @@ pub use history::History;
 pub use listing::{CancelToken, ListingEvent, ListingStats, list_dir};
 
 pub mod date_group;
+
+pub mod wsl;
+pub use wsl::{WslDistribution, installed_distributions};

@@ -4,6 +4,7 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
+mod wsl;
 mod scrollbar;
 mod grouping;
 use grouping::DisplayRow;
@@ -48,6 +49,8 @@ pub struct FolderView {
     address_generation: u64,
     _address_validation: Option<Task<()>>,
     _drive_task: Option<Task<()>>,
+    _wsl_task: Option<Task<()>>,
+    wsl: Vec<explorer_core::wsl::WslDistribution>,
     /// 現在のフォルダーの全項目（隠しファイル含む）、常にソート済み
     entries: Vec<Entry>,
     /// 表示対象の entries インデックス（隠しファイルのフィルター後）
@@ -149,6 +152,8 @@ impl FolderView {
             address_generation: 0,
             _address_validation: None,
             _drive_task: None,
+            _wsl_task: None,
+            wsl: Vec::new(),
             query: String::new(),
             icons,
             focus,
@@ -178,6 +183,7 @@ impl FolderView {
             title_dirty: true,
         };
         this.refresh_drives(cx);
+        this.discover_wsl(cx);
         this.load(start, None, cx);
         this
     }
@@ -1052,7 +1058,7 @@ impl FolderView {
                     );
             }
         }
-        panel
+        panel.child(self.render_wsl(t,cx))
     }
     fn render_header(&self, t: Theme, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let col = |id: &'static str, label: &'static str, key: SortKey, cx: &mut Context<Self>| {
