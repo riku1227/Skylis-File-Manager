@@ -12,6 +12,24 @@
       "command": "cargo build --locked -p explorer --target x86_64-pc-windows-msvc",
       "icon": "debug",
       "runOnWorktreeCreate": false
+    },
+    {
+      "name": "debug(macOS native .app)",
+      "command": "bash scripts/build-macos.sh debug",
+      "icon": "build",
+      "runOnWorktreeCreate": false
+    },
+    {
+      "name": "release(macOS native .app)",
+      "command": "bash scripts/build-macos.sh release",
+      "icon": "build",
+      "runOnWorktreeCreate": false
+    },
+    {
+      "name": "launch(macOS debug .app)",
+      "command": "bash scripts/build-macos.sh debug --launch",
+      "icon": "play",
+      "runOnWorktreeCreate": false
     }
   ]
 }

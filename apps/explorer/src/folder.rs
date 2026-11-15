@@ -2308,7 +2308,11 @@ impl Render for FolderView {
             .flex_col()
             .bg(t.c("surface.canvas"))
             .text_color(t.c("text.primary"))
-            .font_family("Segoe UI")
+            .font_family(if cfg!(target_os = "macos") {
+                ".SystemUIFont"
+            } else {
+                "Segoe UI"
+            })
             .text_size(px(13.5))
             .child(
                 div()

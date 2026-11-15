@@ -440,7 +440,11 @@ impl Render for Explorer {
             .flex_col()
             .bg(t.c("surface.canvas"))
             .text_color(t.c("text.primary"))
-            .font_family("Segoe UI")
+            .font_family(if cfg!(target_os = "macos") {
+                ".SystemUIFont"
+            } else {
+                "Segoe UI"
+            })
             .text_size(px(12.))
             .on_drag_move::<TabDrag>(cx.listener(
                 |this, event: &gpui::DragMoveEvent<TabDrag>, w, cx| {

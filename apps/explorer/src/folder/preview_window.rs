@@ -167,7 +167,11 @@ impl Render for PreviewWindow {
                 .id("preview-text")
                 .size_full()
                 .overflow_y_scroll()
-                .font_family("Consolas")
+                .font_family(if cfg!(target_os = "macos") {
+                    "Menlo"
+                } else {
+                    "Consolas"
+                })
                 .text_size(px(13.))
                 .child(text.to_string())
                 .when(*truncated, |d| {

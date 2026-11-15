@@ -898,7 +898,16 @@ fn keyboard_preview_stops_old_motion_but_allows_new_source_scroll(cx: &mut gpui:
     window
         .update(cx, |view, w, cx| {
             view.toggle_preview(&QuickPreview, w, cx);
+            #[cfg(not(target_os = "macos"))]
             assert!(view.preview_open);
+            // GPUI's test window has no NSView: Quick Look must report unsupported,
+            // rather than pretending a native panel was opened.
+            #[cfg(target_os = "macos")]
+            {
+                assert!(!view.preview_open);
+                assert!(view.notice.is_some());
+                view.cancel_scroll_motion();
+            }
         })
         .unwrap();
     advance_motion_frame(window, cx, 100);
