@@ -394,9 +394,9 @@ impl Explorer {
                                 .text_size(px(13.))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .child(if i == 0 {
-                                    "1  テーマ"
+                                    "テーマ"
                                 } else {
-                                    "2  表示密度"
+                                    "表示密度"
                                 }),
                         )
                         .child(choices)
@@ -439,7 +439,7 @@ impl Explorer {
                                     div()
                                         .text_size(px(13.))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .child(format!("{}  {label}", i + 1)),
+                                        .child(label),
                                 )
                                 .child(
                                     div()
