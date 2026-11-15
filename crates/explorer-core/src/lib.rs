@@ -15,3 +15,6 @@ pub mod date_group;
 
 pub mod wsl;
 pub use wsl::{WslDistribution, installed_distributions};
+
+pub mod folder_size;
+pub use folder_size::{FolderSizeProgress, FolderSizeResult, FolderSizeStatus, scan_folder_size};

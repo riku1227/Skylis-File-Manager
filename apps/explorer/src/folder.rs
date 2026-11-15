@@ -4,6 +4,8 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
+mod sizes;
+use sizes::SizeState;
 mod wsl;
 mod scrollbar;
 mod grouping;
@@ -34,6 +36,7 @@ const COL_SIZE: Pixels = px(92.);
 const SIDEBAR_WIDTH: Pixels = px(200.);
 
 pub struct FolderView {
+    sizes: SizeState,
     pub mode: ThemeMode,
     pub pane: bool,
     pub compact: bool,
@@ -130,6 +133,8 @@ impl FolderView {
         let group_downloads = preferences.as_ref().map_or(true, |p| p.read(cx).value.group_downloads);
         if let Some(preferences) = preferences {
             cx.observe(&preferences, |this, preferences, cx| {
+                let automatic = preferences.read(cx).value.automatic_sizes;
+                this.update_size_mode(automatic,cx);
                 let enabled = preferences.read(cx).value.group_downloads;
                 if this.group_downloads != enabled {
                     this.group_downloads = enabled;
@@ -141,6 +146,7 @@ impl FolderView {
             }).detach();
         }
         let mut this = Self {
+            sizes: SizeState::default(),
             mode,
             pane: true,
             compact: false,
@@ -221,6 +227,7 @@ impl FolderView {
     // ───────────── 読み込み ─────────────
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.cancel_sizes(cx);
         self.cancel_address(cx);
         // 前の列挙を止める（タスクをdropすると受信側も閉じ、列挙スレッドは次のsendで終了する）
         self.cancel.cancel();
@@ -1224,7 +1231,7 @@ impl FolderView {
                             .justify_end()
                             .text_size(px(12.))
                             .text_color(meta_color)
-                            .child(e.size.map(format::size).unwrap_or_else(|| "—".into())),
+                            .child(if e.kind == EntryKind::Dir { self.size_cell(&e.path,t,cx) } else { div().child(e.size.map(format::size).unwrap_or_else(|| "—".into())).into_any_element() }),
                     );
                 Some(
                     div()
