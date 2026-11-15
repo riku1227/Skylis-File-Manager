@@ -96,7 +96,16 @@ Verified on Apple Silicon arm64 macOS 27.0.1 (26A434), Xcode 27.0
   the reveal action selected the running Skylis.app in Finder. No privacy switches,
   grants, revokes or TCC resets were performed.
 
-Release commands are provided but the optimized release build has not been run.
+Parent review also verified the optimized release build with
+`bash scripts/build-macos.sh release`, including plist and strict signature
+validation. The release `.app` launched through Launch Services, rendered Home
+and Japanese text, displayed the permissions category with unknown initial state,
+and revealed the exact release bundle in Finder. The parent independently repeated
+the denied-folder → permissions settings → system FDA pane → restored access/F5
+flow using a separate disposable fixture. After simplifying the permission copy
+and making the action buttons visible, all **204 explorer + 42 core tests** passed
+again. No FDA grants or revocations were required for these checks.
+
 Intel, Developer ID/notarization, and interactive FDA grant/revoke/relaunch
 transitions remain unverified. Existing unrelated platform gaps remain, including
 unavailable drive-capacity reporting on this host. Existing deprecation/dead-code

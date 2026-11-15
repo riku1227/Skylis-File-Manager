@@ -99,7 +99,7 @@ pub fn perform(action: Action) -> Result<String, String> {
                 String::from_utf8_lossy(&output.stderr)
             ));
         }
-        Ok("OSへ表示を依頼しました。表示されない場合は下記の手順で開いてください。".into())
+        Ok("OSへ表示を依頼しました。表示されない場合は、この画面の手順で開いてください。".into())
     }
     #[cfg(not(target_os = "macos"))]
     {

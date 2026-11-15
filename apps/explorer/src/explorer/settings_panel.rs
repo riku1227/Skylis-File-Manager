@@ -294,19 +294,19 @@ impl Explorer {
                     "未確認：フルディスクアクセスの許可状態は自動判定できません。"
                 }
                 Observation::Denied => {
-                    "現在のフォルダーでアクセスが拒否されました。FDA不足とは断定できません。"
+                    "このフォルダーへのアクセスが拒否されました。下の手順でアクセス権限を確認できます。"
                 }
                 Observation::Accessible => {
-                    "現在のフォルダーの列挙は成功しました。FDA全体の許可状態は未確認です。"
+                    "このフォルダーは開けます。フルディスクアクセスの許可状態は未確認です。"
                 }
                 Observation::OtherFailure => {
-                    "現在のフォルダーで別のエラーが発生しました。FDAの許可状態は未確認です。"
+                    "このフォルダーで別のエラーが発生しました。フルディスクアクセスの許可状態は未確認です。"
                 }
             };
             body = body.child(div().id("permission-status").debug_selector(|| "permission-status".into()).mb(px(16.)).child(status))
-                .child(div().mb(px(16.)).child("「ファイルとフォルダ」は書類・デスクトップ等の個別アクセス、「フルディスクアクセス」は保護されたデータへの広いアクセスです。通常のフォルダーではFDAは不要です。拒否はPOSIX権限やACLが原因の場合もあります。"))
-                .child(div().mb(px(16.)).child("システム設定 → プライバシーとセキュリティ → フルディスクアクセスを開き、必要な場合だけ＋で実行中のSkylis.appを追加してください。変更後はアプリを終了して再起動し、対象フォルダーでF5を押してください。再試行はそのフォルダーだけを再列挙し、FDA全体を検査しません。"))
-                .child(div().mb(px(16.)).child("ローカルのアドホック署名は再ビルドで変わります。OSに再認識されない場合は、システム設定で現在の.appを手動で追加し直してください。"));
+                .child(div().mb(px(16.)).child("「ファイルとフォルダ」は書類・デスクトップなどの場所ごとの許可です。「フルディスクアクセス」は保護されたデータにもアクセスできる広い権限なので、必要な場合だけ許可してください。フォルダーの所有者や読み取り権限が原因の場合は、この設定だけでは開けません。"))
+                .child(div().mb(px(16.)).child("システム設定 → プライバシーとセキュリティ → フルディスクアクセスで、＋からSkylis.appを追加し、スイッチをオンにします。下のFinderボタンで、追加するアプリを確認できます。変更後はSkylisを終了して再起動し、対象フォルダーを開いてください。F5でそのフォルダーを再読み込みできます。"))
+                .child(div().mb(px(16.)).child("開発版では、再ビルド後にアクセス許可の再設定が必要になることがあります。その場合は、現在のSkylis.appをシステム設定に追加し直してください。"));
             for (index, label, action) in [
                 (0, "システム設定を開く", Action::OpenPrivacy),
                 (1, "実行中の.appをFinderに表示", Action::RevealBundle),
@@ -318,6 +318,9 @@ impl Explorer {
                         .mb(px(8.))
                         .rounded(px(6.))
                         .bg(t.c("button.bg"))
+                        .border_1()
+                        .border_color(t.c("button.border"))
+                        .hover(|style| style.bg(t.c("button.hover.bg")))
                         .opacity(if p.permission_busy { 0.45 } else { 1. })
                         .cursor_pointer()
                         .child(label)
