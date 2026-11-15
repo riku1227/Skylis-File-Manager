@@ -106,3 +106,5 @@ fn main() {
 }
 
 mod size_service;
+
+mod native_shell;
