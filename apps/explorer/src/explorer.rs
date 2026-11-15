@@ -51,7 +51,7 @@ impl Explorer {
                     Some("light") => ThemeMode::Light,
                     _ => ThemeMode::System,
                 };
-            } else if args[i] == "--path" && i + 1 < args.len() {
+            } else if (args[i] == "--path" || args[i] == "--shell-folder") && i + 1 < args.len() {
                 i += 1;
                 path = Some(PathBuf::from(&args[i]));
             } else if !args[i].to_string_lossy().starts_with('-') {
@@ -848,7 +848,8 @@ mod tests {
                 p.explorer.read(cx).preferences.read(cx).value.clone()
             })
             .unwrap();
-        for (key, category) in [("up", 3), ("down", 0), ("down", 1)] {
+        let last_category = if cfg!(windows) { 4 } else { 3 };
+        for (key, category) in [("up", last_category), ("down", 0), ("down", 1)] {
             cx.simulate_keystrokes(window.into(), key);
             window
                 .read_with(cx, |p, cx| {
@@ -909,7 +910,7 @@ mod tests {
         let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
         for (width, height) in [(640., 360.), (900., 600.), (480., 360.)] {
             visual.simulate_resize(gpui::size(px(width), px(height)));
-            for category in 0..4 {
+            for category in 0..if cfg!(windows) { 5 } else { 4 } {
                 click_setting(
                     &mut visual,
                     [
@@ -917,6 +918,7 @@ mod tests {
                         "settings-category-1",
                         "settings-category-2",
                         "settings-category-3",
+                        "settings-category-4",
                     ][category],
                 );
                 let panel = visual.debug_bounds("settings-panel").unwrap();

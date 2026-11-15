@@ -3,6 +3,7 @@ mod assets;
 mod diagnostics;
 mod explorer;
 mod folder;
+mod folder_integration;
 mod motion;
 mod motion_preferences;
 mod native_shell;

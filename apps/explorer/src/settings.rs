@@ -15,6 +15,11 @@ pub struct Preferences {
     writer: async_channel::Sender<Settings>,
     pending: async_channel::Receiver<Settings>,
     _result: Task<()>,
+    pub folder_integration: Option<crate::folder_integration::Status>,
+    pub integration_busy: bool,
+    pub integration_error: Option<String>,
+    integration_sender: async_channel::Sender<Option<bool>>,
+    _integration_result: Task<()>,
 }
 
 #[cfg(test)]
@@ -174,6 +179,45 @@ impl Preferences {
                 }
             }
         });
+        let (integration_sender, integration_requests) = async_channel::bounded::<Option<bool>>(1);
+        let (integration_results, integration_receiver) = async_channel::bounded(1);
+        let spawned = std::thread::Builder::new()
+            .name("folder-integration".into())
+            .spawn(move || {
+                while let Ok(request) = integration_requests.recv_blocking() {
+                    let result = match request {
+                        Some(enabled) => crate::folder_integration::set_enabled(enabled),
+                        None => crate::folder_integration::query(),
+                    };
+                    let result = match result {
+                        Ok(status) => (Some(status), None),
+                        Err(error) => (crate::folder_integration::query().ok(), Some(error)),
+                    };
+                    if integration_results.send_blocking(result).is_err() {
+                        break;
+                    }
+                }
+            });
+        let integration_error = spawned.err().map(|e| e.to_string());
+        let integration_busy = cfg!(windows) && integration_error.is_none();
+        if integration_busy {
+            let _ = integration_sender.try_send(None);
+        }
+        let integration_result = cx.spawn(async move |this, cx| {
+            while let Ok(result) = integration_receiver.recv().await {
+                if this
+                    .update(cx, |this, cx| {
+                        this.integration_busy = false;
+                        this.folder_integration = result.0;
+                        this.integration_error = result.1;
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
         // Keep a receiver only to replace the pending snapshot without growing the queue.
         Self {
             value: initial.0,
@@ -182,7 +226,25 @@ impl Preferences {
             writer: tx,
             pending,
             _result: result,
+            folder_integration: None,
+            integration_busy,
+            integration_error,
+            integration_sender,
+            _integration_result: integration_result,
         }
+    }
+    pub fn set_folder_integration(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.integration_busy {
+            return;
+        }
+        match self.integration_sender.try_send(Some(enabled)) {
+            Ok(()) => {
+                self.integration_busy = true;
+                self.integration_error = None;
+            }
+            Err(error) => self.integration_error = Some(error.to_string()),
+        }
+        cx.notify();
     }
     pub fn change(&mut self, edit: impl FnOnce(&mut Settings), cx: &mut Context<Self>) {
         edit(&mut self.value);

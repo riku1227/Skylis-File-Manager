@@ -17,6 +17,9 @@ impl Explorer {
         let p = self.preferences.read(cx);
         let value = p.value.clone();
         let error = p.error.clone();
+        let integration = p.folder_integration.clone();
+        let integration_busy = p.integration_busy;
+        let integration_error = p.integration_error.clone();
         let refresh_description =
             refresh_description(self.display_interval, value.high_refresh_rate);
         let rows = [
@@ -106,12 +109,16 @@ impl Explorer {
             ),
         ];
 
-        let categories = [
+        let mut categories = vec![
             ("外観と表示", "icons/desktop.svg", 0..2),
             ("フォルダーと一覧", "icons/folder-outline.svg", 2..5),
             ("描画とスクロール", "icons/activity.svg", 5..7),
             ("開発者向け", "icons/code.svg", 7..8),
         ];
+        if cfg!(windows) {
+            categories.push(("Windows連携", "icons/link.svg", 8..8));
+        }
+        let category_count = categories.len();
         let mut nav = div()
             .id("settings-navigation")
             .w(px(if narrow { 124. } else { 166. }))
@@ -189,6 +196,50 @@ impl Explorer {
                         .child(error),
                 )
             });
+        if self.settings_category == 4 {
+            let enabled = integration.as_ref().is_some_and(|s| s.enabled);
+            body = body.child(div().text_size(px(14.)).font_weight(gpui::FontWeight::SEMIBOLD).child("フォルダーをSkylisで開く"))
+                .child(div().mt(px(10.)).text_color(t.c("text.secondary")).child("ほかのアプリから通常のフォルダーを開いたときに、Skylisを使います。現在のユーザーに適用され、ここから元に戻せます。"))
+                .child(div().mt(px(10.)).text_size(px(12.)).text_color(t.c("text.muted")).child("explorer.exeを直接起動するアプリ、Win+E、ゴミ箱などの特殊な場所は対象外です。登録後はSkylisの実行ファイルを移動しないでください。"))
+                .child(div().mt(px(16.)).child(if integration_busy { "確認・変更中…" } else if enabled { "Skylisを使用中" } else { "Windowsの設定を使用中" }))
+                .when_some(integration_error, |d, error| d.child(div().mt(px(12.)).text_color(t.c("danger.fg")).child(error)));
+            for (id, label, install, available) in [
+                ("enable-folder-integration", "Skylisを使う", true, !enabled),
+                (
+                    "restore-folder-integration",
+                    "元の設定に戻す",
+                    false,
+                    integration.as_ref().is_some_and(|s| s.can_restore),
+                ),
+            ] {
+                body = body.child(
+                    div()
+                        .id(id)
+                        .mt(px(12.))
+                        .px(px(14.))
+                        .py(px(10.))
+                        .rounded(px(6.))
+                        .border_1()
+                        .border_color(t.c("button.border"))
+                        .bg(t.c("button.bg"))
+                        .when(!integration_busy && available, |d| {
+                            d.cursor_pointer().hover(|s| s.bg(t.c("state.hover")))
+                        })
+                        .opacity(if integration_busy || !available {
+                            0.45
+                        } else {
+                            1.
+                        })
+                        .child(label)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if !integration_busy && available {
+                                this.preferences
+                                    .update(cx, |p, cx| p.set_folder_integration(install, cx));
+                            }
+                        })),
+                );
+            }
+        }
         for i in range.clone() {
             let (label, description, enabled, state) = rows[i];
             if i < 2 {
@@ -401,12 +452,12 @@ impl Explorer {
                 .rounded(px(12.)).border_1().border_color(t.c("border.dialog")).bg(t.c("surface.dialog")).shadow_lg()
                 .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
-                .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
+                .on_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, w, cx| {
                     if event.keystroke.modifiers.modified() { return; }
                     if event.keystroke.key == "escape" {
                         this.close_settings(w, cx); cx.stop_propagation();
                     } else if matches!(event.keystroke.key.as_str(), "up" | "down") {
-                        this.settings_category = (this.settings_category + if event.keystroke.key == "down" { 1 } else { 3 }) % 4;
+                        this.settings_category = (this.settings_category + if event.keystroke.key == "down" { 1 } else { category_count - 1 }) % category_count;
                         this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
                         cx.notify(); cx.stop_propagation();
                     } else if let Ok(number) = event.keystroke.key.parse::<usize>() && (1..=8).contains(&number) {
