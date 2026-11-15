@@ -97,6 +97,55 @@ fn click_display_control(visual: &mut gpui::VisualTestContext, selector: &'stati
 }
 
 #[gpui::test]
+fn display_popup_omits_unavailable_controls_and_skips_them_on_keyboard(
+    cx: &mut gpui::TestAppContext,
+) {
+    for location in [
+        Location::Home,
+        Location::Archive {
+            archive: "example.zip".into(),
+            prefix: String::new(),
+        },
+    ] {
+        let home = matches!(location, Location::Home);
+        let window = workflow_window(cx);
+        window
+            .update(cx, |view, w, cx| {
+                view.history = History::new(location);
+                view.open_display_settings(w, cx);
+            })
+            .unwrap();
+        cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        assert!(visual.debug_bounds("display-details").is_none());
+        assert!(visual.debug_bounds("display-gallery").is_none());
+        assert_eq!(visual.debug_bounds("display-sort-name").is_none(), home);
+        assert_eq!(visual.debug_bounds("display-pane").is_none(), home);
+        assert!(visual.debug_bounds("display-hidden").is_some());
+        assert!(visual.debug_bounds("display-density-standard").is_some());
+        // The first keystroke must operate the first visible row, never a hidden row.
+        cx.simulate_keystrokes(window.into(), "right");
+        window
+            .read_with(cx, |view, _| {
+                if home {
+                    assert!(view.show_hidden);
+                } else {
+                    assert_eq!(view.sort.key, SortKey::Modified);
+                }
+            })
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "shift-tab");
+        window
+            .update(cx, |view, w, _| {
+                assert!(!view.display_settings.open);
+                assert!(view.display_settings.trigger_focus.is_focused(w));
+            })
+            .unwrap();
+    }
+}
+
+#[gpui::test]
 fn display_popup_keeps_edits_open_and_esc_does_not_clear_search(cx: &mut gpui::TestAppContext) {
     let window = workflow_window(cx);
     window

@@ -76,7 +76,7 @@ impl FolderView {
         self.cancel_scroll_motion();
         self.context_menu = None;
         self.display_settings.open = true;
-        self.display_settings.active_row = 0;
+        self.display_settings.active_row = self.display_rows()[0];
         self.display_settings
             .scroll
             .set_offset(point(px(0.), px(0.)));
@@ -109,75 +109,68 @@ impl FolderView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let anchor = self.display_settings.anchor.clone();
-        div()
-            .id("display-settings-trigger")
-            .debug_selector(|| "display-settings-trigger".into())
-            .track_focus(&self.display_settings.trigger_focus)
-            .tab_index(0)
-            .key_context("DisplaySettingsTrigger")
-            .relative()
-            .flex()
-            .items_center()
-            .gap(px(6.))
-            .h(px(34.))
-            .px(px(10.))
-            .flex_shrink_0()
-            .rounded(px(6.))
-            .border_1()
-            .border_color(t.c(if self.display_settings.open {
-                "accent.fg"
+        icon_button(
+            "display-settings-trigger",
+            "icons/view-settings.svg",
+            true,
+            t,
+        )
+        .debug_selector(|| "display-settings-trigger".into())
+        .track_focus(&self.display_settings.trigger_focus)
+        .tab_index(0)
+        .key_context("DisplaySettingsTrigger")
+        .relative()
+        .border_1()
+        .border_color(
+            t.c("accent.fg")
+                .opacity(if self.display_settings.open { 1. } else { 0. }),
+        )
+        .when(self.display_settings.open, |d| d.bg(t.c("accent.soft")))
+        .focus(|s| s.border_color(t.c("accent.fg")))
+        .child(
+            canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {})
+                .absolute()
+                .size_full(),
+        )
+        .on_click(cx.listener(|this, _, w, cx| {
+            cx.stop_propagation();
+            if this.display_settings.open {
+                this.dismiss_display_settings(w, cx);
             } else {
-                "border.subtle"
-            }))
-            .bg(t.c(if self.display_settings.open {
-                "surface.chip-selected"
-            } else {
-                "surface.chrome"
-            }))
-            .text_color(t.c("accent.fg"))
-            .text_size(px(11.))
-            .cursor_pointer()
-            .focus(|s| s.border_color(t.c("accent.fg")))
-            .hover(|s| s.bg(t.c("state.hover")))
-            .child(div().flex().flex_col().child("表示設定 ▾").child(
-                div().text_size(px(9.)).child(if self.gallery {
-                    "ギャラリー"
-                } else {
-                    "詳細"
-                }),
-            ))
-            .child(
-                canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {})
-                    .absolute()
-                    .size_full(),
-            )
-            .on_click(cx.listener(|this, _, w, cx| {
-                cx.stop_propagation();
-                if this.display_settings.open {
-                    this.dismiss_display_settings(w, cx);
-                } else {
+                this.open_display_settings(w, cx);
+            }
+        }))
+        .on_key_down(cx.listener(|this, event: &KeyDownEvent, w, cx| {
+            if event.keystroke.modifiers.control
+                || event.keystroke.modifiers.platform
+                || event.keystroke.modifiers.alt
+            {
+                return;
+            }
+            match event.keystroke.key.as_str() {
+                "enter" | "space" | "down" => {
                     this.open_display_settings(w, cx);
+                    cx.stop_propagation();
                 }
-            }))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, w, cx| {
-                if event.keystroke.modifiers.control
-                    || event.keystroke.modifiers.platform
-                    || event.keystroke.modifiers.alt
-                {
-                    return;
+                "tab" => {
+                    w.focus(&this.focus, cx);
+                    cx.stop_propagation();
                 }
-                match event.keystroke.key.as_str() {
-                    "enter" | "space" | "down" => {
-                        this.open_display_settings(w, cx);
-                        cx.stop_propagation();
-                    }
-                    "tab" => {
-                        w.focus(&this.focus, cx);
-                        cx.stop_propagation();
-                    }
-                    _ => (),
-                }
-            }))
+                _ => (),
+            }
+        }))
+    }
+
+    // Stable row IDs let mouse and keyboard share the same operations. Omit
+    // unavailable rows entirely, including their keyboard stops and headings.
+    fn display_rows(&self) -> &'static [usize] {
+        if self.is_home() {
+            &[4, 5]
+        } else if self.is_archive() {
+            &[1, 2, 3, 4, 5]
+        } else {
+            &[0, 1, 2, 3, 4, 5]
+        }
     }
 
     fn display_key(&mut self, event: &KeyDownEvent, w: &mut Window, cx: &mut Context<Self>) {
@@ -191,21 +184,23 @@ impl FolderView {
         if modifiers.control || modifiers.platform || modifiers.alt {
             return;
         }
+        let rows = self.display_rows();
         let row = self.display_settings.active_row;
+        let index = rows.iter().position(|r| *r == row).unwrap_or(0);
         match key {
             "escape" => self.dismiss_display_settings(w, cx),
-            "tab" if modifiers.shift && row == 0 => self.dismiss_display_settings(w, cx),
-            "tab" if !modifiers.shift && row == 5 => {
+            "tab" if modifiers.shift && index == 0 => self.dismiss_display_settings(w, cx),
+            "tab" if !modifiers.shift && index == rows.len() - 1 => {
                 self.close_display_settings(cx);
                 w.focus(&self.focus, cx);
             }
             "tab" | "up" | "down" => {
                 let previous = key == "up" || (key == "tab" && modifiers.shift);
-                self.display_settings.active_row = if previous {
-                    row.saturating_sub(1)
+                self.display_settings.active_row = rows[if previous {
+                    index.saturating_sub(1)
                 } else {
-                    (row + 1).min(5)
-                };
+                    (index + 1).min(rows.len() - 1)
+                }];
             }
             "left" | "right" | "home" | "end" | "enter" | "space" => {
                 let last = matches!(key, "right" | "end");
@@ -249,10 +244,27 @@ impl FolderView {
             }
             _ => return,
         }
-        // Row indices include the three scope headings in the scrolling content.
-        self.display_settings
-            .scroll
-            .scroll_to_item([1, 2, 3, 5, 7, 8][self.display_settings.active_row]);
+        // The scroll container also has a heading at each visible scope boundary.
+        let mut item = 0;
+        let mut previous_scope = None;
+        for &row in rows {
+            let scope = if row < 3 {
+                0
+            } else if row == 3 {
+                1
+            } else {
+                2
+            };
+            if previous_scope != Some(scope) {
+                item += 1;
+            }
+            if row == self.display_settings.active_row {
+                break;
+            }
+            previous_scope = Some(scope);
+            item += 1;
+        }
+        self.display_settings.scroll.scroll_to_item(item);
         cx.stop_propagation();
         cx.notify();
     }
@@ -267,7 +279,6 @@ impl FolderView {
         id: &'static str,
         label: &'static str,
         selected: bool,
-        enabled: bool,
         row: usize,
         t: Theme,
         cx: &mut Context<Self>,
@@ -292,20 +303,16 @@ impl FolderView {
             .when(selected, |d| {
                 d.bg(t.c("accent.soft")).text_color(t.c("accent.fg"))
             })
-            .opacity(if enabled { 1. } else { 0.4 })
             .text_size(px(11.))
-            .when(enabled, |d| {
-                d.cursor_pointer().hover(|s| s.bg(t.c("state.hover")))
-            })
+            .cursor_pointer()
+            .hover(|s| s.bg(t.c("state.hover")))
             .child(label)
             .on_click(cx.listener(move |this, _, w, cx| {
                 cx.stop_propagation();
-                if enabled {
-                    this.display_settings.active_row = row;
-                    w.focus(&this.display_settings.focus, cx);
-                    edit(this, w, cx);
-                    cx.notify();
-                }
+                this.display_settings.active_row = row;
+                w.focus(&this.display_settings.focus, cx);
+                edit(this, w, cx);
+                cx.notify();
             }))
     }
 
@@ -337,7 +344,12 @@ impl FolderView {
             )
             .cursor_pointer()
             .rounded(px(4.))
-            .px(px(3.))
+            .px(px(15.))
+            .bg(t.c(if row == 3 {
+                "accent.soft"
+            } else {
+                "surface.field"
+            }))
             .hover(|s| s.bg(t.c("state.hover")))
             .child(label)
             .child(
@@ -397,7 +409,14 @@ impl FolderView {
         let width = px(306.).min((viewport.width - px(16.)).max(px(1.)));
         let below = (viewport.height - anchor.bottom() - px(14.)).max(px(0.));
         let above = (anchor.origin.y - px(14.)).max(px(0.));
-        let height = px(446.)
+        let natural_height = if self.is_home() {
+            191.
+        } else if self.is_archive() {
+            424.
+        } else {
+            489.
+        };
+        let height = px(natural_height)
             .min(below.max(above).max(px(80.)))
             .min((viewport.height - px(16.)).max(px(1.)));
         let x =
@@ -408,31 +427,81 @@ impl FolderView {
             anchor.origin.y - height - px(6.)
         }
         .clamp(px(8.), (viewport.height - height - px(8.)).max(px(8.)));
-        let scope = |text: &'static str| {
+        let scope = |text: &'static str,
+                     hint: &'static str,
+                     icon: &'static str,
+                     window: bool,
+                     global: bool| {
             div()
-                .h(px(24.))
+                .h(px(44.))
                 .flex_shrink_0()
+                .px(px(15.))
+                .border_t_1()
+                .border_color(t.c("border.default"))
+                .bg(t.c(if window {
+                    "accent.soft"
+                } else if global {
+                    "surface.field"
+                } else {
+                    "surface.raised"
+                }))
                 .flex()
-                .items_center()
-                .text_size(px(10.))
-                .text_color(t.c("text.muted"))
-                .child(text)
+                .flex_col()
+                .justify_center()
+                .gap(px(2.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_size(px(11.))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(t.c(if window {
+                            "accent.fg"
+                        } else {
+                            "text.secondary"
+                        }))
+                        .child(svg().path(icon).size(px(13.)).text_color(t.c(if window {
+                            "accent.fg"
+                        } else {
+                            "text.secondary"
+                        })))
+                        .child(text),
+                )
+                .child(
+                    div()
+                        .text_size(px(9.))
+                        .text_color(t.c("text.muted"))
+                        .child(hint),
+                )
         };
-        let section = |label: &'static str, active: bool| {
+        let section = |label: &'static str, row: usize| {
             div()
                 .flex()
                 .flex_col()
                 .flex_shrink_0()
                 .gap(px(5.))
                 .py(px(4.))
-                .border_l_2()
-                .border_color(if active {
-                    t.c("accent.fg").opacity(0.55)
+                .px(px(12.))
+                .bg(t.c(if row == 5 {
+                    "surface.field"
                 } else {
-                    t.c("accent.fg").opacity(0.)
-                })
-                .pl(px(3.))
-                .child(div().text_size(px(12.)).child(label))
+                    "surface.raised"
+                }))
+                .child(
+                    div()
+                        .border_l_2()
+                        .pl(px(3.))
+                        .border_color(t.c("accent.fg").opacity(
+                            if self.display_settings.active_row == row {
+                                0.8
+                            } else {
+                                0.
+                            },
+                        ))
+                        .text_size(px(12.))
+                        .child(label),
+                )
         };
         let pair = || {
             div()
@@ -444,6 +513,7 @@ impl FolderView {
         };
         let row = self.display_settings.active_row;
         let available = !self.is_home();
+        let modes_available = available && !self.is_archive();
         let mut sorts = pair();
         for (key, id, label) in [
             (SortKey::Name, "display-sort-name", "名前"),
@@ -455,7 +525,6 @@ impl FolderView {
                 id,
                 label,
                 self.sort.key == key,
-                available,
                 1,
                 t,
                 cx,
@@ -468,18 +537,24 @@ impl FolderView {
             .overflow_y_scroll()
             .flex_1()
             .min_h_0()
-            .px(px(12.))
             .pb(px(10.))
-            .child(scope("このタブ"))
-            .child(
-                section("表示形式", row == 0)
-                    .child(
+            .when(available, |d| {
+                d.child(scope(
+                    "このタブ",
+                    "開いているタブに適用",
+                    "icons/documents.svg",
+                    false,
+                    false,
+                ))
+            })
+            .when(modes_available, |d| {
+                d.child(
+                    section("表示形式", 0).child(
                         pair()
                             .child(self.display_option(
                                 "display-details",
                                 "≡ 詳細",
                                 !self.gallery,
-                                available && !self.is_archive(),
                                 0,
                                 t,
                                 cx,
@@ -489,86 +564,101 @@ impl FolderView {
                                 "display-gallery",
                                 "▦ ギャラリー",
                                 self.gallery,
-                                available && !self.is_archive(),
                                 0,
                                 t,
                                 cx,
                                 |this, _, cx| this.set_gallery(true, cx),
                             )),
-                    )
-                    .when(self.is_archive(), |d| {
-                        d.child(
-                            div()
-                                .text_size(px(10.))
-                                .text_color(t.c("text.muted"))
-                                .child("圧縮ファイル内は詳細表示です"),
-                        )
-                    }),
-            )
-            .child(
-                section(
-                    if self.grouped {
-                        "並べ替え（日付グループ）"
-                    } else {
-                        "並べ替え"
-                    },
-                    row == 1,
-                )
-                .child(sorts),
-            )
-            .child(
-                div()
-                    .border_l_2()
-                    .border_color(if row == 2 {
-                        t.c("accent.fg").opacity(0.55)
-                    } else {
-                        t.c("accent.fg").opacity(0.)
-                    })
-                    .pl(px(3.))
-                    .pb(px(6.))
-                    .child(
-                        pair()
-                            .child(self.display_option(
-                                "display-sort-ascending",
-                                "↑ 昇順",
-                                self.sort.ascending,
-                                available,
-                                2,
-                                t,
-                                cx,
-                                |this, _, cx| {
-                                    this.apply_sort(
-                                        SortOrder {
-                                            key: this.sort.key,
-                                            ascending: true,
-                                        },
-                                        cx,
-                                    )
-                                },
-                            ))
-                            .child(self.display_option(
-                                "display-sort-descending",
-                                "↓ 降順",
-                                !self.sort.ascending,
-                                available,
-                                2,
-                                t,
-                                cx,
-                                |this, _, cx| {
-                                    this.apply_sort(
-                                        SortOrder {
-                                            key: this.sort.key,
-                                            ascending: false,
-                                        },
-                                        cx,
-                                    )
-                                },
-                            )),
                     ),
-            )
-            .child(scope("このウィンドウ"))
-            .child(self.display_switch("display-pane", "詳細ペイン", self.pane, 3, t, cx))
-            .child(scope("すべてのウィンドウ"))
+                )
+            })
+            .when(available, |d| {
+                d.child(
+                    section(
+                        if self.grouped {
+                            "並べ替え（日付グループ）"
+                        } else {
+                            "並べ替え"
+                        },
+                        1,
+                    )
+                    .child(sorts),
+                )
+            })
+            .when(available, |d| {
+                d.child(
+                    div()
+                        .border_l_2()
+                        .border_color(if row == 2 {
+                            t.c("accent.fg").opacity(0.55)
+                        } else {
+                            t.c("accent.fg").opacity(0.)
+                        })
+                        .px(px(12.))
+                        .pb(px(6.))
+                        .child(
+                            pair()
+                                .child(self.display_option(
+                                    "display-sort-ascending",
+                                    "↑ 昇順",
+                                    self.sort.ascending,
+                                    2,
+                                    t,
+                                    cx,
+                                    |this, _, cx| {
+                                        this.apply_sort(
+                                            SortOrder {
+                                                key: this.sort.key,
+                                                ascending: true,
+                                            },
+                                            cx,
+                                        )
+                                    },
+                                ))
+                                .child(self.display_option(
+                                    "display-sort-descending",
+                                    "↓ 降順",
+                                    !self.sort.ascending,
+                                    2,
+                                    t,
+                                    cx,
+                                    |this, _, cx| {
+                                        this.apply_sort(
+                                            SortOrder {
+                                                key: this.sort.key,
+                                                ascending: false,
+                                            },
+                                            cx,
+                                        )
+                                    },
+                                )),
+                        ),
+                )
+            })
+            .when(available, |d| {
+                d.child(scope(
+                    "このウィンドウ",
+                    "このウィンドウの全タブに適用",
+                    "icons/panel.svg",
+                    true,
+                    false,
+                ))
+                .child(self.display_switch(
+                    "display-pane",
+                    "詳細ペイン",
+                    self.pane,
+                    3,
+                    t,
+                    cx,
+                ))
+            })
+            .child(scope(
+                "すべてのウィンドウ",
+                "他のウィンドウにも反映",
+                "icons/restore.svg",
+                false,
+                true,
+            ))
             .child(self.display_switch(
                 "display-hidden",
                 "隠しファイル",
@@ -578,13 +668,12 @@ impl FolderView {
                 cx,
             ))
             .child(
-                section("表示密度", row == 5).child(
+                section("表示密度", 5).child(
                     pair()
                         .child(self.display_option(
                             "display-density-standard",
                             "標準",
                             !self.compact,
-                            true,
                             5,
                             t,
                             cx,
@@ -594,7 +683,6 @@ impl FolderView {
                             "display-density-compact",
                             "コンパクト",
                             self.compact,
-                            true,
                             5,
                             t,
                             cx,

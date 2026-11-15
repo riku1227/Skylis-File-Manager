@@ -2505,6 +2505,7 @@ pub fn icon_button(
                     "close-pane" => "詳細ペインを閉じる",
                     "clear-search" => "検索をクリア（Esc）",
                     "new-tab" => "新しいタブ（Ctrl+T）",
+                    "display-settings-trigger" => "表示設定",
                     "settings" => "設定（Ctrl+,）",
                     "close-settings" => "設定を閉じる（Esc）",
                     _ => "テーマ切替",

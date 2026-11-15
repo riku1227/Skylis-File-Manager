@@ -20,6 +20,7 @@ icons!(
     "plus",
     "sun",
     "settings",
+    "view-settings",
     "linux",
     "panel",
     "folder",
