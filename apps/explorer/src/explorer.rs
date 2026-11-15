@@ -510,7 +510,7 @@ impl Render for Explorer {
                             .window_control_area(gpui::WindowControlArea::Drag),
                     )
                     .when(cfg!(target_os = "windows"), |d| {
-                        d.child(window_controls(window.is_maximized(), t))
+                        d.child(window_controls(window.is_maximized(), true, t))
                     }),
             )
             .child(
@@ -1012,7 +1012,7 @@ mod tests {
 
 /// Native Windows hit tests retain drag, double-click zoom, resize and Snap behavior.
 /// The backend performs system-button actions; registering an on_click too would toggle twice.
-fn window_controls(maximized: bool, t: Theme) -> impl IntoElement {
+pub(crate) fn window_controls(maximized: bool, minimizable: bool, t: Theme) -> impl IntoElement {
     let button = |id: &'static str, icon: &'static str, area: gpui::WindowControlArea| {
         div()
             .id(id)
@@ -1042,11 +1042,13 @@ fn window_controls(maximized: bool, t: Theme) -> impl IntoElement {
         .items_start()
         .h_full()
         .flex_shrink_0()
-        .child(button(
-            "window-minimize",
-            "icons/minus.svg",
-            gpui::WindowControlArea::Min,
-        ))
+        .when(minimizable, |d| {
+            d.child(button(
+                "window-minimize",
+                "icons/minus.svg",
+                gpui::WindowControlArea::Min,
+            ))
+        })
         .child(button(
             "window-maximize",
             if maximized {

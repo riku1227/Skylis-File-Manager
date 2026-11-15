@@ -206,6 +206,35 @@ impl Render for PreviewWindow {
             .text_color(theme.c("text.primary"))
             .text_size(px(12.))
             .on_key_down(cx.listener(Self::forward_key))
+            .when(cfg!(windows), |d| {
+                d.child(
+                    div()
+                        .id("preview-titlebar")
+                        .h(px(38.))
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .bg(theme.c("surface.canvas"))
+                        .child(
+                            div()
+                                .id("preview-titlebar-drag")
+                                .flex_1()
+                                .min_w_0()
+                                .h_full()
+                                .px(px(16.))
+                                .flex()
+                                .items_center()
+                                .text_color(theme.c("text.muted"))
+                                .window_control_area(gpui::WindowControlArea::Drag)
+                                .child("クイックプレビュー"),
+                        )
+                        .child(crate::explorer::window_controls(
+                            window.is_maximized(),
+                            false,
+                            theme,
+                        )),
+                )
+            })
             .child(
                 div()
                     .h(px(44.))

@@ -51,6 +51,7 @@ impl FolderView {
                     window_min_size: Some(gpui::size(px(400.), px(300.))),
                     titlebar: Some(gpui::TitlebarOptions {
                         title: Some("クイックプレビュー — Skylis".into()),
+                        appears_transparent: cfg!(windows),
                         ..Default::default()
                     }),
                     focus: false,
