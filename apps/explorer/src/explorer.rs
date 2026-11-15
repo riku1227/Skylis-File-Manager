@@ -375,8 +375,16 @@ impl Render for Explorer {
                     cx.notify();
                 }
             }))
-            .on_action(cx.listener(Self::detach_tab))
-            .on_action(cx.listener(Self::merge_windows))
+            .on_action(cx.listener(|this, action, w, cx| {
+                if !this.settings_open {
+                    this.detach_tab(action, w, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, action, w, cx| {
+                if !this.settings_open {
+                    this.merge_windows(action, w, cx);
+                }
+            }))
             .capture_action(cx.listener(|this, _: &ClearSearch, w, cx| {
                 if this.dragging_tab.is_some() || this.tab_menu.is_some() {
                     this.dragging_tab = None;
@@ -396,12 +404,36 @@ impl Render for Explorer {
                 }
                 cx.notify();
             }))
-            .on_action(cx.listener(Self::new_tab))
-            .on_action(cx.listener(Self::close_tab))
-            .on_action(cx.listener(Self::next_tab))
-            .on_action(cx.listener(Self::prev_tab))
-            .on_action(cx.listener(Self::cycle_theme))
-            .on_action(cx.listener(Self::density))
+            .on_action(cx.listener(|this, action, w, cx| {
+                if !this.settings_open {
+                    this.new_tab(action, w, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, action, w, cx| {
+                if !this.settings_open {
+                    this.close_tab(action, w, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, action, w, cx| {
+                if !this.settings_open {
+                    this.next_tab(action, w, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, action, w, cx| {
+                if !this.settings_open {
+                    this.prev_tab(action, w, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, action, w, cx| {
+                if !this.settings_open {
+                    this.cycle_theme(action, w, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, action, w, cx| {
+                if !this.settings_open {
+                    this.density(action, w, cx);
+                }
+            }))
             .child(
                 div()
                     .flex()
@@ -433,16 +465,16 @@ impl Render for Explorer {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .when(!self.settings_open, |d| {
-                        d.child(self.tabs[self.active].clone())
-                    })
-                    .when(self.settings_open, |d| d.child(self.render_settings(t, cx))),
+                    .child(self.tabs[self.active].clone()),
             )
             .when_some(self.tab_error.clone(), |d, message| {
                 d.child(div().px(px(12.)).py(px(6.)).child(message))
             })
-            .when(self.tab_menu.is_some(), |d| {
+            .when(self.tab_menu.is_some() && !self.settings_open, |d| {
                 d.child(gpui::deferred(self.render_tab_menu(t, window, cx)).with_priority(2))
+            })
+            .when(self.settings_open, |d| {
+                d.child(gpui::deferred(self.render_settings(t, cx)).with_priority(3))
             })
             .into_any_element()
     }
@@ -498,6 +530,102 @@ mod tests {
                 bubbled_keys: Vec::new(),
             }
         })
+    }
+
+    #[gpui::test]
+    fn settings_backdrop_closes_and_restores_focus(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        let outside = gpui::point(px(4.), px(80.));
+        visual.simulate_mouse_down(outside, gpui::MouseButton::Left, gpui::Modifiers::none());
+        visual.simulate_mouse_up(outside, gpui::MouseButton::Left, gpui::Modifiers::none());
+        window
+            .update(cx, |probe, w, cx| {
+                let explorer = probe.explorer.read(cx);
+                assert!(!explorer.settings_open, "outside click dismisses the modal");
+                assert!(
+                    explorer.tabs[explorer.active]
+                        .focus_handle(cx)
+                        .is_focused(w)
+                );
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn settings_controls_do_not_dismiss_or_leak_tab_actions(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        let row = visual
+            .debug_bounds("settings-row-density")
+            .unwrap()
+            .center();
+        visual.simulate_mouse_down(row, gpui::MouseButton::Left, gpui::Modifiers::none());
+        visual.simulate_mouse_up(row, gpui::MouseButton::Left, gpui::Modifiers::none());
+        let dark = visual.debug_bounds("settings-theme-dark").unwrap().center();
+        visual.simulate_mouse_down(dark, gpui::MouseButton::Left, gpui::Modifiers::none());
+        visual.simulate_mouse_up(dark, gpui::MouseButton::Left, gpui::Modifiers::none());
+        window
+            .read_with(cx, |probe, cx| {
+                let explorer = probe.explorer.read(cx);
+                assert!(explorer.settings_open);
+                assert!(explorer.preferences.read(cx).value.compact);
+                assert_eq!(
+                    ThemeMode::from(explorer.preferences.read(cx).value.theme),
+                    ThemeMode::Dark
+                );
+            })
+            .unwrap();
+        cx.dispatch_action(window.into(), NewTab);
+        window
+            .update(cx, |probe, w, cx| {
+                let explorer = probe.explorer.read(cx);
+                assert_eq!(
+                    explorer.tabs.len(),
+                    1,
+                    "modal blocks background tab actions"
+                );
+                assert!(explorer.settings_open);
+                assert!(explorer.settings_focus.is_focused(w));
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn settings_small_window_keeps_close_control_visible(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(px(640.), px(360.)));
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let panel = visual.debug_bounds("settings-panel").unwrap();
+        let body = visual.debug_bounds("settings-body").unwrap();
+        let done = visual.debug_bounds("settings-done").unwrap();
+        assert!(panel.origin.y >= px(24.));
+        assert!(
+            panel.bottom() <= px(336.),
+            "modal must fit the short window: {panel:?}"
+        );
+        assert!(body.size.height > px(40.));
+        assert!(done.bottom() <= panel.bottom());
+        visual.simulate_mouse_down(
+            done.center(),
+            gpui::MouseButton::Left,
+            gpui::Modifiers::none(),
+        );
+        visual.simulate_mouse_up(
+            done.center(),
+            gpui::MouseButton::Left,
+            gpui::Modifiers::none(),
+        );
+        window
+            .read_with(cx, |probe, cx| {
+                assert!(!probe.explorer.read(cx).settings_open)
+            })
+            .unwrap();
     }
 
     #[gpui::test]
