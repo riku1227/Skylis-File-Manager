@@ -19,6 +19,8 @@ icons!(
     "x",
     "plus",
     "sun",
+    "settings",
+    "linux",
     "panel",
     "folder",
     "file",
@@ -37,6 +39,9 @@ icons!(
     "pictures",
     "drive",
     "eye",
+    "activity",
+    "folder-outline",
+    "code",
 );
 
 pub struct Assets;

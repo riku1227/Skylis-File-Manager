@@ -320,6 +320,16 @@ impl TextInput {
     pub fn is_composing(&self) -> bool {
         self.marked_range.is_some()
     }
+
+    pub fn select_filename_stem(&mut self, cx: &mut Context<Self>) {
+        let end = self
+            .content
+            .rfind('.')
+            .filter(|&offset| offset > 0)
+            .unwrap_or(self.content.len());
+        self.selected_range = 0..end;
+        cx.notify();
+    }
 }
 
 impl EntityInputHandler for TextInput {
