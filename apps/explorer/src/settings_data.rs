@@ -16,6 +16,7 @@ pub struct Settings {
     pub automatic_sizes: bool,
     pub high_refresh_rate: bool,
     pub smooth_scroll: bool,
+    pub performance_overlay: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -27,6 +28,7 @@ impl Default for Settings {
             automatic_sizes: false,
             high_refresh_rate: true,
             smooth_scroll: true,
+            performance_overlay: false,
         }
     }
 }
@@ -61,6 +63,7 @@ impl Settings {
                 "automatic_sizes" => settings.automatic_sizes = boolean()?,
                 "high_refresh_rate" => settings.high_refresh_rate = boolean()?,
                 "smooth_scroll" => settings.smooth_scroll = boolean()?,
+                "performance_overlay" => settings.performance_overlay = boolean()?,
                 _ => (),
             }
         }
@@ -76,19 +79,32 @@ impl Settings {
             ThemePreference::System => "system",
         };
         format!(
-            "version=1\ntheme={theme}\ncompact={}\ngroup_downloads={}\nauto_gallery={}\nautomatic_sizes={}\nhigh_refresh_rate={}\nsmooth_scroll={}\n",
+            "version=1\ntheme={theme}\ncompact={}\ngroup_downloads={}\nauto_gallery={}\nautomatic_sizes={}\nhigh_refresh_rate={}\nsmooth_scroll={}\nperformance_overlay={}\n",
             self.compact,
             self.group_downloads,
             self.auto_gallery,
             self.automatic_sizes,
             self.high_refresh_rate,
-            self.smooth_scroll
+            self.smooth_scroll,
+            self.performance_overlay
         )
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn performance_display_rejects_invalid_values() {
+        assert!(Settings::decode("version=1\nperformance_overlay=sometimes\n").is_err());
+    }
+    #[test]
+    fn performance_display_defaults_off_and_survives_round_trip() {
+        let mut settings = Settings::decode("version=1\nhigh_refresh_rate=false\n").unwrap();
+        assert!(!settings.performance_overlay);
+        settings.performance_overlay = true;
+        assert_eq!(Settings::decode(&settings.encode()).unwrap(), settings);
+        assert!(!settings.high_refresh_rate);
+    }
     #[test]
     fn motion_preferences_reject_invalid_values() {
         for key in ["high_refresh_rate", "smooth_scroll"] {

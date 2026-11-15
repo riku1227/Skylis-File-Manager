@@ -587,6 +587,37 @@ mod tests {
     }
 
     #[gpui::test]
+    fn performance_display_tracks_shared_preferences_in_existing_and_new_windows(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let first = test_window(cx);
+        let second = test_window(cx);
+        cx.update(|cx| {
+            let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
+            preferences.update(cx, |p, cx| p.change(|s| s.performance_overlay = true, cx));
+        });
+        let third = test_window(cx);
+        for window in [first, second, third] {
+            window
+                .update(cx, |_, window, _| {
+                    assert!(window.frame_diagnostics_count().is_some())
+                })
+                .unwrap();
+        }
+        cx.update(|cx| {
+            let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
+            preferences.update(cx, |p, cx| p.change(|s| s.performance_overlay = false, cx));
+        });
+        for window in [first, second, third] {
+            window
+                .update(cx, |_, window, _| {
+                    assert_eq!(window.frame_diagnostics_count(), None)
+                })
+                .unwrap();
+        }
+    }
+
+    #[gpui::test]
     fn transferring_tabs_keeps_entity_and_only_target_subscriptions(cx: &mut gpui::TestAppContext) {
         let source = test_window(cx);
         let target = test_window(cx);

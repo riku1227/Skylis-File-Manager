@@ -88,6 +88,16 @@ impl Explorer {
                     "有効"
                 },
             ),
+            (
+                "パフォーマンス表示",
+                "FPSは描画送信回数（表示の更新分を除外）、メモリはアプリ全体の常駐量です",
+                value.performance_overlay,
+                if value.performance_overlay {
+                    "有効"
+                } else {
+                    "無効"
+                },
+            ),
         ];
         let mut body = div()
             .id("settings-body")
@@ -113,6 +123,7 @@ impl Explorer {
             ("外観と表示", 0..2),
             ("フォルダーと一覧の動作", 2..5),
             ("描画とスクロール", 5..7),
+            ("開発者向け", 7..8),
         ] {
             let mut group = div()
                 .rounded(px(10.))
@@ -220,7 +231,8 @@ impl Explorer {
                             3 => "settings-row-gallery".into(),
                             4 => "settings-row-sizes".into(),
                             5 => "settings-row-high-refresh".into(),
-                            _ => "settings-row-smooth-scroll".into(),
+                            6 => "settings-row-smooth-scroll".into(),
+                            _ => "settings-row-performance".into(),
                         })
                         .px(px(14.))
                         .py(px(11.))
@@ -304,7 +316,7 @@ impl Explorer {
                     if event.keystroke.modifiers.modified() { return; }
                     if event.keystroke.key == "escape" {
                         this.close_settings(w, cx); cx.stop_propagation();
-                    } else if let Ok(number) = event.keystroke.key.parse::<usize>() && (1..=7).contains(&number) {
+                    } else if let Ok(number) = event.keystroke.key.parse::<usize>() && (1..=8).contains(&number) {
                         this.change_preference(number - 1, cx); cx.stop_propagation();
                     }
                 }))
@@ -317,7 +329,7 @@ impl Explorer {
                 .child(body)
                 .child(div().flex_shrink_0().px(px(20.)).py(px(10.)).bg(t.c("surface.chrome"))
                     .border_t_1().border_color(t.c("border.subtle")).flex().items_center().justify_between()
-                    .child(div().text_size(px(11.)).text_color(t.c("text.muted")).child("1〜7 で切替 · Esc で閉じる"))
+                    .child(div().text_size(px(11.)).text_color(t.c("text.muted")).child("1〜8 で切替 · Esc で閉じる"))
                     .child(div().id("settings-done").debug_selector(|| "settings-done".into()).h(px(28.)).px(px(14.)).rounded(px(6.)).flex().items_center()
                         .border_1().border_color(t.c("button.border")).bg(t.c("button.bg")).hover(|s| s.bg(t.c("state.hover")))
                         .cursor_pointer().child("完了").on_click(cx.listener(|this, _, w, cx| this.close_settings(w, cx))))))
@@ -334,6 +346,7 @@ impl Explorer {
                     4 => s.automatic_sizes = !s.automatic_sizes,
                     5 => s.high_refresh_rate = !s.high_refresh_rate,
                     6 => s.smooth_scroll = !s.smooth_scroll,
+                    7 => s.performance_overlay = !s.performance_overlay,
                     _ => (),
                 },
                 cx,

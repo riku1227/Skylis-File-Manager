@@ -31,6 +31,7 @@ pub struct Explorer {
     tab_error: Option<String>,
     display_interval: Option<std::time::Duration>,
     _display_subscription: gpui::Subscription,
+    diagnostics: Entity<crate::diagnostics::PerformanceDisplay>,
 }
 impl Explorer {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -73,6 +74,16 @@ impl Explorer {
     ) -> Self {
         let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
         apply_frame_limit(window, preferences.read(cx).value.high_refresh_rate);
+        let diagnostics =
+            cx.new(|cx| crate::diagnostics::PerformanceDisplay::new(mode, window, cx));
+        diagnostics.update(cx, |view, cx| {
+            view.configure(
+                preferences.read(cx).value.performance_overlay,
+                mode,
+                window,
+                cx,
+            );
+        });
         cx.observe_in(&preferences, window, |this, preferences, window, cx| {
             let value = preferences.read(cx).value.clone();
             apply_frame_limit(window, value.high_refresh_rate);
@@ -81,6 +92,9 @@ impl Explorer {
                 this.last_saved_theme = value.theme;
             }
             this.compact = value.compact;
+            this.diagnostics.update(cx, |view, cx| {
+                view.configure(value.performance_overlay, this.mode, window, cx);
+            });
             for tab in &this.tabs {
                 tab.update(cx, |tab, cx| {
                     tab.mode = this.mode;
@@ -135,6 +149,7 @@ impl Explorer {
             tab_error: None,
             display_interval: window.refresh_interval(cx),
             _display_subscription: display_subscription,
+            diagnostics,
         };
         for tab in this.tabs.clone() {
             this.watch_tab(&tab, window, cx);
@@ -502,6 +517,9 @@ impl Render for Explorer {
             .when_some(self.tab_error.clone(), |d, message| {
                 d.child(div().px(px(12.)).py(px(6.)).child(message))
             })
+            .when(self.preferences.read(cx).value.performance_overlay, |d| {
+                d.child(self.diagnostics.clone())
+            })
             .when(self.tab_menu.is_some() && !self.settings_open, |d| {
                 d.child(gpui::deferred(self.render_tab_menu(t, window, cx)).with_priority(2))
             })
@@ -674,7 +692,7 @@ mod tests {
             .unwrap();
         cx.simulate_keystrokes(
             window.into(),
-            "alt-f4 ctrl-1 alt-2 shift-3 cmd-4 ctrl-5 ctrl-escape 8 x",
+            "alt-f4 ctrl-1 alt-2 shift-3 cmd-4 ctrl-5 ctrl-escape 9 x",
         );
         cx.dispatch_keystroke(
             window.into(),
@@ -702,7 +720,7 @@ mod tests {
                     .collect();
                 assert_eq!(
                     keys,
-                    ["f4", "1", "2", "3", "4", "5", "escape", "8", "x", "5"]
+                    ["f4", "1", "2", "3", "4", "5", "escape", "9", "x", "5"]
                 );
                 assert!(probe.bubbled_keys[0].modifiers.alt);
                 assert!(probe.bubbled_keys[9].modifiers.function);
@@ -772,6 +790,46 @@ mod tests {
                 assert!(!value.smooth_scroll);
                 assert!(!value.high_refresh_rate);
                 assert!(probe.bubbled_keys.is_empty());
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn performance_shortcut_toggles_the_measurement_with_the_setting(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let window = settings_key_window(cx);
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "8");
+        window
+            .update(cx, |probe, window, cx| {
+                assert!(
+                    probe
+                        .explorer
+                        .read(cx)
+                        .preferences
+                        .read(cx)
+                        .value
+                        .performance_overlay
+                );
+                assert!(window.frame_diagnostics_count().is_some());
+                assert!(probe.bubbled_keys.is_empty());
+            })
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "8");
+        window
+            .update(cx, |probe, window, cx| {
+                assert!(
+                    !probe
+                        .explorer
+                        .read(cx)
+                        .preferences
+                        .read(cx)
+                        .value
+                        .performance_overlay
+                );
+                assert_eq!(window.frame_diagnostics_count(), None);
             })
             .unwrap();
     }
