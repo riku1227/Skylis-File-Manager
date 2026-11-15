@@ -18,5 +18,9 @@ anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader"] }
 
+[patch.crates-io]
+# Pinned core-only runtime frame limit; see vendor/gpui-fast/SKYLIS-PATCH.md.
+gpui-fast = { path = "vendor/gpui-fast" }
+
 [profile.release]
 debug = "line-tables-only"
