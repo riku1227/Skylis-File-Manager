@@ -39,6 +39,9 @@ icons!(
     "pictures",
     "drive",
     "eye",
+    "activity",
+    "folder-outline",
+    "code",
 );
 
 pub struct Assets;

@@ -20,6 +20,8 @@ pub struct Explorer {
     icons: Entity<ShellIcons>,
     preferences: Entity<crate::settings::Preferences>,
     settings_open: bool,
+    settings_category: usize,
+    settings_scroll: gpui::ScrollHandle,
     settings_focus: FocusHandle,
     last_saved_theme: crate::settings_data::ThemePreference,
     tab_subscriptions: std::collections::HashMap<gpui::EntityId, Vec<gpui::Subscription>>,
@@ -139,6 +141,8 @@ impl Explorer {
             last_saved_theme: preferences.read(cx).value.theme,
             preferences,
             settings_open: false,
+            settings_category: 0,
+            settings_scroll: gpui::ScrollHandle::new(),
             settings_focus: cx.focus_handle(),
             tab_subscriptions: Default::default(),
             tab_scroll: gpui::ScrollHandle::new(),
@@ -524,7 +528,7 @@ impl Render for Explorer {
                 d.child(gpui::deferred(self.render_tab_menu(t, window, cx)).with_priority(2))
             })
             .when(self.settings_open, |d| {
-                d.child(gpui::deferred(self.render_settings(t, cx)).with_priority(3))
+                d.child(gpui::deferred(self.render_settings(t, window, cx)).with_priority(3))
             })
             .into_any_element()
     }
@@ -611,7 +615,7 @@ mod tests {
             .unwrap();
         let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
         let row = visual
-            .debug_bounds("settings-row-density")
+            .debug_bounds("settings-density-compact")
             .unwrap()
             .center();
         visual.simulate_mouse_down(row, gpui::MouseButton::Left, gpui::Modifiers::none());
@@ -757,6 +761,174 @@ mod tests {
                 assert!(probe.bubbled_keys.is_empty());
             })
             .unwrap();
+    }
+
+    fn click_setting(visual: &mut gpui::VisualTestContext, selector: &'static str) {
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let point = visual.debug_bounds(selector).unwrap().center();
+        visual.simulate_mouse_down(point, gpui::MouseButton::Left, gpui::Modifiers::none());
+        visual.simulate_mouse_up(point, gpui::MouseButton::Left, gpui::Modifiers::none());
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+    }
+
+    #[gpui::test]
+    fn settings_categories_only_change_visible_content(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        let before = window
+            .read_with(cx, |p, cx| {
+                p.explorer.read(cx).preferences.read(cx).value.clone()
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        let selectors = [
+            "settings-theme-system",
+            "settings-row-downloads",
+            "settings-row-high-refresh",
+            "settings-row-performance",
+        ];
+        for category in [1, 2, 3, 0] {
+            click_setting(
+                &mut visual,
+                [
+                    "settings-category-0",
+                    "settings-category-1",
+                    "settings-category-2",
+                    "settings-category-3",
+                ][category],
+            );
+            for (index, selector) in selectors.iter().enumerate() {
+                assert_eq!(
+                    visual.debug_bounds(selector).is_some(),
+                    index == category,
+                    "{selector}"
+                );
+            }
+            window
+                .read_with(cx, |p, cx| {
+                    let e = p.explorer.read(cx);
+                    assert_eq!(e.settings_category, category);
+                    assert_eq!(e.preferences.read(cx).value, before);
+                    assert!(e.settings_open);
+                })
+                .unwrap();
+        }
+    }
+
+    #[gpui::test]
+    fn settings_explicit_density_is_idempotent(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        for (selector, compact) in [
+            ("settings-density-compact", true),
+            ("settings-density-standard", false),
+        ] {
+            for _ in 0..2 {
+                click_setting(&mut visual, selector);
+                window
+                    .read_with(cx, |p, cx| {
+                        let e = p.explorer.read(cx);
+                        assert_eq!(e.preferences.read(cx).value.compact, compact);
+                        assert!(e.settings_open);
+                        assert_eq!(e.tabs.len(), 1);
+                    })
+                    .unwrap();
+            }
+        }
+    }
+
+    #[gpui::test]
+    fn settings_keyboard_categories_and_digits_show_the_target(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(px(640.), px(360.)));
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let before = window
+            .read_with(cx, |p, cx| {
+                p.explorer.read(cx).preferences.read(cx).value.clone()
+            })
+            .unwrap();
+        for (key, category) in [("up", 3), ("down", 0), ("down", 1)] {
+            cx.simulate_keystrokes(window.into(), key);
+            window
+                .read_with(cx, |p, cx| {
+                    let e = p.explorer.read(cx);
+                    assert_eq!(e.settings_category, category);
+                    assert_eq!(e.preferences.read(cx).value, before);
+                    assert!(p.bubbled_keys.is_empty());
+                })
+                .unwrap();
+        }
+        for (key, category, selector) in [
+            ("8", 3, "settings-row-performance"),
+            ("7", 2, "settings-row-smooth-scroll"),
+            ("6", 2, "settings-row-high-refresh"),
+            ("5", 1, "settings-row-sizes"),
+            ("4", 1, "settings-row-gallery"),
+            ("3", 1, "settings-row-downloads"),
+            ("2", 0, "settings-density-compact"),
+            ("1", 0, "settings-theme-light"),
+        ] {
+            cx.simulate_keystrokes(window.into(), key);
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            let body = visual.debug_bounds("settings-body").unwrap();
+            let target = visual.debug_bounds(selector).unwrap();
+            assert!(
+                target.top() >= body.top() && target.top() < body.bottom(),
+                "{key}: {target:?} / {body:?}"
+            );
+            window
+                .read_with(cx, |p, cx| {
+                    assert_eq!(p.explorer.read(cx).settings_category, category);
+                    assert!(p.bubbled_keys.is_empty());
+                })
+                .unwrap();
+        }
+        window
+            .read_with(cx, |p, cx| {
+                let e = p.explorer.read(cx);
+                let value = &e.preferences.read(cx).value;
+                assert_eq!(value.compact, !before.compact);
+                assert_eq!(value.group_downloads, !before.group_downloads);
+                assert_eq!(value.auto_gallery, !before.auto_gallery);
+                assert_eq!(value.automatic_sizes, !before.automatic_sizes);
+                assert_eq!(value.high_refresh_rate, !before.high_refresh_rate);
+                assert_eq!(value.smooth_scroll, !before.smooth_scroll);
+                assert_eq!(value.performance_overlay, !before.performance_overlay);
+                assert_eq!(
+                    ThemeMode::from(value.theme),
+                    ThemeMode::from(before.theme).next()
+                );
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn settings_layout_bounds_at_small_and_regular_sizes(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        for (width, height) in [(640., 360.), (900., 600.), (480., 360.)] {
+            visual.simulate_resize(gpui::size(px(width), px(height)));
+            for category in 0..4 {
+                click_setting(
+                    &mut visual,
+                    [
+                        "settings-category-0",
+                        "settings-category-1",
+                        "settings-category-2",
+                        "settings-category-3",
+                    ][category],
+                );
+                let panel = visual.debug_bounds("settings-panel").unwrap();
+                let body = visual.debug_bounds("settings-body").unwrap();
+                let done = visual.debug_bounds("settings-done").unwrap();
+                assert!(panel.left() >= px(16.) && panel.right() <= px(width - 16.));
+                assert!(panel.top() >= px(24.) && panel.bottom() <= px(height - 24.));
+                assert!(body.size.height > px(40.));
+                assert!(body.left() >= panel.left() && body.right() <= panel.right());
+                assert!(body.bottom() <= done.top());
+                assert!(done.bottom() <= panel.bottom() && done.right() <= panel.right());
+            }
+        }
     }
 
     #[test]

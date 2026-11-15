@@ -7,7 +7,13 @@ impl Explorer {
         cx.notify();
     }
 
-    pub(super) fn render_settings(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_settings(
+        &self,
+        t: Theme,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let narrow = window.viewport_size().width < px(560.);
         let p = self.preferences.read(cx);
         let value = p.value.clone();
         let error = p.error.clone();
@@ -99,150 +105,237 @@ impl Explorer {
                 },
             ),
         ];
+
+        let categories = [
+            ("外観と表示", "icons/desktop.svg", 0..2),
+            ("フォルダーと一覧", "icons/folder-outline.svg", 2..5),
+            ("描画とスクロール", "icons/activity.svg", 5..7),
+            ("開発者向け", "icons/code.svg", 7..8),
+        ];
+        let mut nav = div()
+            .id("settings-navigation")
+            .w(px(if narrow { 124. } else { 166. }))
+            .flex_shrink_0()
+            .h_full()
+            .overflow_y_scroll()
+            .p(px(8.))
+            .bg(t.c("surface.chrome"))
+            .border_r_1()
+            .border_color(t.c("border.subtle"));
+        for (index, (title, icon, _)) in categories.iter().enumerate() {
+            nav = nav.child(
+                div()
+                    .id(("settings-category", index))
+                    .debug_selector(move || format!("settings-category-{index}").into())
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .px(px(8.))
+                    .py(px(12.))
+                    .mb(px(4.))
+                    .rounded(px(6.))
+                    .border_l_2()
+                    .border_color(gpui::transparent_black())
+                    .text_size(px(12.))
+                    .cursor_pointer()
+                    .when(index == self.settings_category, |d| {
+                        d.bg(t.c("surface.chip-selected"))
+                            .border_color(t.c("accent.fg"))
+                            .text_color(t.c("accent.fg"))
+                    })
+                    .hover(|s| s.bg(t.c("state.hover")))
+                    .child(
+                        svg()
+                            .path(*icon)
+                            .size(px(16.))
+                            .flex_shrink_0()
+                            .text_color(t.c("text.secondary")),
+                    )
+                    .child(*title)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.settings_category = index;
+                        this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
+                        cx.notify();
+                    })),
+            );
+        }
+        let (title, _, range) = &categories[self.settings_category];
         let mut body = div()
-            .id("settings-body")
+            .id(("settings-body", self.settings_category))
+            .track_scroll(&self.settings_scroll)
             .debug_selector(|| "settings-body".into())
-            .min_h_0()
+            .flex_1()
+            .min_w_0()
+            .h_full()
             .overflow_y_scroll()
             .px(px(20.))
-            .py(px(14.))
+            .py(px(18.))
+            .child(
+                div()
+                    .mb(px(20.))
+                    .text_size(px(20.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child(*title),
+            )
             .when_some(error, |d, error| {
                 d.child(
                     div()
                         .mb(px(14.))
                         .p(px(10.))
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(t.c("danger.fg").opacity(0.35))
+                        .rounded(px(6.))
                         .bg(t.c("danger.fg").opacity(0.12))
                         .text_color(t.c("danger.fg"))
                         .child(error),
                 )
             });
-        for (title, range) in [
-            ("外観と表示", 0..2),
-            ("フォルダーと一覧の動作", 2..5),
-            ("描画とスクロール", 5..7),
-            ("開発者向け", 7..8),
-        ] {
-            let mut group = div()
-                .rounded(px(10.))
-                .overflow_hidden()
-                .border_1()
-                .border_color(t.c("border.subtle"))
-                .bg(t.c("surface.raised"));
-            for i in range.clone() {
-                let (label, description, enabled, state) = rows[i];
-                let control = if i == 0 {
+        for i in range.clone() {
+            let (label, description, enabled, state) = rows[i];
+            if i < 2 {
+                let mut choices = div()
+                    .flex()
+                    .gap(px(8.))
+                    .w_full()
+                    .when(narrow, |d| d.flex_col());
+                let count = if i == 0 { 3 } else { 2 };
+                for index in 0..count {
+                    let mode = [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark][index];
+                    let selected = if i == 0 {
+                        ThemeMode::from(value.theme) == mode
+                    } else {
+                        value.compact == (index == 1)
+                    };
+                    let caption = if i == 0 {
+                        mode.label()
+                    } else if index == 0 {
+                        "標準"
+                    } else {
+                        "コンパクト"
+                    };
+                    let preview = if i == 0 {
+                        theme_preview(mode, window.appearance()).into_any_element()
+                    } else {
+                        density_preview(index == 1, t).into_any_element()
+                    };
+                    choices = choices.child(
+                        div()
+                            .id(("settings-choice", i * 3 + index))
+                            .debug_selector(move || {
+                                match (i, index) {
+                                    (0, 0) => "settings-theme-system",
+                                    (0, 1) => "settings-theme-light",
+                                    (0, _) => "settings-theme-dark",
+                                    (_, 0) => "settings-density-standard",
+                                    _ => "settings-density-compact",
+                                }
+                                .into()
+                            })
+                            .flex_1()
+                            .min_w_0()
+                            .p(px(5.))
+                            .rounded(px(7.))
+                            .border_2()
+                            .border_color(t.c(if selected {
+                                "accent.fg"
+                            } else {
+                                "border.subtle"
+                            }))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(t.c("state.hover")))
+                            .child(preview)
+                            .child(
+                                div()
+                                    .mt(px(8.))
+                                    .mb(px(3.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .text_size(px(11.))
+                                    .child(caption)
+                                    .child(
+                                        div()
+                                            .size(px(10.))
+                                            .flex_shrink_0()
+                                            .rounded(px(5.))
+                                            .border_2()
+                                            .border_color(t.c(if selected {
+                                                "accent.fg"
+                                            } else {
+                                                "border.default"
+                                            }))
+                                            .when(selected, |d| d.bg(t.c("accent.fg"))),
+                                    ),
+                            )
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.preferences.update(cx, |p, cx| {
+                                    p.change(
+                                        |s| {
+                                            if i == 0 {
+                                                s.theme = mode.into();
+                                            } else {
+                                                s.compact = index == 1;
+                                            }
+                                        },
+                                        cx,
+                                    )
+                                });
+                            })),
+                    );
+                }
+                body = body.child(
                     div()
-                        .flex()
-                        .items_center()
-                        .p(px(2.))
-                        .gap(px(2.))
-                        .rounded(px(8.))
-                        .bg(t.c("surface.field"))
-                        .border_1()
-                        .border_color(t.c("border.subtle"))
-                        .children(
-                            [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark]
-                                .into_iter()
-                                .enumerate()
-                                .map(|(index, mode)| {
-                                    let selected = ThemeMode::from(value.theme) == mode;
-                                    div()
-                                        .id(("settings-theme", index))
-                                        .debug_selector(|| match index {
-                                            0 => "settings-theme-system".into(),
-                                            1 => "settings-theme-light".into(),
-                                            _ => "settings-theme-dark".into(),
-                                        })
-                                        .h(px(26.))
-                                        .px(px(10.))
-                                        .rounded(px(6.))
-                                        .flex()
-                                        .items_center()
-                                        .text_size(px(11.5))
-                                        .cursor_pointer()
-                                        .border_1()
-                                        .border_color(gpui::transparent_black())
-                                        .text_color(t.c("text.secondary"))
-                                        .when(selected, |d| {
-                                            d.bg(t.c("surface.chip-selected"))
-                                                .border_color(t.c("tab.active.border"))
-                                                .text_color(t.c("text.primary"))
-                                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        })
-                                        .hover(|s| s.bg(t.c("state.hover")))
-                                        .child(mode.label())
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            cx.stop_propagation();
-                                            this.preferences.update(cx, |p, cx| {
-                                                p.change(|s| s.theme = mode.into(), cx)
-                                            });
-                                        }))
+                        .id(("settings-section", i))
+                        .debug_selector(move || {
+                            if i == 0 {
+                                "settings-row-theme".into()
+                            } else {
+                                "settings-row-density".into()
+                            }
+                        })
+                        .mb(px(22.))
+                        .child(
+                            div()
+                                .mb(px(10.))
+                                .text_size(px(13.))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .child(if i == 0 {
+                                    "1  テーマ"
+                                } else {
+                                    "2  表示密度"
                                 }),
                         )
-                        .into_any_element()
-                } else {
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
+                        .child(choices)
                         .child(
                             div()
-                                .text_size(px(11.5))
-                                .text_color(t.c(if enabled {
-                                    "accent.fg"
-                                } else {
-                                    "text.secondary"
-                                }))
-                                .child(state),
-                        )
-                        .child(
-                            div()
-                                .w(px(36.))
-                                .h(px(20.))
-                                .p(px(2.))
-                                .rounded(px(10.))
-                                .flex()
-                                .items_center()
-                                .when(enabled, |d| d.justify_end().bg(t.c("button.primary.bg")))
-                                .when(!enabled, |d| {
-                                    d.justify_start()
-                                        .bg(t.c("surface.field"))
-                                        .border_1()
-                                        .border_color(t.c("border.default"))
-                                })
-                                .child(div().size(px(14.)).rounded(px(7.)).bg(t.c(if enabled {
-                                    "text.on-accent"
-                                } else {
-                                    "text.secondary"
-                                }))),
-                        )
-                        .into_any_element()
-                };
-                group = group.child(
+                                .mt(px(8.))
+                                .text_size(px(11.))
+                                .text_color(t.c("text.muted"))
+                                .child(description.to_owned()),
+                        ),
+                );
+            } else {
+                body = body.child(
                     div()
                         .id(("preference", i))
-                        .debug_selector(|| match i {
-                            0 => "settings-row-theme".into(),
-                            1 => "settings-row-density".into(),
-                            2 => "settings-row-downloads".into(),
-                            3 => "settings-row-gallery".into(),
-                            4 => "settings-row-sizes".into(),
-                            5 => "settings-row-high-refresh".into(),
-                            6 => "settings-row-smooth-scroll".into(),
-                            _ => "settings-row-performance".into(),
+                        .debug_selector(move || {
+                            match i {
+                                2 => "settings-row-downloads",
+                                3 => "settings-row-gallery",
+                                4 => "settings-row-sizes",
+                                5 => "settings-row-high-refresh",
+                                6 => "settings-row-smooth-scroll",
+                                _ => "settings-row-performance",
+                            }
+                            .into()
                         })
-                        .px(px(14.))
-                        .py(px(11.))
+                        .py(px(16.))
                         .flex()
                         .items_center()
                         .gap(px(12.))
+                        .border_b_1()
+                        .border_color(t.c("border.subtle"))
                         .cursor_pointer()
-                        .when(i != range.start, |d| {
-                            d.border_t_1().border_color(t.c("border.subtle"))
-                        })
                         .hover(|s| s.bg(t.c("state.hover")))
                         .child(
                             div()
@@ -250,65 +343,61 @@ impl Explorer {
                                 .min_w_0()
                                 .child(
                                     div()
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(7.))
-                                        .child(
-                                            div()
-                                                .size(px(18.))
-                                                .flex_shrink_0()
-                                                .flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .rounded(px(4.))
-                                                .bg(t.c("surface.field"))
-                                                .text_size(px(10.5))
-                                                .text_color(t.c("text.muted"))
-                                                .child((i + 1).to_string()),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_size(px(13.))
-                                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                .child(label),
-                                        ),
+                                        .text_size(px(13.))
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .child(format!("{}  {label}", i + 1)),
                                 )
                                 .child(
                                     div()
-                                        .pl(px(25.))
-                                        .mt(px(4.))
+                                        .mt(px(6.))
                                         .text_size(px(11.5))
                                         .text_color(t.c("text.muted"))
                                         .child(description.to_owned()),
+                                )
+                                .child(
+                                    div()
+                                        .mt(px(6.))
+                                        .text_size(px(11.))
+                                        .text_color(t.c("accent.fg"))
+                                        .child(state),
                                 ),
                         )
-                        .child(div().flex_shrink_0().child(control))
+                        .child(
+                            div()
+                                .w(px(34.))
+                                .h(px(20.))
+                                .flex_shrink_0()
+                                .p(px(3.))
+                                .rounded(px(10.))
+                                .flex()
+                                .items_center()
+                                .bg(t.c(if enabled {
+                                    "button.primary.bg"
+                                } else {
+                                    "surface.field"
+                                }))
+                                .border_1()
+                                .border_color(t.c("border.default"))
+                                .when(enabled, |d| d.justify_end())
+                                .child(div().size(px(12.)).rounded(px(6.)).bg(t.c(if enabled {
+                                    "text.on-accent"
+                                } else {
+                                    "text.secondary"
+                                }))),
+                        )
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.change_preference(i, cx);
                         })),
                 );
             }
-            body = body.child(
-                div()
-                    .when(range.start > 0, |d| d.mt(px(14.)))
-                    .child(
-                        div()
-                            .mb(px(6.))
-                            .text_size(px(11.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(t.c("text.muted"))
-                            .child(title),
-                    )
-                    .child(group),
-            );
         }
         div().id("settings-backdrop").absolute().inset_0().occlude()
             .flex().items_center().justify_center().px(px(16.)).py(px(24.))
             .bg(t.c("surface.backdrop"))
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, w, cx| { cx.stop_propagation(); this.close_settings(w, cx); }))
             .child(div().id("settings-panel").debug_selector(|| "settings-panel".into()).track_focus(&self.settings_focus)
-                .w(px(520.)).max_w_full().max_h_full().flex().flex_col().overflow_hidden()
+                .w(px(880.)).h(px(620.)).max_w_full().max_h_full().flex().flex_col().overflow_hidden()
                 .rounded(px(12.)).border_1().border_color(t.c("border.dialog")).bg(t.c("surface.dialog")).shadow_lg()
                 .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
@@ -316,6 +405,10 @@ impl Explorer {
                     if event.keystroke.modifiers.modified() { return; }
                     if event.keystroke.key == "escape" {
                         this.close_settings(w, cx); cx.stop_propagation();
+                    } else if matches!(event.keystroke.key.as_str(), "up" | "down") {
+                        this.settings_category = (this.settings_category + if event.keystroke.key == "down" { 1 } else { 3 }) % 4;
+                        this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
+                        cx.notify(); cx.stop_propagation();
                     } else if let Ok(number) = event.keystroke.key.parse::<usize>() && (1..=8).contains(&number) {
                         this.change_preference(number - 1, cx); cx.stop_propagation();
                     }
@@ -326,16 +419,27 @@ impl Explorer {
                         .child(div().text_size(px(16.)).font_weight(gpui::FontWeight::SEMIBOLD).child("設定"))
                         .child(div().mt(px(4.)).text_size(px(11.5)).text_color(t.c("text.muted")).child("変更はすべてのウィンドウに反映され、自動保存されます。")))
                     .child(icon_button("close-settings", "icons/x.svg", true, t).on_click(cx.listener(|this, _, w, cx| this.close_settings(w, cx)))))
-                .child(body)
+                .child(div().flex_1().min_h_0().flex().overflow_hidden().child(nav).child(body))
                 .child(div().flex_shrink_0().px(px(20.)).py(px(10.)).bg(t.c("surface.chrome"))
                     .border_t_1().border_color(t.c("border.subtle")).flex().items_center().justify_between()
-                    .child(div().text_size(px(11.)).text_color(t.c("text.muted")).child("1〜8 で切替 · Esc で閉じる"))
-                    .child(div().id("settings-done").debug_selector(|| "settings-done".into()).h(px(28.)).px(px(14.)).rounded(px(6.)).flex().items_center()
+                    .child(div().text_size(px(11.)).text_color(t.c("text.muted")).child("↑↓ カテゴリ · 1〜8 切替 · Esc 閉じる"))
+                    .child(div().flex_shrink_0().id("settings-done").debug_selector(|| "settings-done".into()).h(px(28.)).px(px(14.)).rounded(px(6.)).flex().items_center()
                         .border_1().border_color(t.c("button.border")).bg(t.c("button.bg")).hover(|s| s.bg(t.c("state.hover")))
                         .cursor_pointer().child("完了").on_click(cx.listener(|this, _, w, cx| this.close_settings(w, cx))))))
     }
 
     fn change_preference(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.settings_category = match index {
+            0..=1 => 0,
+            2..=4 => 1,
+            5..=6 => 2,
+            _ => 3,
+        };
+        let first = [0, 2, 5, 7][self.settings_category];
+        let error_row = usize::from(self.preferences.read(cx).error.is_some());
+        self.settings_scroll
+            .scroll_to_item(1 + error_row + index - first);
+        cx.notify();
         self.preferences.update(cx, |p, cx| {
             p.change(
                 |s| match index {
@@ -368,4 +472,67 @@ fn refresh_description(interval: Option<std::time::Duration>, enabled: bool) -> 
             "描画上限: 60fps"
         }
     )
+}
+
+// Bounded layout geometry only: no image work or filesystem access.
+fn theme_preview(mode: ThemeMode, appearance: gpui::WindowAppearance) -> impl IntoElement {
+    let palette = Theme::resolve(mode, appearance);
+    div()
+        .h(px(68.))
+        .flex()
+        .overflow_hidden()
+        .rounded(px(4.))
+        .border_1()
+        .border_color(palette.c("border.subtle"))
+        .child(div().w(px(22.)).h_full().bg(palette.c("surface.chrome")))
+        .child(
+            div()
+                .flex_1()
+                .h_full()
+                .p(px(8.))
+                .bg(palette.c("surface.dialog"))
+                .child(
+                    div()
+                        .h(px(4.))
+                        .w_full()
+                        .mb(px(9.))
+                        .bg(palette.c("accent.fg")),
+                )
+                .children(
+                    (0..3).map(|_| div().h(px(3.)).mb(px(7.)).bg(palette.c("border.default"))),
+                ),
+        )
+}
+fn density_preview(compact: bool, t: Theme) -> impl IntoElement {
+    div()
+        .h(px(104.))
+        .p(px(6.))
+        .rounded(px(4.))
+        .bg(t.c("surface.field"))
+        .children(
+            ["Documents", "報告書.pdf", "メモ.txt"]
+                .into_iter()
+                .map(move |label| {
+                    div()
+                        .h(px(if compact { 23. } else { 30. }))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .border_b_1()
+                        .border_color(t.c("border.subtle"))
+                        .child(
+                            div()
+                                .w(px(8.))
+                                .h(px(10.))
+                                .border_1()
+                                .border_color(t.c("text.muted")),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(t.c("text.secondary"))
+                                .child(label),
+                        )
+                }),
+        )
 }
