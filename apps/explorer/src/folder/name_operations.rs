@@ -58,7 +58,11 @@ pub(super) fn execute(operation: &NameOperation, name: &str) -> Result<PathBuf, 
                 .ok_or("この項目の名前は変更できません")?
                 .join(name);
             if source == &target {
-                return Ok(target);
+                // The item may have disappeared while its inline editor stayed open.
+                // Validate on this worker even for a no-op, without following links.
+                return std::fs::symlink_metadata(source)
+                    .map(|_| target)
+                    .map_err(|error| format!("元の項目を確認できませんでした: {error}"));
             }
             rename_exclusive(source, &target).map(|_| target)
         }
@@ -147,5 +151,45 @@ mod tests {
         let renamed = execute(&NameOperation::Rename(other), "new.txt").unwrap();
         assert!(renamed.exists());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_case_only_rename_changes_spelling_without_replacing_content() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("skylis-case-{}-{unique}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let source = root.join("CaseStudy.txt");
+        std::fs::write(&source, "preserve case-only rename content").unwrap();
+        let target = execute(&NameOperation::Rename(source), "casestudy.TXT").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "preserve case-only rename content"
+        );
+        let names: Vec<_> = std::fs::read_dir(&root)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names, [std::ffi::OsString::from("casestudy.TXT")]);
+        assert!(root.is_absolute() && root.starts_with(std::env::temp_dir()));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unchanged_name_does_not_report_success_for_a_missing_source() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let missing = std::env::temp_dir().join(format!(
+            "skylis-missing-{}-{unique}.txt",
+            std::process::id()
+        ));
+        let name = missing.file_name().unwrap().to_str().unwrap();
+        assert!(execute(&NameOperation::Rename(missing.clone()), name).is_err());
     }
 }
