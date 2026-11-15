@@ -1,0 +1,28 @@
+# ピン留めとWindowsのフォルダー連携
+
+## ピン留め
+
+フォルダーまたは一覧の背景メニューからピン留めを切り替える。サイドバーとホームの「ピン留め」は全タブ・全ウィンドウで同じ設定を参照する。サイドバーの×から解除でき、移動・削除されて開けなくなった場所も解除可能。
+
+設定は既存の `settings.conf` に保存する。最大32件、設定全体16 KiBまで。パスをUTF-8の16進表現として保存するので `=` や改行によって設定行を壊さない。不正なパス・相対パス・壊れた設定は黙って書き換えない。ピンの表示ではファイルシステムを走査せず、実際の存在確認は開く際の通常の列挙に委ねる。
+
+## Windows連携
+
+設定の「Windows連携」で「Skylisを使う」「元の設定に戻す」を選ぶ。開発中の起動・テストでは有効化しない。
+
+対象は現在のユーザーの通常のフォルダーとドライブの既定/open動詞。`HKCU\Software\Classes\Directory\shell` と `Drive\shell` 以下に専用動詞・コマンドを登録し、通常のフォルダー起動を `--shell-folder` へ渡す。ユーザー単位の登録なので管理者権限は要求しない。実行ファイルと引数を引用し、フォルダー引数末尾に `\.` を付けてドライブルートの終端バックスラッシュによる引用符の解釈を防ぐ。
+
+直接 `explorer.exe` を起動するアプリ、`/select`、Win+E、ゴミ箱・ライブラリ等の仮想フォルダー、ファイル選択ダイアログはこの方式の対象外。Filesが提供する広範な置き換えと同じ対応範囲ではない。登録後は実行ファイルを動かさず、移動・削除前に復元する。
+
+変更前の値の型・バイト列・値の不在を `HKCU\Software\Skylis\FolderIntegrationBackupV1` に保存してから変更する。途中失敗では復元を試みる。復元は現在の値がSkylisの書いた値と一致する場合だけ実行し、他アプリによる変更とその復元情報を保持する。キーの作成前にも既存／作成待ち／作成済みの記録を残し、復元時はSkylisが作成したことが確認できる空のキーだけ子から親の順で削除する。元から空だったキー、他アプリの値や子キーがあるキーは残す。空の確認と削除はWindowsのレジストリトランザクションで行い、同時に別アプリが書き込んだ場合も削除しない。作成直後の確認前に中断した場合は所有を推測せず、復元未完了として記録を保持する。キーの再帰削除は行わない。既存値は16 KiBに制限し、レジストリ読み取りも64 KiBに制限する。バックアップの永続化と操作は専用ワーカー、重複操作は有界キューとプロセス間mutexで制限する。
+
+## 検証
+
+メモリ上のレジストリ代替実装で、登録→復元、再登録、未知の値型、不在値、第三者変更の保護、書き込み前の中断、途中失敗の巻き戻し、大きすぎる値、コマンドの引用を検証する。実際のWindows関連付けの変更・他アプリからの起動確認は開発テストでは実施していない。
+
+参照:
+- [Microsoft: HKEY_CLASSES_ROOTとユーザー別の登録](https://learn.microsoft.com/en-us/windows/win32/sysinfo/hkey-classes-root-key)
+- [Microsoft: Shell動詞と既定動詞](https://learn.microsoft.com/en-us/windows/win32/shell/context-menu-handlers)
+- [Microsoft: RegFlushKeyのアクセス権](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regflushkey)
+- [Microsoft: レジストリトランザクションと並行書き込み](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regopenkeytransactedw)
+- [Files: 既定のファイルマネージャー設定](https://www.files.community/docs/customize-settings/advanced)
