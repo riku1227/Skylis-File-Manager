@@ -12,7 +12,11 @@
 
 GPUI coreのネイティブドロップ変換では、キーイベントが届かないOLEループでも、Enter／Pending／Submit時点のOS修飾キー状態を取得する。
 
-ただしgpui-fast-windows 0.1.15の受信側OLE実装は`DROPEFFECT_COPY`を固定返却する。実際のSkylis側操作は上記の規則で決まるが、他アプリからドラッグ中のOSカーソルにコピーの印が残る場合がある。送り出す側の許可effect・操作完了通知まで含むネイティブ交渉は未対応。Skylisから外へ渡したドラッグの実行内容は、受け取ったOS／アプリが決定する。
+外部アプリからSkylisへの受信では、gpui-fast-windows 0.1.15のOLE実装が`DragEnter`・`DragOver`・`Drop`で`DROPEFFECT_COPY`を固定返却する。実際のSkylis側操作は上記の規則で決まるため、コピーの印が表示されていても同じボリューム内では移動になり得る。
+
+これは表示だけの制約ではない。現在の`FileDropEvent`はパスと位置しか渡さず、外部の送信元が許可したeffect、元の`IDataObject`、操作完了通知を扱わない。送信元がコピーだけを許可した場合にも移動を選ぶ可能性が残る。修正には許可effect・選択effect・受理／完了結果の伝達と、送信元との削除責任の整理が必要であり、固定COPYをMOVEに変えるだけでは解決しない。
+
+Skylisから外部アプリへの送信は別経路で、独自ブリッジが`SHDoDragDrop(COPY | MOVE)`を呼ぶ。受け取ったOS／アプリが操作を決定・実行し、Skylisは結果を受けて一覧を更新する。
 
 ## 自動検証
 
