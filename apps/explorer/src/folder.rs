@@ -4,6 +4,8 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
+mod media_view;
+use crate::media::{MediaCache, MediaScope};
 mod sizes;
 use sizes::SizeState;
 mod wsl;
@@ -39,6 +41,10 @@ pub enum FolderEvent { OpenInTab(PathBuf) }
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
+    media: Entity<MediaCache>,
+    media_scope: MediaScope,
+    preview_scope: MediaScope,
+    preview_open: bool,
     sizes: SizeState,
     pub mode: ThemeMode,
     pub pane: bool,
@@ -139,7 +145,12 @@ impl FolderView {
                 }
             }).detach();
         }
+        let media = if let Some(shared) = cx.try_global::<media_view::SharedMedia>() { shared.0.clone() } else {
+            let cache = cx.new(MediaCache::new); cx.set_global(media_view::SharedMedia(cache.clone())); cache
+        };
+        cx.observe(&media, |_,_,cx|cx.notify()).detach();
         let mut this = Self {
+            media, media_scope: MediaScope::new(), preview_scope: MediaScope::new(), preview_open: false,
             sizes: SizeState::default(),
             mode,
             pane: true,
@@ -240,6 +251,7 @@ impl FolderView {
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
         self.cancel_sizes(cx);
         self.cancel_address(cx);
+        self.media_scope.cancel();self.preview_scope.cancel();self.preview_open=false;
         // 前の列挙を止める（タスクをdropすると受信側も閉じ、列挙スレッドは次のsendで終了する）
         self.cancel.cancel();
         self.cancel = CancelToken::new();
@@ -504,6 +516,7 @@ impl FolderView {
     }
 
     fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
+        self.preview_scope.cancel();
         self.selected = Some(ix);
         if !self.is_home() {
             self.scroll_to_entry(ix, ScrollStrategy::Nearest);
@@ -1561,6 +1574,13 @@ impl Drop for FolderView {
         self.cancel.cancel();
     }
 }
+impl Drop for FolderView {
+    fn drop(&mut self) {
+        self.media_scope.cancel();
+        self.preview_scope.cancel();
+        self.cancel.cancel();
+    }
+}
 impl Focusable for FolderView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
@@ -1579,12 +1599,26 @@ impl Render for FolderView {
             .into();
         });
         self.address.update(cx, |input, _| input.theme = t);
+        #[cfg(target_os="macos")]
+        {
+            if self.preview_open {
+                if let Some(entry)=self.selected_entry() {
+                    match crate::media::quicklook::update(&entry.path,window) {
+                        Ok(true)=>(), Ok(false)=>{self.preview_open=false;self.preview_scope.cancel();},
+                        Err(error)=>{self.preview_open=false;self.preview_scope.cancel();self.notice=Some(error);}
+                    }
+                }
+            } else { let _=crate::media::quicklook::close(window); }
+        }
+
+
         div()
             .key_context("Explorer")
             .track_focus(&self.focus)
             .on_mouse_move(cx.listener(|this,event: &gpui::MouseMoveEvent,_,cx| this.drag_scrollbar(event.position,cx)))
             .on_mouse_up(MouseButton::Left,cx.listener(|this,_,_,cx| { this.scrollbar_drag = None; cx.notify(); }))
             .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,_,cx| { this.scrollbar_drag = None; cx.notify(); }))
+            .on_action(cx.listener(Self::toggle_preview))
             .on_action(cx.listener(Self::edit_address))
             .on_action(cx.listener(Self::select_prev))
             .on_action(cx.listener(Self::select_next))
@@ -1603,6 +1637,7 @@ impl Render for FolderView {
                 cx.notify()
             }))
             .on_action(cx.listener(|this, _: &ClearSearch, w, cx| {
+                if this.preview_open { this.close_preview(cx); return; }
                 if this.editing_address {
                     this.cancel_address(cx);
                 } else {
@@ -1679,6 +1714,7 @@ impl Render for FolderView {
                 )
             })
             .child(self.render_status(t, cx))
+            .when(self.preview_open && !cfg!(target_os="macos"),|d|d.child(self.render_preview(t,cx)))
     }
 }
 // Shared by real list rows and the hover regression probe.
