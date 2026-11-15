@@ -8,9 +8,88 @@ pub(super) struct NameEditor {
     origin: Location,
     pub(super) error: Option<String>,
     pending: bool,
+    _blur: Option<gpui::Subscription>,
 }
 
 impl FolderView {
+    pub(super) fn inline_name_target(&self) -> Option<&Path> {
+        match &self.name_editor.as_ref()?.operation {
+            NameOperation::Rename(path) => Some(path),
+            _ => None,
+        }
+    }
+
+    pub(super) fn render_inline_name(
+        &self,
+        path: &Path,
+        t: Theme,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        if self.inline_name_target() != Some(path) {
+            return None;
+        }
+        let editor = self.name_editor.as_ref()?;
+        editor.input.update(cx, |input, _| input.theme = t);
+        Some(
+            div()
+                .id("inline-name-editor")
+                .debug_selector(|| "inline-name-editor".into())
+                .flex_1()
+                .min_w_0()
+                .h(px(24.))
+                .px(px(4.))
+                .border_1()
+                .rounded(px(3.))
+                .border_color(t.c(if editor.error.is_some() {
+                    "danger.fg"
+                } else {
+                    "accent.fg"
+                }))
+                .bg(t.c("surface.canvas"))
+                .when(editor.pending, |d| d.opacity(0.65))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|_, _, _, cx| cx.stop_propagation()),
+                )
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(|_, _, _, cx| cx.stop_propagation()),
+                )
+                .on_click(cx.listener(|_, _, _, cx| cx.stop_propagation()))
+                .on_action(cx.listener(|this, _: &OpenSelected, w, cx| {
+                    this.submit_name(w, cx);
+                    cx.stop_propagation();
+                }))
+                .on_action(cx.listener(|this, _: &ClearSearch, w, cx| {
+                    this.cancel_name_edit(w, cx);
+                    cx.stop_propagation();
+                }))
+                .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
+                    match event.keystroke.key.as_str() {
+                        "enter" => this.submit_name(w, cx),
+                        "escape" => this.cancel_name_edit(w, cx),
+                        _ => return,
+                    }
+                    cx.stop_propagation();
+                }))
+                .child(editor.input.clone())
+                .into_any_element(),
+        )
+    }
+
+    fn cancel_name_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self
+            .name_editor
+            .as_ref()
+            .is_some_and(|editor| editor.pending || editor.input.read(cx).is_composing())
+        {
+            return;
+        }
+        self.name_editor = None;
+        window.focus(&self.focus, cx);
+        cx.notify();
+    }
+
     pub(super) fn begin_name_edit(
         &mut self,
         operation: NameOperation,
@@ -39,6 +118,18 @@ impl FolderView {
             ),
         };
         self.cancel_scroll_motion();
+        self.context_menu = None;
+        if let NameOperation::Rename(path) = &operation {
+            let Some(ix) = self
+                .visible
+                .iter()
+                .position(|&i| self.entries[i].path == *path)
+            else {
+                return;
+            };
+            self.select(ix, cx);
+            self.scroll_to_entry(ix, ScrollStrategy::Center);
+        }
         let input = cx.new(TextInput::new);
         input.update(cx, |input, cx| input.set_text(name, true, window, cx));
         let file_name = match &operation {
@@ -53,6 +144,11 @@ impl FolderView {
             input.update(cx, |input, cx| input.select_filename_stem(cx));
         }
         window.focus(&input.focus_handle(cx), cx);
+        let blur = matches!(&operation, NameOperation::Rename(_)).then(|| {
+            cx.on_blur(&input.focus_handle(cx), window, |this, window, cx| {
+                this.submit_name(window, cx);
+            })
+        });
         self.name_editor = Some(NameEditor {
             input,
             operation,
@@ -60,6 +156,7 @@ impl FolderView {
             origin: self.history.current().clone(),
             error: None,
             pending: false,
+            _blur: blur,
         });
         cx.notify();
     }
@@ -88,6 +185,7 @@ impl FolderView {
         let name = editor.input.read(cx).content.to_string();
         if let Err(error) = name_operations::validate_name(&name) {
             editor.error = Some(error);
+            window.focus(&editor.input.focus_handle(cx), cx);
             cx.notify();
             return;
         }
@@ -113,8 +211,14 @@ impl FolderView {
                 }
                 match result {
                     Ok(path) => {
+                        let editing_focused = view
+                            .name_editor
+                            .as_ref()
+                            .is_some_and(|editor| editor.input.focus_handle(cx).is_focused(window));
                         view.name_editor = None;
-                        window.focus(&view.focus, cx);
+                        if editing_focused {
+                            window.focus(&view.focus, cx);
+                        }
                         view.load(
                             origin,
                             path.file_name().map(|n| n.to_string_lossy().into_owned()),
@@ -125,6 +229,9 @@ impl FolderView {
                         if let Some(editor) = &mut view.name_editor {
                             editor.pending = false;
                             editor.error = Some(error);
+                            if view.focus.contains_focused(window, cx) {
+                                window.focus(&editor.input.focus_handle(cx), cx);
+                            }
                         }
                     }
                 }
@@ -151,18 +258,14 @@ impl FolderView {
                 cx.stop_propagation();
             }))
             .on_action(cx.listener(|this, _: &ClearSearch, window, cx| {
-                this.name_editor = None;
-                window.focus(&this.focus, cx);
-                cx.notify();
+                this.cancel_name_edit(window, cx);
                 cx.stop_propagation();
             }))
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 match event.keystroke.key.as_str() {
                     "enter" => this.submit_name(window, cx),
                     "escape" => {
-                        this.name_editor = None;
-                        window.focus(&this.focus, cx);
-                        cx.notify();
+                        this.cancel_name_edit(window, cx);
                     }
                     _ => return,
                 }
@@ -203,9 +306,7 @@ impl FolderView {
                                     .cursor_pointer()
                                     .child("キャンセル")
                                     .on_click(cx.listener(|this, _, window, cx| {
-                                        this.name_editor = None;
-                                        window.focus(&this.focus, cx);
-                                        cx.notify();
+                                        this.cancel_name_edit(window, cx);
                                     })),
                             )
                             .child(

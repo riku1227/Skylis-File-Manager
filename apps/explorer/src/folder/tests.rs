@@ -1516,3 +1516,57 @@ fn name_editor_consumes_enter_and_escape_before_folder_actions(cx: &mut gpui::Te
         .read_with(cx, |view, _| assert!(view.name_editor.is_none()))
         .unwrap();
 }
+
+#[gpui::test]
+fn rename_edits_the_filename_in_list_and_gallery_without_opening_the_file(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(|cx| {
+        cx.bind_keys([
+            gpui::KeyBinding::new("enter", OpenSelected, Some("Explorer")),
+            gpui::KeyBinding::new("escape", ClearSearch, Some("Explorer")),
+        ]);
+    });
+    for gallery in [false, true] {
+        let window = workflow_window(cx);
+        window
+            .update(cx, |view, w, cx| {
+                view.entries = workflow_entries(&["assets.rs", "folder.rs"]);
+                view.rebuild_visible(None);
+                view.set_gallery(gallery, cx);
+                view.select(0, cx);
+                let target = view.selected_entry().unwrap().path.clone();
+                view.begin_name_edit(super::name_operations::NameOperation::Rename(target), w, cx);
+                view.name_editor
+                    .as_ref()
+                    .unwrap()
+                    .input
+                    .update(cx, |input, cx| {
+                        input.set_text("../invalid".into(), false, w, cx);
+                    });
+            })
+            .unwrap();
+        cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        let bounds = visual
+            .debug_bounds("inline-name-editor")
+            .expect("filename field is inline");
+        assert!(bounds.size.height <= px(24.));
+        assert!(bounds.size.width > px(20.));
+        cx.simulate_keystrokes(window.into(), "enter");
+        window
+            .read_with(cx, |view, _| {
+                assert!(view.name_editor.as_ref().unwrap().error.is_some());
+                assert_eq!(view.selected_entry().unwrap().name, "assets.rs");
+            })
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "escape");
+        window
+            .update(cx, |view, w, _| {
+                assert!(view.name_editor.is_none());
+                assert!(view.focus.is_focused(w));
+            })
+            .unwrap();
+    }
+}

@@ -1441,14 +1441,15 @@ impl FolderView {
                                 window,
                                 cx,
                             ))
-                            .child(
+                            .child(self.render_inline_name(&e.path, t, cx).unwrap_or_else(|| {
                                 div()
                                     .truncate()
                                     .text_color(name_color)
                                     .when(selected, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
                                     .when(e.hidden, |d| d.opacity(0.55))
-                                    .child(e.name.clone()),
-                            ),
+                                    .child(e.name.clone())
+                                    .into_any_element()
+                            })),
                     )
                     .child(
                         div()
@@ -2054,12 +2055,28 @@ impl Render for FolderView {
                 )
             })
             .child(self.render_status(t, cx))
+            .when(self.inline_name_target().is_some(), |d| {
+                d.when_some(
+                    self.name_editor.as_ref().and_then(|e| e.error.clone()),
+                    |d, error| {
+                        d.child(
+                            div()
+                                .px(px(16.))
+                                .py(px(4.))
+                                .text_size(px(12.))
+                                .text_color(t.c("danger.fg"))
+                                .child(error),
+                        )
+                    },
+                )
+            })
             .when(self.context_menu.is_some(), |d| {
                 d.child(self.render_context_menu(t, cx))
             })
-            .when(self.name_editor.is_some(), |d| {
-                d.child(self.render_name_editor(t, cx))
-            })
+            .when(
+                self.name_editor.is_some() && self.inline_name_target().is_none(),
+                |d| d.child(self.render_name_editor(t, cx)),
+            )
     }
 }
 // Shared by real list rows and the hover regression probe.

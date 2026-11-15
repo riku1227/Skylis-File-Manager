@@ -203,13 +203,16 @@ impl FolderView {
                                     .overflow_hidden()
                                     .child(picture),
                             )
-                            .child(
-                                div()
-                                    .mt(px(4.))
-                                    .h(px(18.))
-                                    .truncate()
-                                    .child(entry.name.clone()),
-                            )
+                            .child(self.render_inline_name(&entry.path, t, cx).unwrap_or_else(
+                                || {
+                                    div()
+                                        .mt(px(4.))
+                                        .h(px(18.))
+                                        .truncate()
+                                        .child(entry.name.clone())
+                                        .into_any_element()
+                                },
+                            ))
                             .on_drag(self.file_drag(ix, cx), |drag, _, _, cx| {
                                 drag.resolve(cx);
                                 cx.new(|_| drag.clone())
