@@ -103,6 +103,14 @@ unsafe extern "C" {
     fn skylis_handoff_accept_close(flags: u32) -> i32;
     #[cfg(test)]
     fn skylis_handoff_test_recheck(first: u32, second: u32) -> u32;
+    #[cfg(test)]
+    fn skylis_handoff_test_fallback(
+        directory: *const u16,
+        parameters: *const u16,
+        output: *mut u16,
+        capacity: u32,
+        check_directory: i32,
+    ) -> u32;
 }
 
 #[cfg(all(test, windows))]
@@ -112,6 +120,96 @@ mod tests {
         Foundation::{CloseHandle, HANDLE},
         System::Threading::{CreateEventW, SetEvent, WaitForSingleObject},
     };
+
+    fn fallback(directory: &str, parameters: &str, check_directory: bool) -> Option<String> {
+        let wide = |text: &str| text.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+        let directory = wide(directory);
+        let parameters = wide(parameters);
+        let mut output = vec![0; 32761];
+        let length = unsafe {
+            skylis_handoff_test_fallback(
+                directory.as_ptr(),
+                parameters.as_ptr(),
+                output.as_mut_ptr(),
+                output.len() as u32,
+                check_directory.into(),
+            )
+        };
+        (length != 0).then(|| String::from_utf16(&output[..length as usize]).unwrap())
+    }
+
+    #[test]
+    fn launch_fallback_preserves_unicode_and_prefers_explicit_parameters() {
+        let path = r"C:\資料と画像\見積り 'final' & (2)";
+        assert_eq!(
+            fallback(
+                r"C:\different",
+                &format!("--switch-explorer \"{path}\""),
+                false
+            ),
+            Some(path.into())
+        );
+        assert_eq!(
+            fallback("", &format!("\"{path}\""), false),
+            Some(path.into())
+        );
+        assert_eq!(fallback(path, "", false), Some(path.into()));
+        // Invalid explicit parameters must not silently fall back to another working directory.
+        assert!(fallback(path, "--unknown", false).is_none());
+        assert!(fallback(path, "--switch-explorer \"C:\\valid\" --home", false).is_none());
+    }
+
+    #[test]
+    fn launch_fallback_rejects_relative_device_malformed_and_oversized_paths() {
+        for path in [
+            "",
+            r"relative\folder",
+            r"C:relative",
+            r"\rooted",
+            r"\\server",
+            r"\\.\C:\folder",
+            r"\\?\GLOBALROOT\Device\HarddiskVolume1",
+            r"C:\folder:stream",
+            "C:\\line\nbreak",
+            r"shell:Downloads",
+            r"C:\wild*card",
+        ] {
+            assert!(fallback(path, "", false).is_none(), "{path}");
+        }
+        assert!(fallback("", "--switch-explorer \"C:\\unclosed", false).is_none());
+        assert!(fallback("", "--switch-explorer \"C:\\folder\" garbage", false).is_none());
+        assert!(fallback(&format!("C:\\{}", "x".repeat(32760)), "", false).is_none());
+        assert!(fallback(r"C:\valid", &" ".repeat(32761), false).is_none());
+        for path in [
+            r"C:\.",
+            r"\\server\share\.",
+            r"\\?\C:\folder",
+            r"\\?\UNC\server\share",
+        ] {
+            assert_eq!(fallback(path, "", false), Some(path.into()));
+        }
+    }
+
+    #[test]
+    fn launch_fallback_checks_directory_without_accepting_regular_files() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "skylis-handoff-fallback-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        let file = dir.join("file.txt");
+        std::fs::write(&file, b"fixture").unwrap();
+        assert!(fallback(&dir.to_string_lossy(), "", true).is_some());
+        assert!(fallback(&file.to_string_lossy(), "", true).is_none());
+        assert!(fallback(&dir.join("missing").to_string_lossy(), "", true).is_none());
+        std::fs::remove_file(file).unwrap();
+        std::fs::remove_dir(dir).unwrap();
+    }
+
     struct TestEvents {
         token: String,
         handles: [HANDLE; 5],

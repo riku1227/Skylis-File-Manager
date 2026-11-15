@@ -1,5 +1,6 @@
 // The Explorer context command runs in a short-lived, out-of-process STA server.
 // No foreground-window guessing, path-only window searches, or resident hooks.
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -271,6 +272,100 @@ static bool launch(const std::wstring &folder, const std::wstring &token, Handle
     CloseHandle(child.hThread);
     return true;
 }
+static constexpr size_t MaxFallbackText = 32760;
+static bool bounded_text(PCWSTR value, std::wstring &text) {
+    text.clear();
+    if (!value)
+        return true;
+    const auto length = wcsnlen(value, MaxFallbackText + 1);
+    if (length > MaxFallbackText)
+        return false;
+    text.assign(value, length);
+    return true;
+}
+static bool absolute_filesystem_path(const std::wstring &path) {
+    if (path.empty() || path.size() > MaxFallbackText)
+        return false;
+    std::wstring normalized = path;
+    for (auto &c : normalized) {
+        if (c == L'/')
+            c = L'\\';
+        if (c < 32 || c == L'"' || c == L'<' || c == L'>' || c == L'|' || c == L'*')
+            return false;
+    }
+    // Permit only explicit filesystem forms of the extended prefix, never device aliases.
+    if (normalized.compare(0, 8, L"\\\\?\\UNC\\") == 0)
+        normalized = L"\\\\" + normalized.substr(8);
+    else if (normalized.compare(0, 4, L"\\\\?\\") == 0)
+        normalized.erase(0, 4);
+    const auto drive_letter = [](wchar_t c) {
+        return (c >= L'A' && c <= L'Z') || (c >= L'a' && c <= L'z');
+    };
+    if (normalized.size() >= 3 && drive_letter(normalized[0]) && normalized[1] == L':' &&
+        normalized[2] == L'\\')
+        return normalized.find_first_of(L":?", 2) == std::wstring::npos;
+    if (normalized.compare(0, 2, L"\\\\") != 0 ||
+        normalized.find_first_of(L":?") != std::wstring::npos)
+        return false;
+    const auto server_end = normalized.find(L'\\', 2);
+    if (server_end == std::wstring::npos || server_end == 2)
+        return false;
+    const auto server = normalized.substr(2, server_end - 2);
+    const auto share_end = normalized.find(L'\\', server_end + 1);
+    const auto share = normalized.substr(server_end + 1, share_end - server_end - 1);
+    return server != L"." && server != L".." && !share.empty() && share != L"." &&
+           share != L"..";
+}
+static bool balanced_quotes(const std::wstring &parameters) {
+    bool quoted = false;
+    size_t slashes = 0;
+    for (auto c : parameters) {
+        if (c == L'"' && slashes % 2 == 0)
+            quoted = !quoted;
+        slashes = c == L'\\' ? slashes + 1 : 0;
+    }
+    return !quoted;
+}
+static bool fallback_candidate(const std::wstring &directory, const std::wstring &parameters,
+                               std::wstring &path) {
+    path.clear();
+    if (parameters.size() > MaxFallbackText || directory.size() > MaxFallbackText)
+        return false;
+    if (parameters.empty()) {
+        // SetDirectory is only working-directory metadata, never a trusted source view.
+        path = directory;
+    } else {
+        if (!balanced_quotes(parameters))
+            return false;
+        int count = 0;
+        auto arguments = CommandLineToArgvW((L"skylis " + parameters).c_str(), &count);
+        if (!arguments)
+            return false;
+        if (count == 3 && wcscmp(arguments[1], L"--switch-explorer") == 0)
+            path = arguments[2];
+        else if (count == 2)
+            path = arguments[1];
+        LocalFree(arguments);
+    }
+    return absolute_filesystem_path(path);
+}
+static bool filesystem_directory(const std::wstring &path) {
+    const auto attributes = GetFileAttributesW(path.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+// Exercises the production parser and optional directory check without starting COM or a process.
+extern "C" unsigned skylis_handoff_test_fallback(PCWSTR directory, PCWSTR parameters,
+                                                  PWSTR output, unsigned capacity,
+                                                  int check_directory) {
+    std::wstring dir, params, path;
+    if (!bounded_text(directory, dir) || !bounded_text(parameters, params) ||
+        !fallback_candidate(dir, params, path) ||
+        (check_directory && !filesystem_directory(path)) || !output || capacity <= path.size())
+        return 0;
+    std::copy(path.begin(), path.end(), output);
+    output[path.size()] = 0;
+    return static_cast<unsigned>(path.size());
+}
 static bool view_folder(IShellView *view, Pidl &pidl, std::wstring &path) {
     ComPtr<IFolderView> folder;
     ComPtr<IPersistFolder2> persist;
@@ -422,6 +517,7 @@ class Command final : public IExecuteCommand,
     std::atomic<ULONG> refs{1};
     ComPtr<IUnknown> site;
     ComPtr<IShellItemArray> selection;
+    std::wstring directory, parameters;
 
   public:
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void **out) override {
@@ -470,11 +566,15 @@ class Command final : public IExecuteCommand,
         return selection ? selection->QueryInterface(iid, value) : E_FAIL;
     }
     HRESULT STDMETHODCALLTYPE SetKeyState(DWORD) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE SetParameters(PCWSTR) override { return S_OK; }
+    HRESULT STDMETHODCALLTYPE SetParameters(PCWSTR value) override {
+        return bounded_text(value, parameters) ? S_OK : E_INVALIDARG;
+    }
     HRESULT STDMETHODCALLTYPE SetPosition(POINT) override { return S_OK; }
     HRESULT STDMETHODCALLTYPE SetShowWindow(int) override { return S_OK; }
     HRESULT STDMETHODCALLTYPE SetNoShowUI(BOOL) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE SetDirectory(PCWSTR) override { return S_OK; }
+    HRESULT STDMETHODCALLTYPE SetDirectory(PCWSTR value) override {
+        return bounded_text(value, directory) ? S_OK : E_INVALIDARG;
+    }
     HRESULT STDMETHODCALLTYPE Execute() override {
         if (invoked)
             return HRESULT_FROM_WIN32(ERROR_BUSY);
@@ -486,7 +586,7 @@ class Command final : public IExecuteCommand,
         }
         auto request = std::make_unique<Request>();
         request->origin = std::make_unique<Origin>();
-        const bool trusted = request->origin->capture(site.Get());
+        bool trusted = request->origin->capture(site.Get());
         std::wstring path = request->origin->path;
         if (path.empty() && selection) {
             DWORD count = 0;
@@ -502,6 +602,12 @@ class Command final : public IExecuteCommand,
                 path = raw;
                 CoTaskMemFree(raw);
             }
+        }
+        if (path.empty()) {
+            // This opens a verified directory only. Invocation parameters never authorize close.
+            trusted = false;
+            if (!fallback_candidate(directory, parameters, path) || !filesystem_directory(path))
+                path.clear();
         }
         if (path.empty()) {
             done = true;

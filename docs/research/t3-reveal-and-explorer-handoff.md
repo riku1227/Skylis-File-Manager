@@ -34,6 +34,8 @@ Skylis の既存 `Directory\shell` の既定値 `Skylis.Open` はこの検出対
 
 確認できた場合だけ、その HWND に通常の `WM_CLOSE` を送る。ウィンドウ消滅も確認し、成功を通知する。静的コマンドとして `--switch-explorer` が起動された場合は site がないため、フォルダーを開くだけで元を残す。
 
+COMのsiteからフォルダーを取得できない場合は、まず選択配列を確認し、それでも取得できなければ `SetParameters` の明示的なパス、引数がなければ `SetDirectory` の作業ディレクトリを使う。引数は `--switch-explorer "パス"` または単一のパスだけを受理し、文字数、引用符、絶対ファイルシステムパスを検証する。補助プロセス内で実在するディレクトリか確認してから起動する。相対パス、デバイス名前空間、不正な引数、通常ファイルは拒否する。これらの代替情報は呼び出し元ビューの証明にならないため、元を閉じるためのトークンは発行しない。`SetDirectory` はあくまで作業ディレクトリというAPI契約であり、背景メニューの場所と常に一致する保証ではない。[SetDirectory](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-iexecutecommand-setdirectory)、[SetParameters](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-iexecutecommand-setparameters)
+
 COMのsite取得・再照合は各6秒の期限で `CoCancelCall` を要求し、さらに2秒応答がない場合は一時helper自身だけを終了する。GPUI側やExplorerを強制終了する処理ではない。helper全体の120秒期限も別に監視し、COM解放・終了処理の停止で残留しないようにする。UI Automationにも個別の接続／呼び出し期限がある。閉じる直前に同じ検査を改めて実行し、途中で期限を超えた要求は閉じる処理へ進めない。
 
 `WM_CLOSE` 送信後1.5秒で消滅を確認できない場合、または完了応答が失われた場合は「閉じたか確認できない」と通知する。終了要求が後から処理される可能性があるため、この場合に「元を残した」と断定しない。
