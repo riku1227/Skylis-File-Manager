@@ -124,7 +124,7 @@ impl FolderView {
                                 place.label.clone()
                             }),
                     );
-                if drive {
+                if drive || (cfg!(target_os = "macos") && place.icon == platform::PlaceIcon::Home) {
                     info = match self.drive_space.get(&place.path) {
                         Some(Some(space)) => {
                             let used = if space.total > 0 {

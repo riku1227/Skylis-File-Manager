@@ -384,6 +384,15 @@ impl FolderView {
         self.drives = platform::drives();
         self.drive_space.clear();
         let paths: Vec<_> = self.drives.iter().map(|p| p.path.clone()).collect();
+        #[cfg(target_os = "macos")]
+        let paths = {
+            let mut paths = paths;
+            let home = platform::home_dir();
+            if !paths.contains(&home) {
+                paths.push(home);
+            }
+            paths
+        };
         let (tx, rx) = async_channel::bounded(paths.len().max(1));
         let _ = std::thread::Builder::new()
             .name("drive-space".into())
