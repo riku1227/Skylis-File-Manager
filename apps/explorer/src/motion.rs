@@ -1,4 +1,4 @@
-//! Bounded scroll trajectories and conservative wheel classification, independent of GPUI.
+//! Bounded scroll trajectories, conservative wheel classification, and short UI feedback.
 use std::time::{Duration, Instant};
 
 const DURATION: Duration = Duration::from_millis(100);
@@ -132,6 +132,57 @@ impl WheelClassifier {
 
 pub(crate) fn edge_distance(speed: f32, elapsed: Duration) -> f32 {
     speed * elapsed.min(Duration::from_millis(32)).as_secs_f32()
+}
+
+// UI feedback only. Springs begin at their target on mount and retain velocity
+// on retarget. Critical damping prevents visible overshoot.
+pub(crate) const MENU_REVEAL: Duration = Duration::from_millis(110);
+pub(crate) const POPUP_REVEAL: Duration = Duration::from_millis(120);
+pub(crate) const BACKDROP_REVEAL: Duration = Duration::from_millis(100);
+pub(crate) const MODAL_REVEAL: Duration = Duration::from_millis(140);
+pub(crate) const CATEGORY_REVEAL: Duration = Duration::from_millis(90);
+pub(crate) const PANE_REVEAL: Duration = Duration::from_millis(100);
+pub(crate) const POPUP_OFFSET: f32 = 6.;
+pub(crate) const MODAL_OFFSET: f32 = 8.;
+pub(crate) const SEGMENT_SPRING: gpui::SpringConfig = gpui::SpringConfig::new(3600., 120., 1.);
+pub(crate) const SWITCH_SPRING: gpui::SpringConfig = gpui::SpringConfig::new(6400., 160., 1.);
+pub(crate) fn ease_out_cubic(p: f32) -> f32 {
+    1. - (1. - p).powi(3)
+}
+
+pub(crate) fn switch(
+    id: impl Into<gpui::ElementId>,
+    enabled: bool,
+    width: f32,
+    off: gpui::Rgba,
+    on: gpui::Rgba,
+    knob_off: gpui::Rgba,
+    knob_on: gpui::Rgba,
+) -> impl gpui::IntoElement {
+    use gpui::{AnimationExt, SpringAnimation, div, prelude::*, px};
+    div()
+        .w(px(width))
+        .h(px(20.))
+        .flex_shrink_0()
+        .relative()
+        .rounded(px(10.))
+        .with_spring(
+            id,
+            SpringAnimation::new(SWITCH_SPRING).to(if enabled { 1. } else { 0. }),
+            move |d, p| {
+                let p = p.clamp(0., 1.);
+                d.bg(off.blend(on.opacity(p))).child(
+                    div()
+                        .absolute()
+                        .top(px(4.))
+                        .left(px(4. + (width - 20.) * p))
+                        .debug_selector(|| "motion-switch-knob".into())
+                        .size(px(12.))
+                        .rounded(px(6.))
+                        .bg(knob_off.blend(knob_on.opacity(p))),
+                )
+            },
+        )
 }
 
 #[cfg(test)]
@@ -283,5 +334,112 @@ mod tests {
             600.,
         );
         assert!(!motion.active());
+    }
+}
+
+#[cfg(test)]
+mod feedback_tests {
+    use super::*;
+    use gpui::{div, prelude::*, px};
+    struct SwitchProbe {
+        enabled: bool,
+    }
+    impl gpui::Render for SwitchProbe {
+        fn render(
+            &mut self,
+            _: &mut gpui::Window,
+            _: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
+            div().child(switch(
+                "probe",
+                self.enabled,
+                32.,
+                gpui::black().into(),
+                gpui::white().into(),
+                gpui::white().into(),
+                gpui::black().into(),
+            ))
+        }
+    }
+    #[gpui::test]
+    fn reduced_motion_switch_mount_and_retarget_draw_final_position_without_frames(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| cx.set_reduce_motion(true));
+        let window = cx.add_window(|_, _| SwitchProbe { enabled: false });
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        for (enabled, x) in [(false, 4.), (true, 16.), (false, 4.)] {
+            window
+                .update(cx, |v, _, cx| {
+                    v.enabled = enabled;
+                    cx.notify();
+                })
+                .unwrap();
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            assert_eq!(
+                visual.debug_bounds("motion-switch-knob").unwrap().left(),
+                px(x)
+            );
+            assert_eq!(visual.update(|w, cx| w.simulate_next_frame(cx)), 0);
+        }
+    }
+
+    #[gpui::test]
+    fn switch_mount_is_static_and_interrupted_motion_eventually_stops(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| cx.set_reduce_motion(false));
+        let window = cx.add_window(|_, _| SwitchProbe { enabled: true });
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        assert_eq!(
+            visual.debug_bounds("motion-switch-knob").unwrap().left(),
+            px(16.)
+        );
+        assert_eq!(visual.update(|w, cx| w.simulate_next_frame(cx)), 0);
+        for enabled in [false, true, false] {
+            window
+                .update(cx, |v, _, cx| {
+                    v.enabled = enabled;
+                    cx.notify();
+                })
+                .unwrap();
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            cx.executor().advance_clock(Duration::from_millis(16));
+            visual.update(|w, cx| w.simulate_next_frame(cx));
+        }
+        let mut stopped = false;
+        for _ in 0..30 {
+            cx.executor().advance_clock(Duration::from_millis(32));
+            let frames = visual.update(|w, cx| {
+                w.draw(cx).clear(cx);
+                w.simulate_next_frame(cx)
+            });
+            if frames == 0 {
+                stopped = true;
+                break;
+            }
+        }
+        assert!(stopped, "a settled switch must not schedule further frames");
+        assert_eq!(
+            visual.debug_bounds("motion-switch-knob").unwrap().left(),
+            px(4.)
+        );
+    }
+    #[test]
+    fn feedback_springs_converge_without_visible_overshoot() {
+        for (spring, perceptual_ms) in [(SEGMENT_SPRING, 130.), (SWITCH_SPRING, 100.)] {
+            let state = gpui::SpringState {
+                position: 0.,
+                velocity: 0.,
+            };
+            for step in 0..=100 {
+                let v = spring.step(state, 1., step as f32 / 1000.);
+                assert!((0. ..=1.).contains(&v.position));
+            }
+            assert!(spring.step(state, 1., perceptual_ms / 1000.).position > 0.99);
+        }
+        assert_eq!(ease_out_cubic(0.), 0.);
+        assert_eq!(ease_out_cubic(1.), 1.);
     }
 }

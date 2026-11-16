@@ -1,0 +1,3600 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skylis File Manager — UI/UX改善 &amp; アニメーション比較モック</title>
+<style>
+  /* =========================================================
+     1. Exact Skylis Design Tokens (apps/explorer/src/theme_tokens.rs)
+     ========================================================= */
+  :root,
+  [data-theme="light"] {
+    --surface-canvas: #f5f7fa;
+    --surface-content: #ffffff;
+    --surface-chrome: #fafbfd;
+    --surface-statusbar: #fafbfd;
+    --surface-field: #f1f4f9;
+    --surface-field-focus: #ffffff;
+    --surface-card: #ffffff;
+    --surface-chip-selected: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-dialog: #ffffff;
+    --surface-backdrop: rgba(15, 23, 42, 0.24);
+
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --text-disabled: #cbd5e1;
+    --text-on-accent: #ffffff;
+    --icon-default: #475569;
+
+    --accent-fg: #2563eb;
+    --accent-soft: rgba(37, 99, 235, 0.12);
+    --focus-ring: #2563eb;
+    --focus-halo: rgba(37, 99, 235, 0.25);
+
+    --state-hover: rgba(37, 99, 235, 0.055);
+    --state-pressed: rgba(37, 99, 235, 0.10);
+
+    --nav-current-bg: #2864e8;
+    --nav-current-fg: #ffffff;
+    --nav-current-caption: rgba(255, 255, 255, 0.85);
+    --nav-current-meter-track: rgba(255, 255, 255, 0.25);
+    --nav-current-meter-fill: #ffffff;
+
+    --selection-bg: #e8effc;
+    --selection-border: rgba(37, 99, 235, 0.32);
+    --selection-fg: #2563eb;
+    --selection-fg-secondary: #64748b;
+
+    --tab-bg: transparent;
+    --tab-border: transparent;
+    --tab-fg: #475569;
+    --tab-hover-bg: rgba(37, 99, 235, 0.055);
+    --tab-active-bg: #ffffff;
+    --tab-active-border: rgba(15, 23, 42, 0.075);
+
+    --button-bg: #ffffff;
+    --button-border: rgba(15, 23, 42, 0.12);
+    --button-fg: #0f172a;
+    --button-hover-bg: #f7f7f7;
+    --button-primary-bg: #2563eb;
+    --button-primary-hover-bg: #2460e4;
+
+    --badge-bg: rgba(37, 99, 235, 0.12);
+    --badge-border: transparent;
+    --badge-fg: #2563eb;
+
+    --border-subtle: rgba(15, 23, 42, 0.06);
+    --border-default: rgba(15, 23, 42, 0.075);
+    --border-content: rgba(15, 23, 42, 0.075);
+    --border-card: rgba(15, 23, 42, 0.06);
+    --border-statusbar: rgba(15, 23, 42, 0.06);
+    --border-dialog: rgba(15, 23, 42, 0.09);
+
+    --meter-fill: #3b82f6;
+    --meter-warn: #f59e0b;
+    --meter-track: rgba(148, 163, 184, 0.22);
+    --scrollbar-thumb: rgba(100, 116, 139, 0.26);
+    --danger-fg: #c8453b;
+    --success-fg: #15803d;
+    --success-bg: rgba(21, 128, 61, 0.11);
+    --off-track-improved: rgba(15, 23, 42, 0.12);
+    --off-track-border-improved: rgba(15, 23, 42, 0.18);
+
+    --b2-seg-track: #eef2f7;
+    --b2-seg-track-border: rgba(15, 23, 42, 0.10);
+    --b2-seg-thumb-bg: #ffffff;
+    --b2-seg-thumb-border: rgba(15, 23, 42, 0.16);
+    --b2-seg-thumb-shadow: 0 1px 3px rgba(15, 23, 42, 0.12), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+    --b2-seg-unselected-fg: #475569;
+
+    --shadow-popup: 0 12px 32px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.06);
+    --shadow-modal: 0 24px 60px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.08);
+    --shadow-chip: 0 1px 2px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.05);
+  }
+
+  [data-theme="dark"] {
+    --surface-canvas: #191919;
+    --surface-content: #191919;
+    --surface-chrome: #242424;
+    --surface-statusbar: #202020;
+    --surface-field: #1c1c1c;
+    --surface-field-focus: #292929;
+    --surface-card: #1c1c1c;
+    --surface-chip-selected: #353535;
+    --surface-raised: #2c2c2c;
+    --surface-dialog: #262626;
+    --surface-backdrop: rgba(0, 0, 0, 0.62);
+
+    --text-primary: #f2f2f2;
+    --text-secondary: #cecece;
+    --text-muted: #adadad;
+    --text-disabled: #626262;
+    --text-on-accent: #ffffff;
+    --icon-default: #bdbdbd;
+
+    --accent-fg: #76b8ff;
+    --accent-soft: rgba(59, 130, 246, 0.20);
+    --focus-ring: #60a5fa;
+    --focus-halo: rgba(96, 165, 250, 0.32);
+
+    --state-hover: rgba(255, 255, 255, 0.06);
+    --state-pressed: rgba(255, 255, 255, 0.11);
+
+    --nav-current-bg: #245cce;
+    --nav-current-fg: #ffffff;
+    --nav-current-caption: rgba(255, 255, 255, 0.85);
+    --nav-current-meter-track: rgba(255, 255, 255, 0.25);
+    --nav-current-meter-fill: #ffffff;
+
+    --selection-bg: #25344c;
+    --selection-border: rgba(96, 165, 250, 0.56);
+    --selection-fg: #fafafa;
+    --selection-fg-secondary: #cecece;
+
+    --tab-bg: rgba(29, 29, 29, 0.54);
+    --tab-border: rgba(180, 180, 180, 0.10);
+    --tab-fg: #cecece;
+    --tab-hover-bg: rgba(45, 45, 45, 0.76);
+    --tab-active-bg: #343434;
+    --tab-active-border: rgba(255, 255, 255, 0.28);
+
+    --button-bg: #333333;
+    --button-border: rgba(180, 180, 180, 0.24);
+    --button-fg: #f2f2f2;
+    --button-hover-bg: #3e3e3e;
+    --button-primary-bg: #2563eb;
+    --button-primary-hover-bg: #3b82f6;
+
+    --badge-bg: rgba(255, 255, 255, 0.06);
+    --badge-border: rgba(255, 255, 255, 0.15);
+    --badge-fg: #cecece;
+
+    --border-subtle: rgba(180, 180, 180, 0.12);
+    --border-default: rgba(180, 180, 180, 0.16);
+    --border-content: rgba(180, 180, 180, 0.18);
+    --border-card: rgba(180, 180, 180, 0.14);
+    --border-statusbar: rgba(180, 180, 180, 0.15);
+    --border-dialog: rgba(180, 180, 180, 0.22);
+
+    --meter-fill: #3b82f6;
+    --meter-warn: #f59e0b;
+    --meter-track: rgba(148, 163, 184, 0.22);
+    --scrollbar-thumb: rgba(180, 180, 180, 0.28);
+    --danger-fg: #e5736b;
+    --success-fg: #4ade80;
+    --success-bg: rgba(74, 222, 128, 0.14);
+    --off-track-improved: rgba(255, 255, 255, 0.14);
+    --off-track-border-improved: rgba(255, 255, 255, 0.22);
+
+    --b2-seg-track: #1b1b1b;
+    --b2-seg-track-border: rgba(255, 255, 255, 0.12);
+    --b2-seg-thumb-bg: #3d3d3d;
+    --b2-seg-thumb-border: rgba(255, 255, 255, 0.26);
+    --b2-seg-thumb-shadow: 0 2px 5px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+    --b2-seg-unselected-fg: #adadad;
+
+    --shadow-popup: 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.32);
+    --shadow-modal: 0 28px 70px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.35);
+    --shadow-chip: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  /* =========================================================
+     2. Motion Tokens (dynamically scaled by JS controls)
+     ========================================================= */
+  :root {
+    --anim-scale: 1;
+    --dur-hover: calc(75ms * var(--anim-scale));
+    --dur-popup: calc(120ms * var(--anim-scale));
+    --dur-modal: calc(140ms * var(--anim-scale));
+    --dur-backdrop: calc(110ms * var(--anim-scale));
+    --dur-switch: calc(140ms * var(--anim-scale));
+    --dur-pill: calc(130ms * var(--anim-scale));
+    --dur-pane: calc(130ms * var(--anim-scale));
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-spring: cubic-bezier(0.25, 1.15, 0.4, 1);
+    --popup-offset: -6px;
+    --modal-offset: 8px;
+  }
+
+  * {
+    box-sizing: border-box;
+    user-select: none;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, -apple-system, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    overflow: hidden;
+  }
+
+  .workbench {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* =========================================================
+     3. Review Control Bar (outside app chrome)
+     ========================================================= */
+  .review-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 8px 14px;
+    background: #141922;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 12px;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+
+  .review-title {
+    font-weight: 700;
+    font-size: 12.5px;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 4px;
+  }
+
+  .review-title .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3b82f6;
+  }
+
+  .ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: opacity 120ms ease;
+  }
+  .ctrl-group.dimmed {
+    opacity: 0.45;
+  }
+
+  .ctrl-label {
+    font-size: 11px;
+    color: #94a3b8;
+    padding: 0 6px 0 4px;
+    white-space: nowrap;
+  }
+
+  .ctrl-btn {
+    border: none;
+    background: transparent;
+    color: #cbd5e1;
+    font-family: inherit;
+    font-size: 11.5px;
+    padding: 4px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 90ms ease, color 90ms ease;
+  }
+
+  .ctrl-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+  }
+
+  .ctrl-btn.active {
+    background: #2563eb;
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  .ctrl-btn.action-replay {
+    background: rgba(59, 130, 246, 0.18);
+    color: #93c5fd;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    font-weight: 600;
+  }
+  .ctrl-btn.action-replay:hover {
+    background: rgba(59, 130, 246, 0.3);
+    color: #ffffff;
+  }
+
+  .review-note-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 14px;
+    background: #1b2230;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 11.5px;
+    color: #cbd5e1;
+    flex-shrink: 0;
+  }
+
+  .review-note-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 99px;
+    font-size: 10.5px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge-before { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+  .badge-planA { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+  .badge-planB { background: rgba(59, 130, 246, 0.24); color: #93c5fd; }
+  .badge-planB2 { background: rgba(16, 185, 129, 0.22); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.35); }
+
+  /* =========================================================
+     4. Stage & App Window Shell
+     ========================================================= */
+  .stage {
+    flex: 1;
+    min-height: 0;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at top, #1b2332, #0d1117 70%);
+    overflow: hidden;
+  }
+
+  .app-window {
+    position: relative;
+    width: 100%;
+    max-width: 1280px;
+    height: 100%;
+    max-height: 800px;
+    background: var(--surface-canvas);
+    color: var(--text-primary);
+    border-radius: 10px;
+    border: 1px solid var(--border-dialog);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 13.5px;
+  }
+
+  .app-window button:focus-visible,
+  .app-window [tabindex]:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+
+  /* =========================================================
+     5. Title / Tab Bar (apps/explorer/src/explorer.rs)
+     ========================================================= */
+  .titlebar {
+    height: 38px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-end;
+    padding: 6px 8px 2px 10px;
+    gap: 6px;
+    background: var(--surface-canvas);
+  }
+
+  .tab-strip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  .tab-strip::-webkit-scrollbar { display: none; }
+
+  .tab {
+    height: 28px;
+    width: 180px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--tab-border);
+    background: var(--tab-bg);
+    color: var(--tab-fg);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background var(--dur-hover) ease, color var(--dur-hover) ease, border-color var(--dur-hover) ease;
+  }
+
+  .plan-a .tab,
+  .plan-b .tab,
+  .plan-b2 .tab {
+    flex: 0 1 180px;
+    min-width: 104px;
+    width: auto;
+  }
+
+  .tab:hover:not(.active) {
+    background: var(--tab-hover-bg);
+  }
+
+  .tab.active {
+    background: var(--tab-active-bg);
+    border-color: var(--tab-active-border);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .tab-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tab-close {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+  }
+  .tab-close:hover {
+    background: var(--state-pressed);
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--icon-default);
+    cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+    padding: 0;
+    transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease, color var(--dur-hover) ease;
+  }
+  .icon-btn:hover:not(:disabled) {
+    background: var(--state-hover);
+  }
+  .icon-btn:active:not(:disabled) {
+    background: var(--state-pressed);
+  }
+  .icon-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .icon-btn.sm {
+    width: 22px;
+    height: 22px;
+  }
+  .icon-btn.trigger-active {
+    border-color: var(--accent-fg);
+    background: var(--accent-soft);
+    color: var(--accent-fg);
+  }
+
+  .win-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 4px;
+    align-self: center;
+  }
+  .win-btn {
+    width: 34px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    cursor: default;
+  }
+  .win-btn:hover { background: var(--state-hover); }
+  .win-btn.close:hover { background: #c8453b; color: #fff; }
+
+  /* =========================================================
+     6. Toolbar (apps/explorer/src/folder.rs:render_toolbar)
+     ========================================================= */
+  .toolbar-wrap {
+    padding: 0 6px 6px 6px;
+    flex-shrink: 0;
+  }
+
+  .toolbar {
+    height: 44px;
+    padding: 0 10px;
+    background: var(--surface-chrome);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .nav-pill {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: var(--surface-field);
+    border-radius: 18px;
+    padding: 0 3px;
+    height: 36px;
+  }
+
+  .breadcrumbs {
+    flex: 1;
+    min-width: 0;
+    height: 36px;
+    padding: 0 10px;
+    background: var(--surface-field);
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .crumb {
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 13px;
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    white-space: nowrap;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    transition: background var(--dur-hover) ease;
+  }
+  .crumb:hover { background: var(--state-hover); }
+  .crumb.last {
+    background: var(--surface-chip-selected);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .crumb.ellipsis {
+    padding: 0 7px;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .crumb-sep {
+    color: var(--text-disabled);
+    display: inline-flex;
+    align-items: center;
+    margin: 0 2px;
+  }
+
+  .search-pill {
+    width: 240px;
+    height: 36px;
+    padding: 0 12px;
+    background: var(--surface-field);
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    color: var(--icon-default);
+  }
+  .search-pill:focus-within {
+    border-color: var(--focus-ring);
+    background: var(--surface-field-focus);
+  }
+  .search-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    width: 100%;
+    user-select: text;
+  }
+  .search-input::placeholder { color: var(--text-muted); }
+
+  .toolbar-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--border-default);
+    flex-shrink: 0;
+  }
+
+  /* Custom GPUI-like simulated Tooltip */
+  .sim-tooltip {
+    position: absolute;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-dialog);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    color: var(--text-primary);
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 40;
+  }
+
+  /* =========================================================
+     7. Workspace Body: Sidebar + Content + Inspector
+     ========================================================= */
+  .workspace {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 6px;
+    padding: 0 6px 6px 6px;
+  }
+
+  .sidebar {
+    width: 200px;
+    flex-shrink: 0;
+    background: var(--surface-chrome);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    padding: 6px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    color: var(--text-primary);
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+
+  .sidebar-section-title {
+    padding: 2px 10px 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .sidebar-section-title.storage {
+    padding-top: 16px;
+  }
+
+  .side-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 10px;
+    margin-bottom: 3px;
+    border-radius: 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    border: 1px solid transparent;
+    transition: background var(--dur-hover) ease;
+  }
+  .side-item.home-btn {
+    padding: 6px 10px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+  }
+  .side-item:hover:not(.active) {
+    background: var(--state-hover);
+  }
+  .side-item.active {
+    background: var(--nav-current-bg);
+    color: var(--nav-current-fg);
+  }
+  .side-item.drive {
+    align-items: flex-start;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+  .side-item.drive:not(.active) {
+    background: var(--surface-field);
+    border-color: var(--border-subtle);
+  }
+  .side-item-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: inherit;
+  }
+
+  .meter-track {
+    height: 5px;
+    width: 100%;
+    border-radius: 3px;
+    background: var(--meter-track);
+    overflow: hidden;
+    margin-top: 5px;
+  }
+  .side-item.active .meter-track {
+    background: var(--nav-current-meter-track);
+  }
+  .meter-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--meter-fill);
+  }
+  .meter-fill.warn {
+    background: var(--meter-warn);
+  }
+  .side-item.active .meter-fill {
+    background: var(--nav-current-meter-fill);
+  }
+  .drive-cap {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .side-item.active .drive-cap {
+    color: var(--nav-current-caption);
+  }
+
+  /* Main content card */
+  .content-pane {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface-content);
+    color: var(--text-primary);
+    border: 1px solid var(--border-content);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .list-header {
+    height: 28px;
+    flex-shrink: 0;
+    padding: 0 6px;
+    background: var(--surface-chrome);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+  }
+  .col-hdr {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 100%;
+    padding: 0 8px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 12px;
+  }
+  .col-hdr.active { color: var(--accent-fg); }
+
+  .list-body-wrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  .list-rows {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding: 2px 0;
+  }
+  .list-rows::-webkit-scrollbar { display: none; }
+
+  .file-row-outer {
+    height: 28px;
+    padding: 0 12px;
+  }
+  .compact .file-row-outer { height: 24px; }
+
+  .file-row {
+    width: 100%;
+    height: 100%;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease;
+  }
+  .file-row:hover:not(.selected) {
+    background: var(--state-hover);
+  }
+  .file-row.selected {
+    background: var(--selection-bg);
+    border-color: var(--selection-border);
+  }
+  .file-row.selected .file-name {
+    color: var(--selection-fg);
+    font-weight: 600;
+  }
+  .file-row.selected .file-meta {
+    color: var(--selection-fg-secondary);
+  }
+  .file-row.is-hidden .file-name,
+  .gallery-card.is-hidden .gallery-label {
+    opacity: 0.55;
+  }
+
+  .file-name-cell {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13.5px;
+    color: var(--text-primary);
+  }
+  .file-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 0 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .col-mod { width: 144px; flex-shrink: 0; }
+  .col-kind { width: 136px; flex-shrink: 0; }
+  .col-size { width: 92px; flex-shrink: 0; text-align: right; }
+
+  /* Gallery view (matches media_view.rs: ~6 columns, borderless mixed aspect thumbnails, filename below) */
+  .gallery-grid {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding: 12px 10px;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px 8px;
+    align-content: start;
+  }
+  .gallery-grid::-webkit-scrollbar { display: none; }
+  .compact .gallery-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px 6px;
+    padding: 10px 10px;
+  }
+  .gallery-card {
+    border-radius: 6px;
+    padding: 4px;
+    border: 1px solid transparent;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: background var(--dur-hover) ease;
+  }
+  .gallery-card:hover:not(.selected) { background: var(--state-hover); }
+  .gallery-card.selected {
+    background: var(--selection-bg);
+  }
+  .gallery-well {
+    width: 100%;
+    height: 112px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .compact .gallery-well {
+    height: 96px;
+  }
+  .photo-placeholder {
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .photo-placeholder.land {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3 / 2;
+    max-height: 100%;
+  }
+  .photo-placeholder.port {
+    height: 100%;
+    width: auto;
+    aspect-ratio: 2 / 3;
+    max-width: 100%;
+  }
+  .photo-placeholder::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0) 48%, rgba(0,0,0,0.22) 100%);
+    pointer-events: none;
+  }
+  .gallery-label {
+    width: 100%;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gallery-card.selected .gallery-label {
+    color: var(--selection-fg);
+    font-weight: 600;
+  }
+
+  /* Custom scrollbar comparison (scrollbar.rs) */
+  .fake-scrollbar {
+    width: 12px;
+    flex-shrink: 0;
+    padding: 4px 3px;
+    display: flex;
+    justify-content: center;
+  }
+  .fake-thumb {
+    width: 6px;
+    height: 88px;
+    background: var(--text-muted);
+    border-radius: 0;
+  }
+  .plan-a .fake-thumb,
+  .plan-b .fake-thumb,
+  .plan-b2 .fake-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 3px;
+    transition: background var(--dur-hover) ease;
+  }
+  .plan-a .fake-scrollbar:hover .fake-thumb,
+  .plan-b .fake-scrollbar:hover .fake-thumb,
+  .plan-b2 .fake-scrollbar:hover .fake-thumb {
+    background: var(--text-muted);
+  }
+
+  /* Detail Pane / Inspector (Right Pane) */
+  .inspector {
+    width: 268px;
+    flex-shrink: 0;
+    background: var(--surface-chrome);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .inspector.anim-in {
+    animation: paneReveal var(--dur-pane) var(--ease-out);
+  }
+  @keyframes paneReveal {
+    from { opacity: 0; margin-left: 10px; }
+    to { opacity: 1; margin-left: 0; }
+  }
+
+  .inspector-hdr {
+    height: 36px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .inspector-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 18px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .inspector-preview {
+    height: 164px;
+    border-radius: 10px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .inspector-filename {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-all;
+  }
+
+  .inspector-meta-card {
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 12px;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 10px;
+  }
+  .meta-key {
+    width: 50px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+  }
+  .plan-a .meta-key,
+  .plan-b .meta-key,
+  .plan-b2 .meta-key {
+    width: 58px;
+  }
+  .meta-val {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .inspector-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-pill-secondary {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 16px;
+    border: 1px solid var(--button-border);
+    background: var(--button-bg);
+    color: var(--button-fg);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background var(--dur-hover) ease;
+  }
+  .btn-pill-secondary:hover { background: var(--button-hover-bg); }
+
+  /* Statusbar */
+  .statusbar {
+    height: 28px;
+    flex-shrink: 0;
+    padding: 0 10px;
+    background: var(--surface-statusbar);
+    border-top: 1px solid var(--border-statusbar);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .status-sel { color: var(--accent-fg); }
+  .status-spacer { flex: 1; }
+  .status-hidden-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--accent-fg);
+  }
+
+  /* =========================================================
+     8. Display Settings Popup (display_settings.rs)
+        - Mode: before / planA / planB / planB2
+     ========================================================= */
+  .ds-popup {
+    position: absolute;
+    top: 88px;
+    right: 48px;
+    width: 306px;
+    max-height: calc(100% - 122px);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-dialog);
+    border-radius: 8px;
+    box-shadow: var(--shadow-popup);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 30;
+    color: var(--text-primary);
+    font-size: 12px;
+  }
+
+  .plan-a .ds-popup,
+  .plan-b .ds-popup,
+  .plan-b2 .ds-popup {
+    border-radius: 10px;
+    width: 316px;
+  }
+
+  .ds-popup.anim-in {
+    animation: popupReveal var(--dur-popup) var(--ease-out);
+  }
+  @keyframes popupReveal {
+    from { opacity: 0; margin-top: var(--popup-offset); }
+    to { opacity: 1; margin-top: 0; }
+  }
+
+  .ds-hdr {
+    height: 38px;
+    flex-shrink: 0;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .plan-a .ds-hdr,
+  .plan-b .ds-hdr,
+  .plan-b2 .ds-hdr {
+    height: 40px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .plan-b2 .ds-hdr {
+    height: 36px;
+    font-size: 12.5px;
+  }
+
+  .ds-close-before {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    padding: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  .ds-body {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 10px;
+  }
+  .plan-a .ds-body {
+    padding: 6px 0 10px;
+  }
+  .plan-b .ds-body {
+    padding: 10px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .plan-b2 .ds-body {
+    padding: 10px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* --- BEFORE styles (faithful reproduction of bugs) --- */
+  .ds-scope-before {
+    height: 44px;
+    padding: 0 15px;
+    border-top: 1px solid var(--border-default);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+  }
+  .ds-scope-before.tab { background: var(--surface-raised); }
+  .ds-scope-before.win { background: var(--accent-soft); }
+  .ds-scope-before.glob { background: var(--surface-field); }
+
+  .ds-scope-before-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .ds-scope-before.win .ds-scope-before-title { color: var(--accent-fg); }
+  .ds-scope-before-hint {
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+
+  .ds-sec-before {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 4px 12px;
+    background: var(--surface-raised);
+  }
+  .ds-sec-before.density-bg {
+    background: var(--surface-field);
+  }
+  .ds-sec-before-lbl {
+    font-size: 12px;
+    padding-left: 3px;
+    border-left: 2px solid transparent;
+    color: var(--text-primary);
+  }
+  .ds-sec-before-lbl.focused {
+    border-left-color: color-mix(in srgb, var(--accent-fg) 80%, transparent);
+  }
+
+  .ds-pair-before {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    background: var(--surface-field);
+    border-radius: 5px;
+  }
+  .ds-opt-before {
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .ds-opt-before:hover { background: var(--state-hover); }
+  .ds-opt-before.selected {
+    border-color: var(--accent-fg);
+    background: var(--accent-soft);
+    color: var(--accent-fg);
+  }
+
+  .ds-sort-dir-before {
+    padding: 0 12px 6px 12px;
+    border-left: 2px solid transparent;
+  }
+
+  .ds-switch-before {
+    height: 34px;
+    padding: 0 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-primary);
+  }
+  .ds-switch-before.pane-row { background: var(--accent-soft); }
+  .ds-switch-before.hidden-row { background: var(--surface-field); }
+  .ds-switch-before:hover { background: var(--state-hover); }
+
+  .ds-switch-before-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ds-switch-before-txt {
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  /* Toggle tracks */
+  .toggle-track {
+    width: 30px;
+    height: 18px;
+    padding: 3px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    position: relative;
+    border: 1px solid var(--border-default);
+    background: var(--surface-field);
+    transition: background var(--dur-switch) ease, border-color var(--dur-switch) ease;
+    flex-shrink: 0;
+  }
+  .toggle-track.on {
+    background: var(--button-primary-bg);
+    border-color: transparent;
+  }
+  .toggle-knob {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    transform: translateX(0);
+    transition: transform var(--dur-switch) var(--ease-spring), background var(--dur-switch) ease;
+  }
+  .toggle-track.on .toggle-knob {
+    background: var(--text-on-accent);
+    transform: translateX(12px);
+  }
+
+  /* Improved Toggle Track */
+  .plan-a .toggle-track:not(.on),
+  .plan-b .toggle-track:not(.on),
+  .plan-b2 .toggle-track:not(.on) {
+    background: var(--off-track-improved);
+    border-color: var(--off-track-border-improved);
+  }
+
+  /* Large settings toggle */
+  .toggle-track.lg {
+    width: 34px;
+    height: 20px;
+    border-radius: 10px;
+  }
+  .toggle-track.lg .toggle-knob {
+    width: 12px;
+    height: 12px;
+  }
+  .toggle-track.lg.on .toggle-knob {
+    transform: translateX(14px);
+  }
+
+  /* --- PLAN A styles --- */
+  .ds-scope-a {
+    margin: 6px 12px 6px;
+    padding: 6px 8px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .ds-scope-a.first {
+    margin-top: 2px;
+    border-top: none;
+  }
+  .ds-scope-a-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .ds-scope-a-badge.win { color: var(--accent-fg); }
+  .ds-scope-a-hint {
+    font-size: 10.5px;
+    color: var(--text-muted);
+  }
+
+  .ds-sec-a {
+    padding: 4px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ds-sec-a-lbl {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  /* Improved segmented control with sliding pill */
+  .seg-wrap {
+    position: relative;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 7px;
+    background: var(--surface-field);
+    border: 1px solid var(--border-subtle);
+  }
+  .seg-thumb {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    border-radius: 5px;
+    background: var(--surface-chip-selected);
+    box-shadow: var(--shadow-chip);
+    transition: left var(--dur-pill) var(--ease-spring), width var(--dur-pill) var(--ease-spring);
+    pointer-events: none;
+  }
+  .seg-btn {
+    position: relative;
+    z-index: 1;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 11.5px;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 4px;
+    white-space: nowrap;
+    transition: color var(--dur-hover) ease;
+  }
+  .seg-btn:hover:not(.selected) {
+    color: var(--text-primary);
+  }
+  .seg-btn.selected {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .ds-switch-a {
+    margin: 2px 10px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    transition: background var(--dur-hover) ease;
+  }
+  .ds-switch-a:hover {
+    background: var(--state-hover);
+  }
+  .ds-switch-a-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ds-switch-a-title { font-size: 12.5px; font-weight: 500; color: var(--text-primary); }
+  .ds-switch-a-sub { font-size: 10.5px; color: var(--text-muted); }
+
+  /* --- PLAN B styles (preserved for comparison) --- */
+  .ds-b-card {
+    background: var(--surface-field);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .ds-b-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ds-b-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .scope-pill {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 99px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .scope-pill.win {
+    color: var(--accent-fg);
+    border-color: var(--selection-border);
+    background: var(--accent-soft);
+  }
+  .ds-b-card .seg-wrap {
+    background: var(--surface-raised);
+  }
+  .ds-b-switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 2px;
+    cursor: pointer;
+    border-radius: 6px;
+  }
+  .ds-b-switch-row:hover {
+    background: var(--state-hover);
+  }
+
+  /* --- PLAN B2 styles (Refined Flat Layout + High-Contrast Segments + 1-Row Sort) --- */
+  .ds-b2-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 3px 4px;
+    margin: 0 -4px;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+    transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease;
+  }
+  .ds-b2-row.kbd-active {
+    border-left-color: var(--focus-ring);
+    background: var(--state-hover);
+  }
+  .ds-b2-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-height: 18px;
+  }
+  .ds-b2-lbl {
+    width: 82px;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-secondary);
+  }
+  .ds-b2-scope {
+    font-size: 10.5px;
+    font-weight: 400;
+    color: var(--text-muted);
+    white-space: nowrap;
+    cursor: default;
+  }
+  .ds-b2-divider {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 2px 0;
+    flex-shrink: 0;
+  }
+  .ds-b2-switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 30px;
+    padding: 4px 4px;
+    margin: 0 -4px;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+    transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease;
+  }
+  .ds-b2-switch-row:hover {
+    background: var(--state-hover);
+  }
+  .ds-b2-switch-row.kbd-active {
+    border-left-color: var(--focus-ring);
+    background: var(--state-hover);
+  }
+  .ds-b2-switch-left {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* High-contrast segmented control for Plan B2 */
+  .plan-b2 .seg-wrap {
+    background: var(--b2-seg-track);
+    border-color: var(--b2-seg-track-border);
+  }
+  .plan-b2 .seg-thumb {
+    background: var(--b2-seg-thumb-bg);
+    border: 1px solid var(--b2-seg-thumb-border);
+    box-shadow: var(--b2-seg-thumb-shadow);
+  }
+  .plan-b2 .seg-btn {
+    color: var(--b2-seg-unselected-fg);
+    font-weight: 400;
+  }
+  .plan-b2 .seg-btn:hover:not(.selected) {
+    color: var(--text-primary);
+  }
+  .plan-b2 .seg-btn.selected {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .sort-dir-arrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-fg);
+    line-height: 1;
+  }
+
+  .ds-b2-footer-hint {
+    padding: 6px 14px 8px;
+    border-top: 1px solid var(--border-subtle);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: var(--surface-chrome);
+    flex-shrink: 0;
+  }
+
+  /* =========================================================
+     9. Settings Modal (apps/explorer/src/explorer/settings_panel.rs)
+     ========================================================= */
+  .modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: var(--surface-backdrop);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    z-index: 50;
+  }
+  .modal-backdrop.anim-in {
+    animation: backdropFade var(--dur-backdrop) linear;
+  }
+  @keyframes backdropFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .settings-panel {
+    width: 880px;
+    height: 620px;
+    max-width: 100%;
+    max-height: 100%;
+    background: var(--surface-dialog);
+    color: var(--text-primary);
+    border: 1px solid var(--border-dialog);
+    border-radius: 12px;
+    box-shadow: var(--shadow-modal);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .settings-panel.anim-in {
+    animation: modalReveal var(--dur-modal) var(--ease-out);
+  }
+  @keyframes modalReveal {
+    from { opacity: 0; margin-top: var(--modal-offset); }
+    to { opacity: 1; margin-top: 0; }
+  }
+
+  .settings-hdr {
+    padding: 14px 20px;
+    background: var(--surface-chrome);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .settings-hdr-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+  .settings-hdr-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+
+  .settings-main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .settings-nav {
+    width: 166px;
+    flex-shrink: 0;
+    background: var(--surface-chrome);
+    border-right: 1px solid var(--border-subtle);
+    padding: 8px;
+    position: relative;
+    overflow-y: auto;
+  }
+
+  .settings-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 8px;
+    margin-bottom: 4px;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+    font-size: 12px;
+    color: var(--text-primary);
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+    transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
+  }
+  .settings-nav-item:hover:not(.active) { background: var(--state-hover); }
+  .settings-nav-item.active {
+    background: var(--surface-chip-selected);
+    border-left-color: var(--accent-fg);
+    color: var(--accent-fg);
+  }
+  .settings-nav-item svg { color: var(--text-secondary); flex-shrink: 0; }
+  .plan-a .settings-nav-item.active svg,
+  .plan-b .settings-nav-item.active svg,
+  .plan-b2 .settings-nav-item.active svg {
+    color: var(--accent-fg);
+  }
+  .plan-a .settings-nav-item.active,
+  .plan-b .settings-nav-item.active,
+  .plan-b2 .settings-nav-item.active {
+    background: transparent;
+    border-left-color: transparent;
+  }
+  .nav-slider {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    height: 41px;
+    border-radius: 6px;
+    background: var(--surface-chip-selected);
+    border-left: 2px solid var(--accent-fg);
+    box-shadow: var(--shadow-chip);
+    transition: top var(--dur-pill) var(--ease-spring);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .settings-body {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding: 18px 20px;
+    color: var(--text-primary);
+  }
+  .settings-body.anim-in {
+    animation: bodyFade calc(90ms * var(--anim-scale)) ease-out;
+  }
+  @keyframes bodyFade {
+    from { opacity: 0.45; }
+    to { opacity: 1; }
+  }
+
+  .settings-page-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 20px;
+  }
+  .settings-sec-heading {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+  }
+
+  /* Theme & Density Preview Cards */
+  .choice-grid {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+  .choice-card {
+    flex: 1;
+    min-width: 0;
+    padding: 5px;
+    border-radius: 7px;
+    border: 2px solid var(--border-subtle);
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: border-color var(--dur-hover) ease, background var(--dur-hover) ease;
+  }
+  .choice-card:hover { background: var(--state-hover); }
+  .choice-card.selected { border-color: var(--accent-fg); }
+
+  .choice-footer {
+    margin: 8px 0 3px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-primary);
+  }
+  .radio-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--border-default);
+  }
+  .choice-card.selected .radio-dot {
+    border-color: var(--accent-fg);
+    background: var(--accent-fg);
+  }
+
+  .theme-mini {
+    height: 68px;
+    display: flex;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+  }
+  .theme-mini.light-m { --m-chrome: #fafbfd; --m-bg: #ffffff; --m-acc: #2563eb; --m-line: rgba(15,23,42,0.1); }
+  .theme-mini.dark-m { --m-chrome: #242424; --m-bg: #262626; --m-acc: #76b8ff; --m-line: rgba(180,180,180,0.22); }
+  .theme-mini-side { width: 22px; background: var(--m-chrome); }
+  .theme-mini-main { flex: 1; padding: 8px; background: var(--m-bg); }
+  .theme-mini-bar { height: 4px; background: var(--m-acc); margin-bottom: 9px; border-radius: 2px; }
+  .theme-mini-row { height: 3px; background: var(--m-line); margin-bottom: 7px; border-radius: 2px; }
+  .theme-mini.split-m {
+    position: relative;
+  }
+  .theme-mini.split-m .half-l,
+  .theme-mini.split-m .half-r {
+    flex: 1;
+    display: flex;
+  }
+
+  .density-mini {
+    height: 104px;
+    padding: 6px;
+    border-radius: 4px;
+    background: var(--surface-field);
+  }
+  .density-mini-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+
+  /* Settings Toggle Row */
+  .pref-row-before {
+    padding: 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    cursor: pointer;
+    color: var(--text-primary);
+  }
+  .pref-row-before:hover { background: var(--state-hover); }
+
+  .plan-a .pref-row-improved,
+  .plan-b .pref-row-improved,
+  .plan-b2 .pref-row-improved {
+    padding: 14px 12px;
+    margin: 0 -12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background var(--dur-hover) ease;
+  }
+  .plan-a .pref-row-improved:hover,
+  .plan-b .pref-row-improved:hover,
+  .plan-b2 .pref-row-improved:hover {
+    background: var(--state-hover);
+  }
+
+  /* Windows Integration: Before vs Improved */
+  .win-intro {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .win-item-before {
+    margin-top: 24px;
+  }
+  .win-item-before-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .win-item-before-desc { font-size: 12px; color: var(--text-secondary); margin-top: 8px; line-height: 1.5; }
+  .win-item-before-status { font-size: 13px; margin-top: 10px; color: var(--text-primary); }
+  .win-btn-before {
+    display: block;
+    width: 100%;
+    text-align: left;
+    margin-top: 10px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--button-border);
+    background: var(--button-bg);
+    color: var(--button-fg);
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .win-btn-before:hover:not(:disabled) { background: var(--state-hover); }
+  .win-btn-before:disabled { opacity: 0.45; cursor: default; }
+
+  .win-card-list {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .win-card {
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-default);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .win-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .win-card-title { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+  .win-card-desc { font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .status-badge.on {
+    background: var(--success-bg);
+    color: var(--success-fg);
+  }
+  .status-badge.off {
+    background: var(--surface-field);
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle);
+  }
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .win-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-compact-primary {
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 6px;
+    border: none;
+    background: var(--button-primary-bg);
+    color: var(--text-on-accent);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--dur-hover) ease, opacity var(--dur-hover) ease;
+  }
+  .btn-compact-primary:hover:not(:disabled) { background: var(--button-primary-hover-bg); }
+  .btn-compact-primary:disabled { opacity: 0.4; cursor: default; }
+
+  .btn-compact-secondary {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: 1px solid var(--button-border);
+    background: var(--button-bg);
+    color: var(--button-fg);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background var(--dur-hover) ease, opacity var(--dur-hover) ease;
+  }
+  .btn-compact-secondary:hover:not(:disabled) { background: var(--button-hover-bg); }
+  .btn-compact-secondary:disabled { opacity: 0.4; cursor: default; }
+
+  .settings-ftr {
+    padding: 10px 20px;
+    background: var(--surface-chrome);
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .settings-hint { font-size: 11px; color: var(--text-muted); }
+  .btn-done {
+    height: 28px;
+    padding: 0 14px;
+    border-radius: 6px;
+    border: 1px solid var(--button-border);
+    background: var(--button-bg);
+    color: var(--button-fg);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .btn-done:hover { background: var(--state-hover); }
+
+  .kbd-tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 0 5px;
+    border-radius: 4px;
+    background: var(--surface-field);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    margin-left: 6px;
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+<div class="workbench">
+  <!-- Top Review Toolbar -->
+  <div class="review-bar">
+    <div class="review-title"><span class="dot"></span>Skylis UI/UX &amp; モーション比較モック</div>
+
+    <div class="ctrl-group" role="group" aria-label="テーマ">
+      <span class="ctrl-label">テーマ</span>
+      <button class="ctrl-btn active" data-theme-btn="light">ライト</button>
+      <button class="ctrl-btn" data-theme-btn="dark">ダーク</button>
+    </div>
+
+    <div class="ctrl-group" role="group" aria-label="比較案">
+      <span class="ctrl-label">デザイン</span>
+      <button class="ctrl-btn" data-plan-btn="before">現行 (Before)</button>
+      <button class="ctrl-btn" data-plan-btn="planA">案A: 整理・統一</button>
+      <button class="ctrl-btn" data-plan-btn="planB">案B: コンパクト統合</button>
+      <button class="ctrl-btn active" data-plan-btn="planB2">案B2: 磨き込み (最新)</button>
+    </div>
+
+    <div class="ctrl-group" id="b2DensityGroup" role="group" aria-label="B2表示密度比較">
+      <span class="ctrl-label">B2表示密度</span>
+      <button class="ctrl-btn active" data-b2-density-btn="keep">ポップアップに残す</button>
+      <button class="ctrl-btn" data-b2-density-btn="settings">設定画面のみ</button>
+    </div>
+
+    <div class="ctrl-group" role="group" aria-label="シーン">
+      <span class="ctrl-label">表示</span>
+      <button class="ctrl-btn active" data-scene-btn="popup">表示設定ポップアップ</button>
+      <button class="ctrl-btn" data-scene-btn="settings-win">設定: Windows連携</button>
+      <button class="ctrl-btn" data-scene-btn="settings-gen">設定: 外観と表示</button>
+      <button class="ctrl-btn" data-scene-btn="main">メイン画面</button>
+    </div>
+
+    <div class="ctrl-group" role="group" aria-label="アニメーション速度">
+      <span class="ctrl-label">動き</span>
+      <button class="ctrl-btn" data-motion-btn="none">なし</button>
+      <button class="ctrl-btn" data-motion-btn="subtle">控えめ</button>
+      <button class="ctrl-btn active" data-motion-btn="standard">標準 (120ms)</button>
+      <button class="ctrl-btn" data-motion-btn="slow">スロー (0.25x)</button>
+      <button class="ctrl-btn" id="reduceMotionBtn" title="OSの視差・動作低減設定を模擬">Reduce Motion: OFF</button>
+      <button class="ctrl-btn action-replay" id="replayBtn">▶ 出現アニメ再生</button>
+    </div>
+  </div>
+
+  <div class="review-note-strip" id="noteStrip"></div>
+
+  <!-- App Window Container -->
+  <div class="stage">
+    <div class="app-window plan-b2" id="appWindow" data-theme="light">
+      <!-- Titlebar & Tabs -->
+      <div class="titlebar">
+        <div class="tab-strip" id="tabStrip"></div>
+        <button class="icon-btn sm" id="newTabBtn" title="新しいタブ (Ctrl+T)">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>
+        </button>
+        <div class="win-controls">
+          <button class="win-btn" tabindex="-1">─</button>
+          <button class="win-btn" tabindex="-1">□</button>
+          <button class="win-btn close" tabindex="-1">✕</button>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="toolbar-wrap">
+        <div class="toolbar">
+          <div class="nav-pill">
+            <button class="icon-btn" id="navBackBtn" title="戻る (Alt+←)">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3L5 8l5 5"/></svg>
+            </button>
+            <button class="icon-btn" disabled title="進む (Alt+→)">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3l5 5-5 5"/></svg>
+            </button>
+            <button class="icon-btn" title="上へ (Alt+↑)">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9l5-5 5 5M8 4v9"/></svg>
+            </button>
+            <button class="icon-btn" title="更新 (F5)">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 8a5 5 0 1 1-1.3-3.4M13 2.5v2.8h-2.8"/></svg>
+            </button>
+          </div>
+
+          <div class="breadcrumbs" id="breadcrumbs"></div>
+
+          <div class="search-pill">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+            <input class="search-input" id="searchInput" type="text" placeholder="このフォルダーを検索…">
+          </div>
+
+          <div class="toolbar-divider" id="toolbarDivider" style="display:none"></div>
+
+          <button class="icon-btn" id="displayTrigger" title="表示設定">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M2.5 4h11M2.5 8h11M2.5 12h11"/>
+              <circle cx="5.5" cy="4" r="1.4" fill="currentColor"/>
+              <circle cx="10.5" cy="8" r="1.4" fill="currentColor"/>
+              <circle cx="6.5" cy="12" r="1.4" fill="currentColor"/>
+            </svg>
+          </button>
+
+          <button class="icon-btn" id="settingsTrigger" title="設定 (Ctrl+,)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+              <circle cx="8" cy="8" r="2.2"/>
+              <path d="M8 1.8v1.5M8 12.7v1.5M1.8 8h1.5M12.7 8h1.5M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Workspace -->
+      <div class="workspace">
+        <aside class="sidebar" id="sidebar"></aside>
+        <main class="content-pane" id="contentPane"></main>
+        <aside class="inspector" id="inspector"></aside>
+      </div>
+
+      <!-- Status Bar -->
+      <footer class="statusbar" id="statusbar"></footer>
+
+      <!-- Simulated Overlapping Tooltip Bug in Before Mode -->
+      <div class="sim-tooltip" id="simTooltip" style="display:none"></div>
+
+      <!-- Display Settings Popup -->
+      <div class="ds-popup" id="dsPopup" tabindex="-1" role="dialog" aria-label="表示設定" style="display:none"></div>
+
+      <!-- Settings Modal -->
+      <div class="modal-backdrop" id="settingsModal" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const state = {
+    theme: "light",
+    plan: "planB2",      // before | planA | planB | planB2
+    b2ShowDensity: true, // true: ポップアップに残す | false: 設定画面のみ
+    scene: "popup",      // popup | settings-win | settings-gen | main
+    motion: "standard",  // none | subtle | standard | slow
+    reduceMotion: false,
+    activeTab: 0,
+    tabs: [
+      { id: "jpg", label: "JPG", path: ["E:", "camera", "2026-10-24", "JPG"] }
+    ],
+    gallery: true,
+    sortKey: "name",
+    sortAsc: true,
+    pane: true,
+    showHidden: false,
+    compact: false,
+    search: "",
+    selectedFileId: 1,
+    dsOpen: true,
+    b2ActiveRow: "view",
+    settingsOpen: false,
+    settingsCategory: 4, // 0..4
+    copyNoticeTimer: null,
+    copiedFeedback: false,
+    prefs: {
+      themeMode: "light",
+      groupDownloads: true,
+      autoGallery: true,
+      autoSizes: false,
+      highRefresh: true,
+      smoothScroll: true,
+      perfOverlay: false
+    },
+    winIntegration: [
+      { id: "folders", title: "フォルダーをSkylisで開く", desc: "ほかのアプリから通常のフォルダーを開く要求に対応します。explorer.exeを直接指定するアプリや特殊な場所は対象外です。", enabled: false, canRestore: false },
+      { id: "wine", title: "Win+EでSkylisを開く", desc: "WindowsキーとEでSkylisのホームを開きます。フォルダーの関連付けとは独立した設定です。", enabled: true, canRestore: true },
+      { id: "switch", title: "Explorerに切り替えメニューを追加", desc: "フォルダー背景の右クリック（Windows 11では「その他のオプション」）に「Skylisへ切り替え」を追加します。読み込み成功後、呼び出し元が単一タブと確認できたときだけ元のウィンドウを閉じます。", enabled: false, canRestore: false }
+    ],
+    dsAnimateOnce: false,
+    modalAnimateOnce: false,
+    paneAnimateOnce: false,
+    bodyAnimateOnce: false
+  };
+
+  const FILES = [
+    { id: 1,  name: "DSCF3050.JPG", kind: "JPEG 画像", size: 11534336, mod: "2026/10/24 14:32", dir: false, hidden: false, orient: "land", grad: "linear-gradient(145deg, #2b5876, #4e4376)" },
+    { id: 2,  name: "DSCF3051.JPG", kind: "JPEG 画像", size: 9840000,  mod: "2026/10/24 14:33", dir: false, hidden: false, orient: "port", grad: "linear-gradient(155deg, #3a6186, #89253e)" },
+    { id: 3,  name: "DSCF3052.JPG", kind: "JPEG 画像", size: 10420000, mod: "2026/10/24 14:35", dir: false, hidden: false, orient: "land", grad: "linear-gradient(140deg, #134e5e, #71b280)" },
+    { id: 4,  name: "DSCF3053.JPG", kind: "JPEG 画像", size: 12180000, mod: "2026/10/24 14:36", dir: false, hidden: false, orient: "land", grad: "linear-gradient(145deg, #d38312, #a83279)" },
+    { id: 5,  name: "DSCF3054.JPG", kind: "JPEG 画像", size: 8760000,  mod: "2026/10/24 14:38", dir: false, hidden: false, orient: "port", grad: "linear-gradient(160deg, #1e3c72, #2a5298)" },
+    { id: 6,  name: "DSCF3055.JPG", kind: "JPEG 画像", size: 10940000, mod: "2026/10/24 14:40", dir: false, hidden: false, orient: "land", grad: "linear-gradient(135deg, #5f2c82, #49a09d)" },
+    { id: 7,  name: "DSCF3056.JPG", kind: "JPEG 画像", size: 11250000, mod: "2026/10/24 14:42", dir: false, hidden: false, orient: "port", grad: "linear-gradient(160deg, #c94b4b, #4b134f)" },
+    { id: 8,  name: "DSCF3057.JPG", kind: "JPEG 画像", size: 9320000,  mod: "2026/10/24 14:45", dir: false, hidden: false, orient: "land", grad: "linear-gradient(145deg, #2c3e50, #4ca1af)" },
+    { id: 9,  name: "DSCF3058.JPG", kind: "JPEG 画像", size: 13410000, mod: "2026/10/24 14:48", dir: false, hidden: false, orient: "land", grad: "linear-gradient(145deg, #1d4350, #a43931)" },
+    { id: 10, name: "DSCF3059.JPG", kind: "JPEG 画像", size: 8950000,  mod: "2026/10/24 14:51", dir: false, hidden: false, orient: "port", grad: "linear-gradient(155deg, #373b44, #4286f4)" },
+    { id: 11, name: "DSCF3060.JPG", kind: "JPEG 画像", size: 10680000, mod: "2026/10/24 14:54", dir: false, hidden: false, orient: "land", grad: "linear-gradient(140deg, #0f2027, #2c5364)" },
+    { id: 12, name: "DSCF3061.JPG", kind: "JPEG 画像", size: 11890000, mod: "2026/10/24 14:56", dir: false, hidden: false, orient: "land", grad: "linear-gradient(140deg, #654ea3, #eaafc8)" },
+    { id: 13, name: "DSCF3062.JPG", kind: "JPEG 画像", size: 9640000,  mod: "2026/10/24 15:02", dir: false, hidden: false, orient: "port", grad: "linear-gradient(160deg, #11998e, #38ef7d)" },
+    { id: 14, name: "DSCF3063.JPG", kind: "JPEG 画像", size: 12450000, mod: "2026/10/24 15:05", dir: false, hidden: false, orient: "land", grad: "linear-gradient(145deg, #4b6cb7, #182848)" },
+    { id: 15, name: "DSCF3064.JPG", kind: "JPEG 画像", size: 10120000, mod: "2026/10/24 15:09", dir: false, hidden: false, orient: "land", grad: "linear-gradient(145deg, #b24592, #f15f79)" },
+    { id: 16, name: "DSCF3065.JPG", kind: "JPEG 画像", size: 9410000,  mod: "2026/10/24 15:12", dir: false, hidden: false, orient: "port", grad: "linear-gradient(160deg, #3a7bd5, #3a6073)" },
+    { id: 17, name: "DSCF3066.JPG", kind: "JPEG 画像", size: 11710000, mod: "2026/10/24 15:15", dir: false, hidden: false, orient: "land", grad: "linear-gradient(140deg, #56ab2f, #a8e063)" },
+    { id: 18, name: "DSCF3067.JPG", kind: "JPEG 画像", size: 10300000, mod: "2026/10/24 15:19", dir: false, hidden: false, orient: "land", grad: "linear-gradient(145deg, #614385, #516395)" },
+    { id: 19, name: ".skylis-thumbs", kind: "隠しファイル", size: 4096, mod: "2026/10/24 15:20", dir: false, hidden: true, orient: "land", grad: "linear-gradient(145deg, #475569, #64748b)" },
+    { id: 20, name: ".DS_Store", kind: "隠しファイル", size: 6148, mod: "2026/10/24 15:21", dir: false, hidden: true, orient: "land", grad: "linear-gradient(145deg, #475569, #64748b)" }
+  ];
+  const BASE_FOLDER_ITEMS = 128;
+
+  const SETTINGS_CATS = [
+    { id: 0, title: "外観と表示", icon: "desktop", range: [0, 2] },
+    { id: 1, title: "フォルダーと一覧", icon: "folder", range: [2, 5] },
+    { id: 2, title: "描画とスクロール", icon: "activity", range: [5, 7] },
+    { id: 3, title: "開発者向け", icon: "code", range: [7, 8] },
+    { id: 4, title: "Windows連携", icon: "link", range: [8, 8] }
+  ];
+
+  const PREF_ROWS = [
+    { idx: 2, key: "groupDownloads", title: "ダウンロードの日付グループ", desc: "ダウンロードを新しい順に日付でまとめます", onTxt: "有効", offTxt: "無効" },
+    { idx: 3, key: "autoGallery", title: "画像フォルダーの自動ギャラリー", desc: "ファイルの80%以上が画像のときに切り替えます", onTxt: "有効", offTxt: "無効" },
+    { idx: 4, key: "autoSizes", title: "フォルダーサイズの自動計算", desc: "手動は必要なときだけ計算。ネットワークは常に手動です", onTxt: "自動", offTxt: "手動" },
+    { idx: 5, key: "highRefresh", title: "高リフレッシュレート対応", desc: "画面: 約144Hz / OSの描画タイミングに追従", onTxt: "有効", offTxt: "最大60fps" },
+    { idx: 6, key: "smoothScroll", title: "滑らかなスクロール", desc: "一覧とギャラリーのホイール操作を滑らかにします", onTxt: "有効", offTxt: "無効" },
+    { idx: 7, key: "perfOverlay", title: "パフォーマンス表示", desc: "FPSは描画送信回数（表示の更新分を除外）、メモリはアプリ全体の常駐量です", onTxt: "有効", offTxt: "無効" }
+  ];
+
+  const B2_SCOPE_HINTS = {
+    view: "このタブのみに適用（表示形式を切り替え）",
+    sort: "このタブのみに適用 · 選択中の項目を再押しで昇順/降順を反転",
+    pane: "このウィンドウ内の全タブで共有（新規ウィンドウは表示で開始）",
+    hidden: "すべてのウィンドウに即時反映（再起動でリセット）",
+    density: "すべてのウィンドウに保存・反映（設定画面と連動）"
+  };
+
+  function fmtSize(bytes) {
+    if (bytes == null) return "—";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    const mb = bytes / 1048576;
+    if (Math.abs(mb - Math.round(mb)) < 0.05) return Math.round(mb) + " MB";
+    return mb.toFixed(1) + " MB";
+  }
+
+  function svgIcon(name, size) {
+    const s = size || 16;
+    const paths = {
+      home: '<path d="M2.5 7.5L8 2.5l5.5 5v6h-3.8V9.5H6.3v4H2.5z"/>',
+      user: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5c.8-2.4 2.7-3.5 5-3.5s4.2 1.1 5 3.5"/>',
+      folder: '<path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.3 1.5h4.7A1.5 1.5 0 0 1 14 6v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/>',
+      drive: '<rect x="2" y="4" width="12" height="8" rx="1.5"/><circle cx="11.5" cy="9.5" r="0.9" fill="currentColor"/>',
+      x: '<path d="M4 4l8 8M12 4l-8 8"/>',
+      panel: '<rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M10 3v10"/>',
+      restore: '<rect x="3" y="4" width="8" height="8" rx="1.2"/><path d="M5 2.5h7.5A1.5 1.5 0 0 1 14 4v7.5"/>',
+      desktop: '<rect x="2" y="2.5" width="12" height="8.5" rx="1.2"/><path d="M5.5 13.5h5M8 11v2.5"/>',
+      downloads: '<path d="M8 2.5v7.5M5 7.5L8 10.5l3-3M3 13h10"/>',
+      pictures: '<rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="5.5" cy="6.2" r="1"/><path d="M2.5 11.5l3.3-3 2.5 2.2 2.2-2.6 3 3.4"/>',
+      activity: '<path d="M2 8.5h2.5l1.8-4.5 2.6 8 1.9-3.5H14"/>',
+      code: '<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5M9 3l-2 10"/>',
+      link: '<path d="M6.5 9.5l3-3M5 7L3.5 8.5a2.1 2.1 0 0 0 3 3L8 10M11 9l1.5-1.5a2.1 2.1 0 0 0-3-3L8 6"/>',
+      eye: '<path d="M1.8 8S4.2 4 8 4s6.2 4 6.2 4-2.4 4-6.2 4S1.8 8 1.8 8z"/><circle cx="8" cy="8" r="1.8"/>',
+      chevRight: '<path d="M6 3.5L10.5 8 6 12.5"/>'
+    };
+    return `<svg width="${s}" height="${s}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${paths[name] || ""}</svg>`;
+  }
+
+  function applyMotionVars() {
+    const root = document.documentElement;
+    let scale = 1;
+    if (state.reduceMotion || state.motion === "none" || state.plan === "before") {
+      scale = 0;
+    } else if (state.motion === "subtle") {
+      scale = 0.75;
+    } else if (state.motion === "standard") {
+      scale = 1;
+    } else if (state.motion === "slow") {
+      scale = 4;
+    }
+    root.style.setProperty("--anim-scale", String(scale));
+  }
+
+  function updateNoteStrip() {
+    const el = document.getElementById("noteStrip");
+    const planNotes = {
+      before: `<span class="review-note-badge badge-before">現行 (Before)</span> ポップアップの中央に青帯・表示密度で枠消失・ツールチップ重なり・アニメーション無し / Windows連携が幅100%縦積みボタン`,
+      planA: `<span class="review-note-badge badge-planA">案A: 整理・統一</span> 3スコープ構造を維持しつつ背景色汚染を解消。立体セグメント＋Springスライド・120ms出現アニメ・Windows連携カード化`,
+      planB: `<span class="review-note-badge badge-planB">案B: コンパクト統合</span> 見出し帯を廃しインライン範囲ピル化＋並べ替え統合（2段）＋カード枠囲み。設定画面は案Aと同等`,
+      planB2: `<span class="review-note-badge badge-planB2">案B2: 磨き込み (最新)</span> 入れ子枠を廃し細い区切り線に統一・控えめな範囲表記を左軸揃え・並べ替え1段化（再押しで↑↓反転）・×撤去・詳細ペイン表記統一`
+    };
+    el.innerHTML = `<div>${planNotes[state.plan]}</div><div style="color:#94a3b8;white-space:nowrap">Esc / 外側クリックで閉じる · 矢印キー/Enter対応</div>`;
+  }
+
+  function getVisibleFiles() {
+    const q = state.search.trim().toLowerCase();
+    let list = FILES.filter(f => (state.showHidden || !f.hidden) && (!q || f.name.toLowerCase().includes(q)));
+    list.sort((a, b) => {
+      if (a.dir !== b.dir) return a.dir ? -1 : 1;
+      let cmp = 0;
+      if (state.sortKey === "name") cmp = a.name.localeCompare(b.name, "ja");
+      else if (state.sortKey === "modified") cmp = a.mod.localeCompare(b.mod);
+      else if (state.sortKey === "kind") cmp = a.kind.localeCompare(b.kind, "ja");
+      else if (state.sortKey === "size") cmp = (a.size || 0) - (b.size || 0);
+      return state.sortAsc ? cmp : -cmp;
+    });
+    return list;
+  }
+
+  function renderTabs() {
+    const strip = document.getElementById("tabStrip");
+    strip.innerHTML = state.tabs.map((tab, i) => `
+      <div class="tab ${i === state.activeTab ? "active" : ""}" data-tab-idx="${i}">
+        ${svgIcon("folder", 14)}
+        <span class="tab-label">${tab.label}</span>
+        <button class="tab-close" data-close-tab="${i}" title="閉じる">${svgIcon("x", 11)}</button>
+      </div>
+    `).join("");
+
+    strip.querySelectorAll("[data-tab-idx]").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-close-tab]")) return;
+        state.activeTab = Number(el.dataset.tabIdx);
+        state.dsOpen = false;
+        renderAll();
+      });
+    });
+    strip.querySelectorAll("[data-close-tab]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (state.tabs.length <= 1) return;
+        const idx = Number(btn.dataset.closeTab);
+        state.tabs.splice(idx, 1);
+        if (state.activeTab >= state.tabs.length) state.activeTab = state.tabs.length - 1;
+        renderAll();
+      });
+    });
+  }
+
+  function renderBreadcrumbs() {
+    const el = document.getElementById("breadcrumbs");
+    const all = state.tabs[state.activeTab].path;
+    const n = all.length;
+    const isBefore = state.plan === "before";
+
+    const visibleIndices = [];
+    let skipped = false;
+    all.forEach((seg, i) => {
+      if (n <= 5 || i === 0 || i >= n - 3) {
+        visibleIndices.push({ i, seg });
+      } else {
+        skipped = true;
+      }
+    });
+
+    let html = `<span style="color:var(--accent-fg);display:inline-flex;margin-right:6px">${svgIcon("folder", 16)}</span>`;
+    visibleIndices.forEach((item, idx) => {
+      if (idx > 0) {
+        html += `<span class="crumb-sep">${svgIcon("chevRight", 11)}</span>`;
+        if (!isBefore && skipped && idx === 1) {
+          html += `<button class="crumb ellipsis" title="省略された階層">…</button><span class="crumb-sep">${svgIcon("chevRight", 11)}</span>`;
+        }
+      }
+      const isLast = item.i === n - 1;
+      html += `<button class="crumb ${isLast ? "last" : ""}">${item.seg}</button>`;
+    });
+    el.innerHTML = html;
+  }
+
+  function renderSidebar() {
+    const el = document.getElementById("sidebar");
+    const curLabel = state.tabs[state.activeTab].label;
+
+    const favs = [
+      { label: "ユーザーフォルダー", icon: "user" },
+      { label: "デスクトップ", icon: "desktop" },
+      { label: "ドキュメント", icon: "folder" },
+      { label: "ダウンロード", icon: "downloads" },
+      { label: "ピクチャ", icon: "pictures" }
+    ];
+    const drives = [
+      { label: "C:", cap: "空き 405 GB / 1.9 TB", pct: 79, warn: false },
+      { label: "D:", cap: "空き 2.5 TB / 5.5 TB", pct: 55, warn: false },
+      { label: "E:", cap: "空き 71 GB / 1.9 TB", pct: 96, warn: true },
+      { label: "P:", cap: "空き 1007 GB / 1.0 TB", pct: 2, warn: false }
+    ];
+
+    el.innerHTML = `
+      <div class="side-item home-btn">${svgIcon("home", 17)}<span class="side-item-label">ホーム</span></div>
+      <div class="sidebar-section-title">よく使う場所</div>
+      ${favs.map(f => `
+        <div class="side-item ${curLabel === f.label ? "active" : ""}">
+          <span style="color:var(--accent-fg);display:inline-flex">${svgIcon(f.icon, 17)}</span>
+          <span class="side-item-label">${f.label}</span>
+        </div>
+      `).join("")}
+      <div class="sidebar-section-title storage">ストレージ</div>
+      ${drives.map(d => `
+        <div class="side-item drive">
+          <span style="color:var(--accent-fg);margin-top:2px;display:inline-flex">${svgIcon("drive", 17)}</span>
+          <div style="flex:1;min-width:0">
+            <div class="side-item-label">${d.label}</div>
+            <div class="meter-track"><div class="meter-fill ${d.warn ? "warn" : ""}" style="width:${d.pct}%"></div></div>
+            <div class="drive-cap">${d.cap}</div>
+          </div>
+        </div>
+      `).join("")}
+    `;
+  }
+
+  function renderContent() {
+    const pane = document.getElementById("contentPane");
+    const files = getVisibleFiles();
+
+    if (state.gallery) {
+      pane.innerHTML = `
+        <div class="list-body-wrap">
+          <div class="gallery-grid">
+            ${files.map(f => `
+              <div class="gallery-card ${f.id === state.selectedFileId ? "selected" : ""} ${f.hidden ? "is-hidden" : ""}" data-file-id="${f.id}">
+                <div class="gallery-well">
+                  <div class="photo-placeholder ${f.orient}" style="background:${f.grad}"></div>
+                </div>
+                <div class="gallery-label">${f.name}</div>
+              </div>
+            `).join("")}
+          </div>
+          <div class="fake-scrollbar"><div class="fake-thumb"></div></div>
+        </div>
+      `;
+    } else {
+      const arrow = state.sortAsc ? "▲" : "▼";
+      const hdr = (key, label, cls) => `
+        <button class="col-hdr ${state.sortKey === key ? "active" : ""}" data-sort-col="${key}" style="${cls || ""}">
+          <span>${label}</span>
+          ${state.sortKey === key ? `<span style="font-size:9px">${arrow}</span>` : ""}
+        </button>
+      `;
+      pane.innerHTML = `
+        <div class="list-header">
+          <div style="flex:1;min-width:0;padding-left:24px">${hdr("name", "名前")}</div>
+          <div class="col-mod">${hdr("modified", "更新日時")}</div>
+          <div class="col-kind">${hdr("kind", "種類")}</div>
+          <div class="col-size" style="display:flex;justify-content:flex-end">${hdr("size", "サイズ")}</div>
+          <div style="width:12px"></div>
+        </div>
+        <div class="list-body-wrap">
+          <div class="list-rows">
+            ${files.map(f => `
+              <div class="file-row-outer">
+                <div class="file-row ${f.id === state.selectedFileId ? "selected" : ""} ${f.hidden ? "is-hidden" : ""}" data-file-id="${f.id}">
+                  <div class="file-name-cell">
+                    <span style="color:var(--accent-fg);display:inline-flex">${svgIcon("pictures", 16)}</span>
+                    <span class="file-name">${f.name}</span>
+                  </div>
+                  <div class="file-meta col-mod">${f.mod}</div>
+                  <div class="file-meta col-kind">${f.kind}</div>
+                  <div class="file-meta col-size">${fmtSize(f.size)}</div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+          <div class="fake-scrollbar"><div class="fake-thumb"></div></div>
+        </div>
+      `;
+    }
+
+    pane.querySelectorAll("[data-file-id]").forEach(el => {
+      el.addEventListener("click", () => {
+        state.selectedFileId = Number(el.dataset.fileId);
+        renderContent();
+        renderInspector();
+        renderStatusbar();
+      });
+    });
+    pane.querySelectorAll("[data-sort-col]").forEach(el => {
+      el.addEventListener("click", () => {
+        const key = el.dataset.sortCol;
+        if (state.sortKey === key) state.sortAsc = !state.sortAsc;
+        else { state.sortKey = key; state.sortAsc = true; }
+        renderAll();
+      });
+    });
+  }
+
+  function renderInspector() {
+    const el = document.getElementById("inspector");
+    if (!state.pane) {
+      el.style.display = "none";
+      return;
+    }
+    el.style.display = "flex";
+    el.classList.toggle("anim-in", state.paneAnimateOnce);
+    state.paneAnimateOnce = false;
+
+    const file = FILES.find(f => f.id === state.selectedFileId) || FILES[0];
+    const folderPath = state.tabs[state.activeTab].path.join("\\");
+    const fullPath = `${folderPath}\\${file.name}`;
+
+    el.innerHTML = `
+      <div class="inspector-hdr">
+        <button class="icon-btn sm" id="closePaneBtn" title="詳細ペインを閉じる">${svgIcon("x", 13)}</button>
+      </div>
+      <div class="inspector-body">
+        <div class="inspector-preview">
+          <div class="photo-placeholder ${file.orient}" style="background:${file.grad};height:${file.orient === "port" ? "100%" : "auto"};width:${file.orient === "land" ? "82%" : "auto"}"></div>
+        </div>
+        <div class="inspector-filename">${file.name}</div>
+        <div class="inspector-meta-card">
+          <div class="meta-row"><div class="meta-key">サイズ</div><div class="meta-val">${fmtSize(file.size)}</div></div>
+          <div class="meta-row"><div class="meta-key">更新日時</div><div class="meta-val">${file.mod}</div></div>
+          <div class="meta-row"><div class="meta-key">パス</div><div class="meta-val" title="${fullPath}">${fullPath}</div></div>
+        </div>
+        <div class="inspector-actions">
+          <button class="btn-pill-secondary" id="copyPathBtn">${state.copiedFeedback ? "コピーしました" : "パスをコピー"}</button>
+        </div>
+      </div>
+    `;
+    document.getElementById("closePaneBtn").addEventListener("click", () => {
+      state.pane = false;
+      renderAll();
+    });
+    document.getElementById("copyPathBtn").addEventListener("click", () => {
+      state.copiedFeedback = true;
+      renderInspector();
+      clearTimeout(state.copyNoticeTimer);
+      state.copyNoticeTimer = setTimeout(() => {
+        state.copiedFeedback = false;
+        renderInspector();
+      }, 1200);
+    });
+  }
+
+  function renderStatusbar() {
+    const el = document.getElementById("statusbar");
+    const files = getVisibleFiles();
+    const sel = files.find(f => f.id === state.selectedFileId);
+    const totalCount = state.search.trim()
+      ? files.length
+      : BASE_FOLDER_ITEMS + (state.showHidden ? 2 : 0);
+    el.innerHTML = `
+      <span>${totalCount} 項目</span>
+      ${sel ? `<span class="status-sel">1 項目を選択${sel.size != null ? " · " + fmtSize(sel.size) : ""}</span>` : ""}
+      <span class="status-spacer"></span>
+      ${state.showHidden ? `<span class="status-hidden-badge">${svgIcon("eye", 13)} 隠しファイル表示中</span>` : ""}
+    `;
+  }
+
+  function createSegmented(id, options, selectedValue, extraAttrs) {
+    const idx = Math.max(0, options.findIndex(o => o.value === selectedValue));
+    const count = options.length;
+    const widthPct = `calc((100% - 6px - ${(count - 1) * 2}px) / ${count})`;
+    const leftExpr = `calc(3px + ${idx} * ((100% - 6px - ${(count - 1) * 2}px) / ${count} + 2px))`;
+    return `
+      <div class="seg-wrap" data-seg-id="${id}" ${extraAttrs || ""}>
+        <div class="seg-thumb" style="width:${widthPct};left:${leftExpr}"></div>
+        ${options.map(o => {
+          const isSel = o.value === selectedValue;
+          const titleAttr = o.title ? ` title="${o.title}"` : "";
+          const ariaAttr = o.ariaLabel ? ` aria-label="${o.ariaLabel}"` : "";
+          return `
+            <button type="button" class="seg-btn ${isSel ? "selected" : ""}" data-seg-opt="${o.value}" aria-pressed="${isSel}"${titleAttr}${ariaAttr}>
+              ${o.html || o.label}
+            </button>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  function getB2SortOptions() {
+    const arrow = state.sortAsc ? "↑" : "↓";
+    const dirName = state.sortAsc ? "昇順" : "降順";
+    const nextDirName = state.sortAsc ? "降順" : "昇順";
+    return [
+      { value: "name", label: "名前" },
+      { value: "modified", label: "更新日" },
+      { value: "kind", label: "種類" },
+      { value: "size", label: "サイズ" }
+    ].map(o => {
+      const isSel = o.value === state.sortKey;
+      const html = isSel
+        ? `<span>${o.label}</span><span class="sort-dir-arrow" aria-hidden="true">${arrow}</span>`
+        : `<span>${o.label}</span>`;
+      const title = isSel
+        ? `${o.label}（現在: ${dirName} · もう一度押すと${nextDirName}に反転）`
+        : `${o.label}で並べ替え（選択中の項目を再押しで昇順/降順を反転）`;
+      const ariaLabel = isSel
+        ? `${o.label} ${dirName} もう一度押すと${nextDirName}に反転`
+        : `${o.label}`;
+      return { value: o.value, label: o.label, html, title, ariaLabel };
+    });
+  }
+
+  function updateB2SortVisuals(seg) {
+    const opts = getB2SortOptions();
+    const btns = Array.from(seg.querySelectorAll("[data-seg-opt]"));
+    const idx = Math.max(0, opts.findIndex(o => o.value === state.sortKey));
+    const count = btns.length;
+    btns.forEach((btn, i) => {
+      const o = opts[i];
+      const isSel = o.value === state.sortKey;
+      btn.classList.toggle("selected", isSel);
+      btn.setAttribute("aria-pressed", String(isSel));
+      btn.setAttribute("title", o.title);
+      btn.setAttribute("aria-label", o.ariaLabel);
+      btn.innerHTML = o.html;
+    });
+    const thumb = seg.querySelector(".seg-thumb");
+    if (thumb) {
+      thumb.style.left = `calc(3px + ${idx} * ((100% - 6px - ${(count - 1) * 2}px) / ${count} + 2px))`;
+    }
+  }
+
+  function updateB2Hint(rowId) {
+    const hintEl = document.getElementById("b2FooterHint");
+    if (!hintEl) return;
+    hintEl.textContent = B2_SCOPE_HINTS[rowId] || "↑↓ 移動 · ←→/Enter 操作 · Esc 閉じる";
+  }
+
+  function getB2RowsOrder() {
+    return state.b2ShowDensity
+      ? ["view", "sort", "pane", "hidden", "density"]
+      : ["view", "sort", "pane", "hidden"];
+  }
+
+  function setB2ActiveRow(rowId, focusControl) {
+    const popup = document.getElementById("dsPopup");
+    if (!popup || state.plan !== "planB2") return;
+    state.b2ActiveRow = rowId;
+    popup.querySelectorAll("[data-b2-row]").forEach(r => {
+      r.classList.toggle("kbd-active", r.dataset.b2Row === rowId);
+    });
+    updateB2Hint(rowId);
+    if (focusControl) {
+      const rowEl = popup.querySelector(`[data-b2-row="${rowId}"]`);
+      if (!rowEl) return;
+      const target = rowEl.querySelector(".seg-btn.selected") || rowEl.querySelector("button") || rowEl;
+      if (target && typeof target.focus === "function") {
+        target.focus({ preventScroll: true });
+      }
+    }
+  }
+
+  function renderDisplayPopup() {
+    const popup = document.getElementById("dsPopup");
+    const trigger = document.getElementById("displayTrigger");
+    const tooltip = document.getElementById("simTooltip");
+    trigger.classList.toggle("trigger-active", state.dsOpen);
+
+    if (!state.dsOpen) {
+      popup.style.display = "none";
+      tooltip.style.display = "none";
+      return;
+    }
+
+    popup.style.display = "flex";
+    popup.classList.toggle("anim-in", state.dsAnimateOnce && state.plan !== "before");
+    state.dsAnimateOnce = false;
+
+    if (state.plan === "before") {
+      tooltip.style.display = "block";
+      tooltip.textContent = "表示設定";
+      tooltip.style.top = "82px";
+      tooltip.style.right = "40px";
+    } else {
+      tooltip.style.display = "none";
+    }
+
+    const sorts = [
+      { value: "name", label: "名前" },
+      { value: "modified", label: "更新日" },
+      { value: "kind", label: "種類" },
+      { value: "size", label: "サイズ" }
+    ];
+    const views = [
+      { value: false, label: "≡ 詳細" },
+      { value: true, label: "▦ ギャラリー" }
+    ];
+    const dirs = [
+      { value: true, label: "↑ 昇順" },
+      { value: false, label: "↓ 降順" }
+    ];
+    const densities = [
+      { value: false, label: "標準" },
+      { value: true, label: "コンパクト" }
+    ];
+
+    if (state.plan === "before") {
+      popup.innerHTML = `
+        <div class="ds-hdr">
+          <span>表示設定</span>
+          <button class="ds-close-before" id="dsCloseBtn">×</button>
+        </div>
+        <div class="ds-body">
+          <div class="ds-scope-before tab">
+            <div class="ds-scope-before-title">${svgIcon("folder", 13)} このタブ</div>
+            <div class="ds-scope-before-hint">開いているタブに適用</div>
+          </div>
+          <div class="ds-sec-before">
+            <div class="ds-sec-before-lbl focused">表示形式</div>
+            <div class="ds-pair-before">
+              ${views.map(v => `<button class="ds-opt-before ${state.gallery === v.value ? "selected" : ""}" data-ds-view="${v.value}">${v.label}</button>`).join("")}
+            </div>
+          </div>
+          <div class="ds-sec-before">
+            <div class="ds-sec-before-lbl">並べ替え</div>
+            <div class="ds-pair-before">
+              ${sorts.map(s => `<button class="ds-opt-before ${state.sortKey === s.value ? "selected" : ""}" data-ds-sort="${s.value}">${s.label}</button>`).join("")}
+            </div>
+          </div>
+          <div class="ds-sort-dir-before">
+            <div class="ds-pair-before">
+              ${dirs.map(d => `<button class="ds-opt-before ${state.sortAsc === d.value ? "selected" : ""}" data-ds-dir="${d.value}">${d.label}</button>`).join("")}
+            </div>
+          </div>
+          <div class="ds-scope-before win">
+            <div class="ds-scope-before-title">${svgIcon("panel", 13)} このウィンドウ</div>
+            <div class="ds-scope-before-hint">このウィンドウの全タブに適用</div>
+          </div>
+          <div class="ds-switch-before pane-row" data-ds-toggle="pane">
+            <span>詳細ペイン</span>
+            <div class="ds-switch-before-right">
+              <span class="ds-switch-before-txt">${state.pane ? "表示" : "非表示"}</span>
+              <div class="toggle-track ${state.pane ? "on" : ""}"><div class="toggle-knob"></div></div>
+            </div>
+          </div>
+          <div class="ds-scope-before glob">
+            <div class="ds-scope-before-title">${svgIcon("restore", 13)} すべてのウィンドウ</div>
+            <div class="ds-scope-before-hint">他のウィンドウにも反映</div>
+          </div>
+          <div class="ds-switch-before hidden-row" data-ds-toggle="hidden">
+            <span>隠しファイル</span>
+            <div class="ds-switch-before-right">
+              <span class="ds-switch-before-txt">${state.showHidden ? "表示" : "非表示"}</span>
+              <div class="toggle-track ${state.showHidden ? "on" : ""}"><div class="toggle-knob"></div></div>
+            </div>
+          </div>
+          <div class="ds-sec-before density-bg">
+            <div class="ds-sec-before-lbl">表示密度</div>
+            <div class="ds-pair-before">
+              ${densities.map(d => `<button class="ds-opt-before ${state.compact === d.value ? "selected" : ""}" data-ds-density="${d.value}">${d.label}</button>`).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (state.plan === "planA") {
+      popup.innerHTML = `
+        <div class="ds-hdr">
+          <span>表示設定</span>
+          <button class="icon-btn sm" id="dsCloseBtn" title="閉じる (Esc)">${svgIcon("x", 13)}</button>
+        </div>
+        <div class="ds-body">
+          <div class="ds-scope-a first">
+            <span class="ds-scope-a-badge">${svgIcon("folder", 13)} このタブ</span>
+            <span class="ds-scope-a-hint">現在のタブのみ</span>
+          </div>
+          <div class="ds-sec-a">
+            <div class="ds-sec-a-lbl">表示形式</div>
+            ${createSegmented("view", views, state.gallery)}
+          </div>
+          <div class="ds-sec-a">
+            <div class="ds-sec-a-lbl">並べ替え</div>
+            ${createSegmented("sort", sorts, state.sortKey)}
+            ${createSegmented("dir", dirs, state.sortAsc)}
+          </div>
+
+          <div class="ds-scope-a">
+            <span class="ds-scope-a-badge win">${svgIcon("panel", 13)} このウィンドウ</span>
+            <span class="ds-scope-a-hint">ウィンドウ内の全タブ</span>
+          </div>
+          <div class="ds-switch-a" data-ds-toggle="pane">
+            <div class="ds-switch-a-text">
+              <div class="ds-switch-a-title">詳細ペイン（インスペクタ）</div>
+              <div class="ds-switch-a-sub">右側にプレビューと詳細情報を表示</div>
+            </div>
+            <div class="toggle-track ${state.pane ? "on" : ""}"><div class="toggle-knob"></div></div>
+          </div>
+
+          <div class="ds-scope-a">
+            <span class="ds-scope-a-badge">${svgIcon("restore", 13)} すべてのウィンドウ</span>
+            <span class="ds-scope-a-hint">他ウィンドウへ反映</span>
+          </div>
+          <div class="ds-switch-a" data-ds-toggle="hidden">
+            <div class="ds-switch-a-text">
+              <div class="ds-switch-a-title">隠しファイルを表示</div>
+              <div class="ds-switch-a-sub">ドット始まり・システム属性の項目</div>
+            </div>
+            <div class="toggle-track ${state.showHidden ? "on" : ""}"><div class="toggle-knob"></div></div>
+          </div>
+          <div class="ds-sec-a" style="padding-top:6px">
+            <div class="ds-sec-a-lbl">表示密度</div>
+            ${createSegmented("density", densities, state.compact)}
+          </div>
+        </div>
+      `;
+    } else if (state.plan === "planB") {
+      // Plan B: Preserved as-is for comparison with Plan B2
+      popup.innerHTML = `
+        <div class="ds-hdr">
+          <span>表示設定</span>
+          <button class="icon-btn sm" id="dsCloseBtn" title="閉じる (Esc)">${svgIcon("x", 13)}</button>
+        </div>
+        <div class="ds-body">
+          <div class="ds-b-card">
+            <div class="ds-b-head">
+              <span class="ds-b-title">表示形式</span>
+              <span class="scope-pill">このタブ</span>
+            </div>
+            ${createSegmented("view", views, state.gallery)}
+          </div>
+
+          <div class="ds-b-card">
+            <div class="ds-b-head">
+              <span class="ds-b-title">並べ替え</span>
+              <span class="scope-pill">このタブ</span>
+            </div>
+            ${createSegmented("sort", sorts, state.sortKey)}
+            ${createSegmented("dir", dirs, state.sortAsc)}
+          </div>
+
+          <div class="ds-b-card">
+            <div class="ds-b-switch-row" data-ds-toggle="pane">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span class="ds-b-title">インスペクタ</span>
+                <span class="scope-pill win">この窓</span>
+              </div>
+              <div class="toggle-track ${state.pane ? "on" : ""}"><div class="toggle-knob"></div></div>
+            </div>
+            <div class="ds-b-switch-row" data-ds-toggle="hidden">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span class="ds-b-title">隠しファイル</span>
+                <span class="scope-pill">全窓</span>
+              </div>
+              <div class="toggle-track ${state.showHidden ? "on" : ""}"><div class="toggle-knob"></div></div>
+            </div>
+            <div class="ds-b-head" style="margin-top:2px">
+              <span class="ds-b-title">表示密度</span>
+              <span class="scope-pill">全窓</span>
+            </div>
+            ${createSegmented("density", densities, state.compact)}
+          </div>
+        </div>
+      `;
+    } else {
+      // Plan B2: Refined flat hierarchy, aligned plain scope text, high-contrast segments, 1-row sort, no × button, 詳細ペイン
+      const activeRow = getB2RowsOrder().includes(state.b2ActiveRow) ? state.b2ActiveRow : "view";
+      state.b2ActiveRow = activeRow;
+      popup.innerHTML = `
+        <div class="ds-hdr">
+          <span>表示設定</span>
+        </div>
+        <div class="ds-body">
+          <div class="ds-b2-row ${activeRow === "view" ? "kbd-active" : ""}" data-b2-row="view">
+            <div class="ds-b2-head">
+              <span class="ds-b2-lbl">表示形式</span>
+              <span class="ds-b2-scope" title="${B2_SCOPE_HINTS.view}">このタブ</span>
+            </div>
+            ${createSegmented("view", views, state.gallery)}
+          </div>
+
+          <div class="ds-b2-row ${activeRow === "sort" ? "kbd-active" : ""}" data-b2-row="sort">
+            <div class="ds-b2-head">
+              <span class="ds-b2-lbl">並べ替え</span>
+              <span class="ds-b2-scope" title="${B2_SCOPE_HINTS.sort}">このタブ</span>
+            </div>
+            ${createSegmented("sort-b2", getB2SortOptions(), state.sortKey)}
+          </div>
+
+          <div class="ds-b2-divider"></div>
+
+          <div class="ds-b2-switch-row ${activeRow === "pane" ? "kbd-active" : ""}" data-b2-row="pane" data-ds-toggle="pane" tabindex="0" role="switch" aria-checked="${state.pane}" aria-label="詳細ペイン（このウィンドウ）" title="${B2_SCOPE_HINTS.pane}">
+            <div class="ds-b2-switch-left">
+              <span class="ds-b2-lbl">詳細ペイン</span>
+              <span class="ds-b2-scope">このウィンドウ</span>
+            </div>
+            <div class="toggle-track ${state.pane ? "on" : ""}"><div class="toggle-knob"></div></div>
+          </div>
+
+          <div class="ds-b2-divider"></div>
+
+          <div class="ds-b2-switch-row ${activeRow === "hidden" ? "kbd-active" : ""}" data-b2-row="hidden" data-ds-toggle="hidden" tabindex="0" role="switch" aria-checked="${state.showHidden}" aria-label="隠しファイル（すべてのウィンドウ）" title="${B2_SCOPE_HINTS.hidden}">
+            <div class="ds-b2-switch-left">
+              <span class="ds-b2-lbl">隠しファイル</span>
+              <span class="ds-b2-scope">すべてのウィンドウ</span>
+            </div>
+            <div class="toggle-track ${state.showHidden ? "on" : ""}"><div class="toggle-knob"></div></div>
+          </div>
+
+          ${state.b2ShowDensity ? `
+            <div class="ds-b2-row ${activeRow === "density" ? "kbd-active" : ""}" data-b2-row="density">
+              <div class="ds-b2-head">
+                <span class="ds-b2-lbl">表示密度</span>
+                <span class="ds-b2-scope" title="${B2_SCOPE_HINTS.density}">すべてのウィンドウ</span>
+              </div>
+              ${createSegmented("density", densities, state.compact)}
+            </div>
+          ` : ""}
+        </div>
+        <div class="ds-b2-footer-hint">
+          <span id="b2FooterHint">${B2_SCOPE_HINTS[activeRow]}</span>
+        </div>
+      `;
+    }
+
+    // Bind events inside popup
+    const closeBtn = document.getElementById("dsCloseBtn");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => {
+        state.dsOpen = false;
+        state.scene = "main";
+        syncTopBar();
+        renderDisplayPopup();
+      });
+    }
+
+    // Before buttons
+    popup.querySelectorAll("[data-ds-view]").forEach(b => b.addEventListener("click", () => {
+      state.gallery = b.dataset.dsView === "true";
+      renderDisplayPopup(); renderContent();
+    }));
+    popup.querySelectorAll("[data-ds-sort]").forEach(b => b.addEventListener("click", () => {
+      state.sortKey = b.dataset.dsSort;
+      renderDisplayPopup(); renderContent();
+    }));
+    popup.querySelectorAll("[data-ds-dir]").forEach(b => b.addEventListener("click", () => {
+      state.sortAsc = b.dataset.dsDir === "true";
+      renderDisplayPopup(); renderContent();
+    }));
+    popup.querySelectorAll("[data-ds-density]").forEach(b => b.addEventListener("click", () => {
+      state.compact = b.dataset.dsDensity === "true";
+      renderAll();
+    }));
+
+    // Improved segmented controls
+    popup.querySelectorAll("[data-seg-id]").forEach(seg => {
+      const id = seg.dataset.segId;
+      seg.querySelectorAll("[data-seg-opt]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const val = btn.dataset.segOpt;
+          if (id === "sort-b2") {
+            if (state.sortKey === val) {
+              state.sortAsc = !state.sortAsc;
+            } else {
+              state.sortKey = val;
+              state.sortAsc = true;
+            }
+            updateB2SortVisuals(seg);
+            renderContent();
+            setB2ActiveRow("sort", false);
+            return;
+          }
+          if (id === "view") { state.gallery = val === "true"; renderContent(); }
+          else if (id === "sort") { state.sortKey = val; renderContent(); }
+          else if (id === "dir") { state.sortAsc = val === "true"; renderContent(); }
+          else if (id === "density") { state.compact = val === "true"; applyCompactClass(); renderContent(); }
+
+          const btns = Array.from(seg.querySelectorAll("[data-seg-opt]"));
+          const idx = btns.indexOf(btn);
+          const count = btns.length;
+          btns.forEach(x => {
+            const sel = x === btn;
+            x.classList.toggle("selected", sel);
+            x.setAttribute("aria-pressed", String(sel));
+          });
+          const thumb = seg.querySelector(".seg-thumb");
+          if (thumb) {
+            thumb.style.left = `calc(3px + ${idx} * ((100% - 6px - ${(count - 1) * 2}px) / ${count} + 2px))`;
+          }
+        });
+      });
+    });
+
+    // Switches
+    popup.querySelectorAll("[data-ds-toggle]").forEach(row => {
+      row.addEventListener("click", () => {
+        const t = row.dataset.dsToggle;
+        if (t === "pane") {
+          state.pane = !state.pane;
+          state.paneAnimateOnce = state.pane && state.plan !== "before";
+          renderInspector();
+        } else {
+          state.showHidden = !state.showHidden;
+          renderContent();
+          renderStatusbar();
+        }
+        const on = t === "pane" ? state.pane : state.showHidden;
+        const track = row.querySelector(".toggle-track");
+        if (track) track.classList.toggle("on", on);
+        if (row.hasAttribute("aria-checked")) row.setAttribute("aria-checked", String(on));
+        const txt = row.querySelector(".ds-switch-before-txt");
+        if (txt) txt.textContent = on ? "表示" : "非表示";
+        if (state.plan === "before" && t === "pane") renderDisplayPopup();
+        if (state.plan === "planB2") setB2ActiveRow(t, false);
+      });
+    });
+
+    // Plan B2 hover & focus tracking for scope hints
+    if (state.plan === "planB2") {
+      popup.querySelectorAll("[data-b2-row]").forEach(rowEl => {
+        const rowId = rowEl.dataset.b2Row;
+        rowEl.addEventListener("mouseenter", () => updateB2Hint(rowId));
+        rowEl.addEventListener("focusin", () => setB2ActiveRow(rowId, false));
+      });
+    }
+  }
+
+  function renderSettingsModal() {
+    const modal = document.getElementById("settingsModal");
+    if (!state.settingsOpen) {
+      modal.style.display = "none";
+      return;
+    }
+    const isBefore = state.plan === "before";
+    modal.style.display = "flex";
+    modal.classList.toggle("anim-in", state.modalAnimateOnce && !isBefore);
+
+    const cat = SETTINGS_CATS[state.settingsCategory];
+    const sliderTop = 8 + state.settingsCategory * 45;
+
+    let bodyHtml = `<div class="settings-page-title">${cat.title}</div>`;
+
+    if (cat.id === 4) {
+      bodyHtml += `<div class="win-intro">現在のユーザーに適用します。それぞれ個別に戻せます。登録後はSkylisの実行ファイルを移動しないでください。</div>`;
+      if (isBefore) {
+        bodyHtml += state.winIntegration.map((item, idx) => `
+          <div class="win-item-before">
+            <div class="win-item-before-title">${item.title}</div>
+            <div class="win-item-before-desc">${item.desc}</div>
+            <div class="win-item-before-status">${item.enabled ? "有効" : "無効"}</div>
+            <button class="win-btn-before" data-win-enable="${idx}" ${item.enabled ? "disabled" : ""}>有効にする</button>
+            <button class="win-btn-before" data-win-restore="${idx}" ${!item.canRestore ? "disabled" : ""}>元の設定に戻す</button>
+          </div>
+        `).join("");
+      } else {
+        bodyHtml += `<div class="win-card-list">` + state.winIntegration.map((item, idx) => `
+          <div class="win-card">
+            <div class="win-card-top">
+              <div>
+                <div class="win-card-title">${item.title}</div>
+                <div class="win-card-desc">${item.desc}</div>
+              </div>
+              <span class="status-badge ${item.enabled ? "on" : "off"}">
+                <span class="status-dot"></span>${item.enabled ? "有効" : "無効"}
+              </span>
+            </div>
+            <div class="win-card-actions">
+              <button class="btn-compact-primary" data-win-enable="${idx}" ${item.enabled ? "disabled" : ""}>${item.enabled ? "適用済み" : "有効にする"}</button>
+              <button class="btn-compact-secondary" data-win-restore="${idx}" ${!item.canRestore ? "disabled" : ""}>元の設定に戻す</button>
+            </div>
+          </div>
+        `).join("") + `</div>`;
+      }
+    } else {
+      for (let i = cat.range[0]; i < cat.range[1]; i++) {
+        if (i === 0) {
+          const modes = [
+            { id: "system", label: "システム" },
+            { id: "light", label: "ライト" },
+            { id: "dark", label: "ダーク" }
+          ];
+          bodyHtml += `
+            <div style="margin-bottom:22px">
+              <div class="settings-sec-heading">テーマ${!isBefore ? '<span class="kbd-tag">1</span>' : ""}</div>
+              <div class="choice-grid">
+                ${modes.map(m => {
+                  let preview = "";
+                  if (m.id === "system" && !isBefore) {
+                    preview = `
+                      <div class="theme-mini split-m">
+                        <div class="half-l light-m"><div class="theme-mini-side" style="width:16px"></div><div class="theme-mini-main"><div class="theme-mini-bar"></div><div class="theme-mini-row"></div><div class="theme-mini-row"></div></div></div>
+                        <div class="half-r dark-m"><div class="theme-mini-main"><div class="theme-mini-bar"></div><div class="theme-mini-row"></div><div class="theme-mini-row"></div></div></div>
+                      </div>`;
+                  } else {
+                    const cls = m.id === "dark" ? "dark-m" : (m.id === "system" && state.theme === "dark" ? "dark-m" : "light-m");
+                    preview = `<div class="theme-mini ${cls}"><div class="theme-mini-side"></div><div class="theme-mini-main"><div class="theme-mini-bar"></div><div class="theme-mini-row"></div><div class="theme-mini-row"></div><div class="theme-mini-row"></div></div></div>`;
+                  }
+                  const sel = state.prefs.themeMode === m.id;
+                  return `
+                    <div class="choice-card ${sel ? "selected" : ""}" data-set-theme="${m.id}">
+                      ${preview}
+                      <div class="choice-footer"><span>${m.label}</span><span class="radio-dot"></span></div>
+                    </div>
+                  `;
+                }).join("")}
+              </div>
+              <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">システム設定に追従、ライト、ダークを切り替えます</div>
+            </div>
+          `;
+        } else if (i === 1) {
+          bodyHtml += `
+            <div style="margin-bottom:22px">
+              <div class="settings-sec-heading">表示密度${!isBefore ? '<span class="kbd-tag">2</span>' : ""}</div>
+              <div class="choice-grid">
+                ${[{ c: false, l: "標準" }, { c: true, l: "コンパクト" }].map(d => `
+                  <div class="choice-card ${state.compact === d.c ? "selected" : ""}" data-set-compact="${d.c}">
+                    <div class="density-mini">
+                      ${["Documents", "報告書.pdf", "メモ.txt"].map(n => `
+                        <div class="density-mini-row" style="height:${d.c ? 23 : 30}px">
+                          <span style="width:8px;height:10px;border:1px solid var(--text-muted);display:inline-block"></span>
+                          <span>${n}</span>
+                        </div>
+                      `).join("")}
+                    </div>
+                    <div class="choice-footer"><span>${d.l}</span><span class="radio-dot"></span></div>
+                  </div>
+                `).join("")}
+              </div>
+              <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">ファイル一覧とギャラリーの表示密度</div>
+            </div>
+          `;
+        } else {
+          const row = PREF_ROWS.find(r => r.idx === i);
+          const on = state.prefs[row.key];
+          const rowCls = isBefore ? "pref-row-before" : "pref-row-improved";
+          bodyHtml += `
+            <div class="${rowCls}" data-pref-key="${row.key}">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${row.title}${!isBefore ? `<span class="kbd-tag">${row.idx + 1}</span>` : ""}</div>
+                <div style="margin-top:6px;font-size:11.5px;color:var(--text-muted)">${row.desc}</div>
+                <div style="margin-top:6px;font-size:11px;color:var(--accent-fg)">${on ? row.onTxt : row.offTxt}</div>
+              </div>
+              <div class="toggle-track lg ${on ? "on" : ""}"><div class="toggle-knob"></div></div>
+            </div>
+          `;
+        }
+      }
+    }
+
+    const hintText = isBefore
+      ? "↑↓ カテゴリ · 1〜8 切替 · Esc 閉じる"
+      : (cat.id === 4 ? "↑↓ カテゴリ · Tab 操作移動 · Esc 閉じる" : "↑↓ カテゴリ · 数字キーで項目切替 · Esc 閉じる");
+
+    modal.innerHTML = `
+      <div class="settings-panel ${state.modalAnimateOnce && !isBefore ? "anim-in" : ""}" id="settingsPanel">
+        <div class="settings-hdr">
+          <div>
+            <div class="settings-hdr-title">設定</div>
+            <div class="settings-hdr-sub">変更はすべてのウィンドウに反映され、自動保存されます。</div>
+          </div>
+          <button class="icon-btn" id="closeSettingsBtn" title="設定を閉じる (Esc)">${svgIcon("x", 16)}</button>
+        </div>
+        <div class="settings-main">
+          <nav class="settings-nav" id="settingsNav">
+            ${!isBefore ? `<div class="nav-slider" style="top:${sliderTop}px"></div>` : ""}
+            ${SETTINGS_CATS.map((c, idx) => `
+              <div class="settings-nav-item ${idx === state.settingsCategory ? "active" : ""}" data-cat-idx="${idx}">
+                ${svgIcon(c.icon, 16)}
+                <span>${c.title}</span>
+              </div>
+            `).join("")}
+          </nav>
+          <div class="settings-body ${state.bodyAnimateOnce && !isBefore ? "anim-in" : ""}" id="settingsBody">
+            ${bodyHtml}
+          </div>
+        </div>
+        <div class="settings-ftr">
+          <div class="settings-hint">${hintText}</div>
+          <button class="btn-done" id="settingsDoneBtn">完了</button>
+        </div>
+      </div>
+    `;
+    state.modalAnimateOnce = false;
+    state.bodyAnimateOnce = false;
+
+    document.getElementById("settingsPanel").addEventListener("click", e => e.stopPropagation());
+    document.getElementById("closeSettingsBtn").addEventListener("click", closeSettings);
+    document.getElementById("settingsDoneBtn").addEventListener("click", closeSettings);
+
+    modal.querySelectorAll("[data-cat-idx]").forEach(item => {
+      item.addEventListener("click", () => {
+        const next = Number(item.dataset.catIdx);
+        if (next === state.settingsCategory) return;
+        state.settingsCategory = next;
+        state.bodyAnimateOnce = true;
+        const slider = modal.querySelector(".nav-slider");
+        if (slider) slider.style.top = (8 + next * 45) + "px";
+        renderSettingsModal();
+      });
+    });
+
+    modal.querySelectorAll("[data-set-theme]").forEach(card => {
+      card.addEventListener("click", () => {
+        const m = card.dataset.setTheme;
+        state.prefs.themeMode = m;
+        if (m === "light" || m === "dark") {
+          state.theme = m;
+          syncTopBar();
+        }
+        renderSettingsModal();
+      });
+    });
+
+    modal.querySelectorAll("[data-set-compact]").forEach(card => {
+      card.addEventListener("click", () => {
+        state.compact = card.dataset.setCompact === "true";
+        applyCompactClass();
+        renderContent();
+        if (state.dsOpen) renderDisplayPopup();
+        renderSettingsModal();
+      });
+    });
+
+    modal.querySelectorAll("[data-pref-key]").forEach(row => {
+      row.addEventListener("click", () => {
+        const k = row.dataset.prefKey;
+        state.prefs[k] = !state.prefs[k];
+        const track = row.querySelector(".toggle-track");
+        if (track) track.classList.toggle("on", state.prefs[k]);
+        const meta = PREF_ROWS.find(r => r.key === k);
+        const statusEl = row.querySelector("div > div:nth-child(3)");
+        if (statusEl && meta) statusEl.textContent = state.prefs[k] ? meta.onTxt : meta.offTxt;
+      });
+    });
+
+    modal.querySelectorAll("[data-win-enable]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.dataset.winEnable);
+        state.winIntegration[idx].enabled = true;
+        state.winIntegration[idx].canRestore = true;
+        renderSettingsModal();
+      });
+    });
+    modal.querySelectorAll("[data-win-restore]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.dataset.winRestore);
+        state.winIntegration[idx].enabled = false;
+        state.winIntegration[idx].canRestore = false;
+        renderSettingsModal();
+      });
+    });
+  }
+
+  function closeSettings() {
+    state.settingsOpen = false;
+    state.scene = "main";
+    syncTopBar();
+    renderSettingsModal();
+  }
+
+  function applyCompactClass() {
+    const win = document.getElementById("appWindow");
+    win.classList.toggle("compact", state.compact);
+  }
+
+  function syncTopBar() {
+    document.querySelectorAll("[data-theme-btn]").forEach(b => b.classList.toggle("active", b.dataset.themeBtn === state.theme));
+    document.querySelectorAll("[data-plan-btn]").forEach(b => b.classList.toggle("active", b.dataset.planBtn === state.plan));
+    document.querySelectorAll("[data-scene-btn]").forEach(b => b.classList.toggle("active", b.dataset.sceneBtn === state.scene));
+    document.querySelectorAll("[data-motion-btn]").forEach(b => b.classList.toggle("active", b.dataset.motionBtn === state.motion));
+    document.querySelectorAll("[data-b2-density-btn]").forEach(b => {
+      const keep = b.dataset.b2DensityBtn === "keep";
+      b.classList.toggle("active", keep === state.b2ShowDensity);
+    });
+    document.getElementById("b2DensityGroup").classList.toggle("dimmed", state.plan !== "planB2");
+
+    const rmBtn = document.getElementById("reduceMotionBtn");
+    rmBtn.textContent = "Reduce Motion: " + (state.reduceMotion ? "ON" : "OFF");
+    rmBtn.classList.toggle("active", state.reduceMotion);
+
+    const win = document.getElementById("appWindow");
+    win.setAttribute("data-theme", state.theme);
+    win.classList.remove("before", "plan-a", "plan-b", "plan-b2");
+    const planCls = state.plan === "before" ? "before"
+      : state.plan === "planA" ? "plan-a"
+      : state.plan === "planB" ? "plan-b"
+      : "plan-b2";
+    win.classList.add(planCls);
+    document.getElementById("toolbarDivider").style.display = state.plan === "before" ? "none" : "block";
+    applyCompactClass();
+    applyMotionVars();
+    updateNoteStrip();
+  }
+
+  function renderAll() {
+    syncTopBar();
+    renderTabs();
+    renderBreadcrumbs();
+    renderSidebar();
+    renderContent();
+    renderInspector();
+    renderStatusbar();
+    renderDisplayPopup();
+    renderSettingsModal();
+  }
+
+  // Top Control Bar Listeners
+  document.querySelectorAll("[data-theme-btn]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.theme = btn.dataset.themeBtn;
+      state.prefs.themeMode = state.theme;
+      renderAll();
+    });
+  });
+
+  document.querySelectorAll("[data-plan-btn]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.plan = btn.dataset.planBtn;
+      if (state.dsOpen) state.dsAnimateOnce = true;
+      if (state.settingsOpen) state.modalAnimateOnce = true;
+      renderAll();
+    });
+  });
+
+  document.querySelectorAll("[data-b2-density-btn]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.b2ShowDensity = btn.dataset.b2DensityBtn === "keep";
+      if (state.plan !== "planB2") {
+        state.plan = "planB2";
+        state.dsOpen = true;
+        state.settingsOpen = false;
+        state.scene = "popup";
+        state.dsAnimateOnce = true;
+      }
+      renderAll();
+    });
+  });
+
+  document.querySelectorAll("[data-scene-btn]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.scene = btn.dataset.sceneBtn;
+      if (state.scene === "popup") {
+        state.dsOpen = true;
+        state.settingsOpen = false;
+        state.dsAnimateOnce = true;
+      } else if (state.scene === "settings-win") {
+        state.dsOpen = false;
+        state.settingsOpen = true;
+        state.settingsCategory = 4;
+        state.modalAnimateOnce = true;
+      } else if (state.scene === "settings-gen") {
+        state.dsOpen = false;
+        state.settingsOpen = true;
+        state.settingsCategory = 0;
+        state.modalAnimateOnce = true;
+      } else {
+        state.dsOpen = false;
+        state.settingsOpen = false;
+      }
+      renderAll();
+    });
+  });
+
+  document.querySelectorAll("[data-motion-btn]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.motion = btn.dataset.motionBtn;
+      applyMotionVars();
+      syncTopBar();
+    });
+  });
+
+  document.getElementById("reduceMotionBtn").addEventListener("click", () => {
+    state.reduceMotion = !state.reduceMotion;
+    renderAll();
+  });
+
+  document.getElementById("replayBtn").addEventListener("click", () => {
+    if (state.settingsOpen) {
+      state.settingsOpen = false;
+      renderSettingsModal();
+      requestAnimationFrame(() => {
+        state.settingsOpen = true;
+        state.modalAnimateOnce = true;
+        renderSettingsModal();
+      });
+    } else {
+      state.dsOpen = false;
+      renderDisplayPopup();
+      requestAnimationFrame(() => {
+        state.dsOpen = true;
+        state.scene = "popup";
+        state.dsAnimateOnce = true;
+        syncTopBar();
+        renderDisplayPopup();
+      });
+    }
+  });
+
+  // App Triggers
+  document.getElementById("displayTrigger").addEventListener("click", (e) => {
+    e.stopPropagation();
+    state.dsOpen = !state.dsOpen;
+    state.dsAnimateOnce = state.dsOpen;
+    state.scene = state.dsOpen ? "popup" : "main";
+    syncTopBar();
+    renderDisplayPopup();
+    if (state.dsOpen && state.plan === "planB2") {
+      setB2ActiveRow(state.b2ActiveRow || "view", true);
+    }
+  });
+
+  document.getElementById("displayTrigger").addEventListener("keydown", (e) => {
+    if (state.plan === "planB2" && (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      e.stopPropagation();
+      state.dsOpen = true;
+      state.dsAnimateOnce = true;
+      state.scene = "popup";
+      syncTopBar();
+      renderDisplayPopup();
+      setB2ActiveRow("view", true);
+    }
+  });
+
+  document.getElementById("settingsTrigger").addEventListener("click", (e) => {
+    e.stopPropagation();
+    state.dsOpen = false;
+    state.settingsOpen = true;
+    state.modalAnimateOnce = true;
+    state.scene = state.settingsCategory === 4 ? "settings-win" : "settings-gen";
+    syncTopBar();
+    renderDisplayPopup();
+    renderSettingsModal();
+  });
+
+  document.getElementById("settingsModal").addEventListener("click", closeSettings);
+
+  document.getElementById("appWindow").addEventListener("click", (e) => {
+    if (state.dsOpen && !e.target.closest("#dsPopup") && !e.target.closest("#displayTrigger")) {
+      state.dsOpen = false;
+      state.scene = "main";
+      syncTopBar();
+      renderDisplayPopup();
+    }
+  });
+
+  document.getElementById("searchInput").addEventListener("input", (e) => {
+    state.search = e.target.value;
+    renderContent();
+    renderStatusbar();
+  });
+
+  document.getElementById("newTabBtn").addEventListener("click", () => {
+    const id = "tab-" + (state.tabs.length + 1);
+    state.tabs.push({ id, label: "新規タブ " + (state.tabs.length + 1), path: ["C:", "Users", "rikum", "Desktop"] });
+    state.activeTab = state.tabs.length - 1;
+    renderAll();
+  });
+
+  // Keyboard handling for Plan B2 Display Settings Popup + Global Esc
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (state.settingsOpen) {
+        closeSettings();
+        return;
+      }
+      if (state.dsOpen) {
+        state.dsOpen = false;
+        state.scene = "main";
+        syncTopBar();
+        renderDisplayPopup();
+        document.getElementById("displayTrigger").focus({ preventScroll: true });
+        return;
+      }
+    }
+
+    if (state.settingsOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      const delta = e.key === "ArrowDown" ? 1 : SETTINGS_CATS.length - 1;
+      state.settingsCategory = (state.settingsCategory + delta) % SETTINGS_CATS.length;
+      state.bodyAnimateOnce = true;
+      renderSettingsModal();
+      return;
+    }
+
+    if (state.dsOpen && state.plan === "planB2") {
+      const popup = document.getElementById("dsPopup");
+      const inPopup = popup && (popup.contains(document.activeElement) || document.activeElement === document.body);
+      if (!inPopup) return;
+
+      const rows = getB2RowsOrder();
+      const curRow = rows.includes(state.b2ActiveRow) ? state.b2ActiveRow : rows[0];
+      const rowIdx = rows.indexOf(curRow);
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const nextIdx = e.key === "ArrowDown"
+          ? Math.min(rows.length - 1, rowIdx + 1)
+          : Math.max(0, rowIdx - 1);
+        setB2ActiveRow(rows[nextIdx], true);
+        return;
+      }
+
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") {
+        e.preventDefault();
+        if (curRow === "view") {
+          const next = e.key === "ArrowRight" || e.key === "End";
+          if (state.gallery !== next) {
+            state.gallery = next;
+            const seg = popup.querySelector('[data-seg-id="view"]');
+            const btn = seg && seg.querySelector(`[data-seg-opt="${next}"]`);
+            if (btn) { btn.click(); btn.focus({ preventScroll: true }); }
+          }
+        } else if (curRow === "sort") {
+          const keys = ["name", "modified", "kind", "size"];
+          const curK = Math.max(0, keys.indexOf(state.sortKey));
+          let nextK = curK;
+          if (e.key === "Home") nextK = 0;
+          else if (e.key === "End") nextK = keys.length - 1;
+          else if (e.key === "ArrowLeft") nextK = Math.max(0, curK - 1);
+          else if (e.key === "ArrowRight") nextK = Math.min(keys.length - 1, curK + 1);
+          if (keys[nextK] !== state.sortKey) {
+            state.sortKey = keys[nextK];
+            state.sortAsc = true;
+            const seg = popup.querySelector('[data-seg-id="sort-b2"]');
+            if (seg) {
+              updateB2SortVisuals(seg);
+              const btn = seg.querySelector(`[data-seg-opt="${state.sortKey}"]`);
+              if (btn) btn.focus({ preventScroll: true });
+            }
+            renderContent();
+          }
+        } else if (curRow === "density") {
+          const next = e.key === "ArrowRight" || e.key === "End";
+          if (state.compact !== next) {
+            state.compact = next;
+            const seg = popup.querySelector('[data-seg-id="density"]');
+            const btn = seg && seg.querySelector(`[data-seg-opt="${next}"]`);
+            if (btn) { btn.click(); btn.focus({ preventScroll: true }); }
+          }
+        } else if (curRow === "pane" || curRow === "hidden") {
+          const targetOn = e.key === "ArrowRight" || e.key === "End";
+          const currentOn = curRow === "pane" ? state.pane : state.showHidden;
+          if (currentOn !== targetOn) {
+            const rowEl = popup.querySelector(`[data-ds-toggle="${curRow}"]`);
+            if (rowEl) rowEl.click();
+          }
+        }
+        return;
+      }
+
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const focusedBtn = document.activeElement && document.activeElement.closest("#dsPopup button.seg-btn");
+        if (focusedBtn) {
+          focusedBtn.click();
+          focusedBtn.focus({ preventScroll: true });
+          return;
+        }
+        if (curRow === "sort") {
+          state.sortAsc = !state.sortAsc;
+          const seg = popup.querySelector('[data-seg-id="sort-b2"]');
+          if (seg) updateB2SortVisuals(seg);
+          renderContent();
+        } else if (curRow === "view") {
+          const next = !state.gallery;
+          const btn = popup.querySelector(`[data-seg-id="view"] [data-seg-opt="${next}"]`);
+          if (btn) btn.click();
+        } else if (curRow === "density") {
+          const next = !state.compact;
+          const btn = popup.querySelector(`[data-seg-id="density"] [data-seg-opt="${next}"]`);
+          if (btn) btn.click();
+        } else if (curRow === "pane" || curRow === "hidden") {
+          const rowEl = popup.querySelector(`[data-ds-toggle="${curRow}"]`);
+          if (rowEl) rowEl.click();
+        }
+      }
+    }
+  });
+
+  // Expose minimal debug hook for automated browser verification
+  window.__skylisMockState = state;
+  renderAll();
+})();
+</script>
+</body>
+</html>

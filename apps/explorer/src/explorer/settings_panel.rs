@@ -1,6 +1,14 @@
 use super::*;
+use crate::motion;
+use gpui::{Animation, AnimationExt};
 
 impl Explorer {
+    pub(super) fn select_settings_category(&mut self, category: usize) {
+        if self.settings_category != category {
+            self.settings_category = category;
+            self.settings_content_generation = self.settings_content_generation.wrapping_add(1);
+        }
+    }
     pub(super) fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_open = false;
         window.focus(&self.tabs[self.active].focus_handle(cx), cx);
@@ -122,6 +130,8 @@ impl Explorer {
             categories.push(("macOSアクセス権限", "icons/link.svg", 8..8));
         }
         let category_count = categories.len();
+        let setting_count = rows.len();
+        let numbered_page = !categories[self.settings_category].2.is_empty();
         let mut nav = div()
             .id("settings-navigation")
             .w(px(if narrow { 124. } else { 166. }))
@@ -164,7 +174,7 @@ impl Explorer {
                     .child(*title)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
-                        this.settings_category = index;
+                        this.select_settings_category(index);
                         this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
                         cx.notify();
                     })),
@@ -225,28 +235,7 @@ impl Explorer {
             ] {
                 let status = integration.as_ref().map(|s| s.get(kind));
                 let enabled = status.is_some_and(|s| s.enabled);
-                body = body
-                    .child(
-                        div()
-                            .mt(px(24.))
-                            .text_size(px(14.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child(title),
-                    )
-                    .child(
-                        div()
-                            .mt(px(8.))
-                            .text_size(px(12.))
-                            .text_color(t.c("text.secondary"))
-                            .child(description),
-                    )
-                    .child(div().mt(px(10.)).child(if integration_busy {
-                        "確認・変更中…"
-                    } else if enabled {
-                        "有効"
-                    } else {
-                        "無効"
-                    }));
+                let mut buttons = div().flex().flex_wrap().gap(px(8.)).mt(px(10.));
                 for (button, label, install, available) in [
                     (0usize, "有効にする", true, !enabled),
                     (
@@ -256,18 +245,37 @@ impl Explorer {
                         status.is_some_and(|s| s.can_restore),
                     ),
                 ] {
-                    body = body.child(
+                    buttons = buttons.child(
                         div()
                             .id(("shell-integration", index * 2 + button))
-                            .mt(px(10.))
-                            .px(px(14.))
-                            .py(px(10.))
+                            .flex_shrink_0()
+                            .px(px(12.))
+                            .py(px(7.))
                             .rounded(px(6.))
                             .border_1()
-                            .border_color(t.c("button.border"))
-                            .bg(t.c("button.bg"))
+                            .border_color(t.c(if install {
+                                "button.primary.border"
+                            } else {
+                                "button.border"
+                            }))
+                            .bg(t.c(if install {
+                                "button.primary.bg"
+                            } else {
+                                "button.bg"
+                            }))
+                            .text_color(t.c(if install {
+                                "text.on-accent"
+                            } else {
+                                "button.fg"
+                            }))
                             .when(!integration_busy && available, |d| {
-                                d.cursor_pointer().hover(|s| s.bg(t.c("state.hover")))
+                                d.cursor_pointer().hover(|s| {
+                                    s.bg(t.c(if install {
+                                        "button.primary.hover.bg"
+                                    } else {
+                                        "button.hover.bg"
+                                    }))
+                                })
                             })
                             .opacity(if integration_busy || !available {
                                 0.45
@@ -284,6 +292,76 @@ impl Explorer {
                             })),
                     );
                 }
+                body = body.child(
+                    div()
+                        .mt(px(12.))
+                        .p(px(12.))
+                        .rounded(px(8.))
+                        .bg(t.c("surface.card"))
+                        .border_1()
+                        .border_color(t.c("border.card"))
+                        .child(
+                            div()
+                                .flex()
+                                .items_start()
+                                .gap(px(10.))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .child(
+                                            div()
+                                                .text_size(px(13.))
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .child(title),
+                                        )
+                                        .child(
+                                            div()
+                                                .mt(px(5.))
+                                                .text_size(px(11.5))
+                                                .text_color(t.c("text.secondary"))
+                                                .child(description),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .flex_shrink_0()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(5.))
+                                        .px(px(7.))
+                                        .py(px(3.))
+                                        .rounded(px(10.))
+                                        .text_size(px(12.))
+                                        .bg(t.c(if enabled {
+                                            "accent.soft"
+                                        } else {
+                                            "surface.field"
+                                        }))
+                                        .text_color(t.c(if enabled {
+                                            "accent.fg"
+                                        } else {
+                                            "text.secondary"
+                                        }))
+                                        .when(enabled, |d| {
+                                            d.child(
+                                                div()
+                                                    .size(px(5.))
+                                                    .rounded_full()
+                                                    .bg(t.c("accent.fg")),
+                                            )
+                                        })
+                                        .child(if integration_busy {
+                                            "確認・変更中…"
+                                        } else if enabled {
+                                            "有効"
+                                        } else {
+                                            "無効"
+                                        }),
+                                ),
+                        )
+                        .child(buttons),
+                );
             }
         }
         if cfg!(target_os = "macos") && self.settings_category == 4 {
@@ -473,7 +551,9 @@ impl Explorer {
                             }
                             .into()
                         })
-                        .py(px(16.))
+                        .py(px(14.))
+                        .px(px(10.))
+                        .rounded(px(6.))
                         .flex()
                         .items_center()
                         .gap(px(12.))
@@ -506,29 +586,15 @@ impl Explorer {
                                         .child(state),
                                 ),
                         )
-                        .child(
-                            div()
-                                .w(px(34.))
-                                .h(px(20.))
-                                .flex_shrink_0()
-                                .p(px(3.))
-                                .rounded(px(10.))
-                                .flex()
-                                .items_center()
-                                .bg(t.c(if enabled {
-                                    "button.primary.bg"
-                                } else {
-                                    "surface.field"
-                                }))
-                                .border_1()
-                                .border_color(t.c("border.default"))
-                                .when(enabled, |d| d.justify_end())
-                                .child(div().size(px(12.)).rounded(px(6.)).bg(t.c(if enabled {
-                                    "text.on-accent"
-                                } else {
-                                    "text.secondary"
-                                }))),
-                        )
+                        .child(motion::switch(
+                            ("settings-switch", i),
+                            enabled,
+                            34.,
+                            t.c("surface.field"),
+                            t.c("button.primary.bg"),
+                            t.c("text.secondary"),
+                            t.c("text.on-accent"),
+                        ))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.change_preference(i, cx);
@@ -538,10 +604,11 @@ impl Explorer {
         }
         div().id("settings-backdrop").absolute().inset_0().occlude()
             .flex().items_center().justify_center().px(px(16.)).py(px(24.))
-            .bg(t.c("surface.backdrop"))
+            .child(div().absolute().inset_0().bg(t.c("surface.backdrop")).with_animation(("settings-backdrop-reveal", self.settings_generation), Animation::new(motion::BACKDROP_REVEAL), |d, p| d.opacity(motion::ease_out_cubic(p))))
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, w, cx| { cx.stop_propagation(); this.close_settings(w, cx); }))
-            .child(div().id("settings-panel").debug_selector(|| "settings-panel".into()).track_focus(&self.settings_focus)
-                .w(px(880.)).h(px(620.)).max_w_full().max_h_full().flex().flex_col().overflow_hidden()
+            .child(div().id("settings-panel").debug_selector(|| "settings-panel".into())
+                .w(px(880.)).h(px(620.)).max_w_full().max_h_full()
+                .child(div().id("settings-panel-content").track_focus(&self.settings_focus).size_full().flex().flex_col().overflow_hidden()
                 .rounded(px(12.)).border_1().border_color(t.c("border.dialog")).bg(t.c("surface.dialog")).shadow_lg()
                 .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
@@ -550,10 +617,10 @@ impl Explorer {
                     if event.keystroke.key == "escape" {
                         this.close_settings(w, cx); cx.stop_propagation();
                     } else if matches!(event.keystroke.key.as_str(), "up" | "down") {
-                        this.settings_category = (this.settings_category + if event.keystroke.key == "down" { 1 } else { category_count - 1 }) % category_count;
+                        this.select_settings_category((this.settings_category + if event.keystroke.key == "down" { 1 } else { category_count - 1 }) % category_count);
                         this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
                         cx.notify(); cx.stop_propagation();
-                    } else if let Ok(number) = event.keystroke.key.parse::<usize>() && (1..=8).contains(&number) {
+                    } else if let Ok(number) = event.keystroke.key.parse::<usize>() && (1..=setting_count).contains(&number) {
                         this.change_preference(number - 1, cx); cx.stop_propagation();
                     }
                 }))
@@ -563,22 +630,24 @@ impl Explorer {
                         .child(div().text_size(px(16.)).font_weight(gpui::FontWeight::SEMIBOLD).child("設定"))
                         .child(div().mt(px(4.)).text_size(px(11.5)).text_color(t.c("text.muted")).child("変更はすべてのウィンドウに反映され、自動保存されます。")))
                     .child(icon_button("close-settings", "icons/x.svg", true, t).on_click(cx.listener(|this, _, w, cx| this.close_settings(w, cx)))))
-                .child(div().flex_1().min_h_0().flex().overflow_hidden().child(nav).child(body))
+                .child(div().flex_1().min_h_0().flex().overflow_hidden().child(nav).child(body.with_animation(("settings-content", self.settings_content_generation), Animation::new(motion::CATEGORY_REVEAL), |d, p| d.opacity(motion::ease_out_cubic(p)))))
                 .child(div().flex_shrink_0().px(px(20.)).py(px(10.)).bg(t.c("surface.chrome"))
                     .border_t_1().border_color(t.c("border.subtle")).flex().items_center().justify_between()
-                    .child(div().text_size(px(11.)).text_color(t.c("text.muted")).child("↑↓ カテゴリ · 1〜8 切替 · Esc 閉じる"))
+                    .child(div().text_size(px(11.)).text_color(t.c("text.muted")).child(if numbered_page { format!("↑↓ カテゴリ · 1〜{setting_count} 設定を切替 · Esc 閉じる") } else { "↑↓ カテゴリ · Esc 閉じる".into() }))
                     .child(div().flex_shrink_0().id("settings-done").debug_selector(|| "settings-done".into()).h(px(28.)).px(px(14.)).rounded(px(6.)).flex().items_center()
                         .border_1().border_color(t.c("button.border")).bg(t.c("button.bg")).hover(|s| s.bg(t.c("state.hover")))
-                        .cursor_pointer().child("完了").on_click(cx.listener(|this, _, w, cx| this.close_settings(w, cx))))))
+                        .cursor_pointer().child("完了").on_click(cx.listener(|this, _, w, cx| this.close_settings(w, cx)))))
+                .with_animation(("settings-panel-reveal", self.settings_generation), Animation::new(motion::MODAL_REVEAL), |d, p| { let p = motion::ease_out_cubic(p); d.opacity(p).relative().top(px(-motion::MODAL_OFFSET * (1. - p))) })))
     }
 
     fn change_preference(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.settings_category = match index {
+        let category = match index {
             0..=1 => 0,
             2..=4 => 1,
             5..=6 => 2,
             _ => 3,
         };
+        self.select_settings_category(category);
         let first = [0, 2, 5, 7][self.settings_category];
         let error_row = usize::from(self.preferences.read(cx).error.is_some());
         self.settings_scroll

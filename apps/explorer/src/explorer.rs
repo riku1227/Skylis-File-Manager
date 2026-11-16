@@ -44,6 +44,8 @@ pub struct Explorer {
     preferences: Entity<crate::settings::Preferences>,
     settings_open: bool,
     settings_category: usize,
+    settings_generation: usize,
+    settings_content_generation: usize,
     settings_scroll: gpui::ScrollHandle,
     settings_focus: FocusHandle,
     last_saved_theme: crate::settings_data::ThemePreference,
@@ -182,6 +184,8 @@ impl Explorer {
             preferences,
             settings_open: false,
             settings_category: 0,
+            settings_generation: 0,
+            settings_content_generation: 0,
             settings_scroll: gpui::ScrollHandle::new(),
             settings_focus: cx.focus_handle(),
             tab_subscriptions: Default::default(),
@@ -502,7 +506,10 @@ impl Render for Explorer {
             }))
             .on_action(cx.listener(|this, _: &crate::OpenPermissions, w, cx| {
                 if cfg!(target_os = "macos") {
-                    this.settings_category = 4;
+                    this.select_settings_category(4);
+                    if !this.settings_open {
+                        this.settings_generation = this.settings_generation.wrapping_add(1);
+                    }
                     this.settings_open = true;
                     this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
                     w.focus(&this.settings_focus, cx);
@@ -512,6 +519,7 @@ impl Render for Explorer {
             .on_action(cx.listener(|this, _: &OpenSettings, w, cx| {
                 this.settings_open = !this.settings_open;
                 if this.settings_open {
+                    this.settings_generation = this.settings_generation.wrapping_add(1);
                     crate::motion_preferences::refresh(cx);
                     this.tabs[this.active].update(cx, |tab, cx| {
                         tab.cancel_scroll_motion();
@@ -1144,6 +1152,58 @@ mod tests {
                 assert_eq!(window.frame_diagnostics_count(), None);
             })
             .unwrap();
+    }
+
+    #[gpui::test]
+    fn modal_reveal_generation_advances_only_when_opening(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        for expected in [0, 1, 1, 2] {
+            cx.dispatch_action(window.into(), OpenSettings);
+            cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+                .unwrap();
+            window
+                .read_with(cx, |p, cx| {
+                    assert_eq!(p.explorer.read(cx).settings_generation, expected)
+                })
+                .unwrap();
+        }
+        cx.simulate_keystrokes(window.into(), "2 2 8 8");
+        window
+            .read_with(cx, |p, cx| {
+                assert_eq!(p.explorer.read(cx).settings_generation, 2)
+            })
+            .unwrap();
+    }
+    #[gpui::test]
+    fn settings_content_fades_only_for_category_changes(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        cx.simulate_keystrokes(window.into(), "8");
+        window
+            .read_with(cx, |p, cx| {
+                assert_eq!(p.explorer.read(cx).settings_content_generation, 1)
+            })
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "8");
+        window
+            .read_with(cx, |p, cx| {
+                assert_eq!(p.explorer.read(cx).settings_content_generation, 1);
+                assert_eq!(p.explorer.read(cx).settings_generation, 0);
+            })
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "up");
+        window
+            .read_with(cx, |p, cx| {
+                assert_eq!(p.explorer.read(cx).settings_content_generation, 2)
+            })
+            .unwrap();
+        for key in ["tab", "shift-tab"] {
+            cx.simulate_keystrokes(window.into(), key);
+            window
+                .read_with(cx, |p, cx| {
+                    assert_eq!(p.explorer.read(cx).settings_category, 2)
+                })
+                .unwrap();
+        }
     }
 }
 
