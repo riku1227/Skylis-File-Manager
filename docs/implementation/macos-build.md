@@ -214,3 +214,53 @@ The parent also encountered `cgWindowNotFound` with both debug and release
 window capture. Native display verification remains pending an accessible desktop;
 test pixel buffers and successful builds are not treated as proof of on-screen
 rendering or of FDA prompt resolution.
+
+## Native UI acceptance (2026-11-16)
+
+The apparent Home freeze during background CUA automation was an occlusion
+artifact, not a blocked shell-icon worker or foreground async executor. A native
+window-order diagnostic showed T3 Nightly completely covering the 1281×800
+Skylis window. The initial macOS occlusion flags were `8192` (without the public
+`Visible` bit); the backend correctly declined to start its display link. CUA
+could still capture that window's previous surface and send input to it, so its
+native title changed while the captured contents stayed on Home.
+
+Temporarily zooming Skylis exposed part of it, producing an occlusion callback
+with flags `8194` (including `Visible`), attaching the Metal frame source and
+presenting the already-completed icon/capacity results. Minimizing the covering
+T3 window also restored normal rendering at the original size. Display sleep
+was ruled out with `CGDisplayIsAsleep`; duplicate test copies were quit through
+their own native UI. Temporary core/backend file tracing and the temporary
+backend Cargo patch were removed. No refresh loop or runtime change is needed;
+the existing idle/occlusion power policy and Windows behavior are preserved.
+
+For future native acceptance, keep the exact test bundle visibly uncovered.
+A successful CUA screenshot or targeted key event alone does not establish that
+macOS considers its window visible. Resolve duplicate bundle identifiers by
+full bundle path, and quit test copies before overwriting bundles.
+
+Final verification used the normal, unmodified-core release bundle at
+`target/aarch64-apple-darwin/release/Skylis.app`, with other Skylis test copies
+quit through native UI. After minimizing the covering T3 window, a fresh launch
+updated normally without resizing or a refresh workaround:
+
+- Home showed native drive and special-folder icons and actual root/home
+  capacity. The final screenshot showed **58 GB available / 460 GB total**;
+  a contemporaneous `os.statvfs('/')` reported 62,542,983,168 available bytes
+  and 494,384,795,648 total bytes, consistent with the UI's binary-unit rounding.
+- Downloads navigation populated 203 entries with native folder, ZIP, DMG,
+  Markdown, HTML and other file icons. Cmd+L visibly focused the address field;
+  Cmd+, opened settings, and returning Home repainted normally.
+- The macOS permissions category stated that the current folder could be opened
+  while FDA remained unconfirmed. Its Finder action selected the exact normal
+  release bundle; its system-settings action displayed the native Full Disk
+  Access pane. No permission switches were changed, no TCC database was read,
+  and the cause of the user's earlier FDA prompts remains unproven.
+- `bash scripts/build-macos.sh release` and strict signature verification passed.
+  `cargo test --locked --workspace --target aarch64-apple-darwin` passed
+  **205 explorer + 44 core** tests and doc tests. Existing unrelated compiler
+  warnings remain. `git diff --check` passed.
+
+Local native screenshot evidence (not committed):
+`/tmp/skylis-runtime-acceptance/home-final.png`, `downloads-final.png`,
+`permissions-final.png`, and `finder-reveal-final.png` in that directory.
