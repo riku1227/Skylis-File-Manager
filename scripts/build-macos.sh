@@ -3,6 +3,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 [[ "$(uname -s)" == Darwin ]] || { echo 'macOS is required.' >&2; exit 1; }
+source "$ROOT/scripts/macos-signing.sh"
+SIGNING_IDENTITY="$(skylis_signing_identity)"
 PROFILE="${1:-debug}"
 [[ "$PROFILE" == debug || "$PROFILE" == release ]] || { echo 'Usage: build-macos.sh [debug|release] [--launch]' >&2; exit 1; }
 if ! command -v cargo >/dev/null; then
@@ -29,7 +31,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$TARGET/$HOST/$PROFILE/explorer" "$APP/Contents/MacOS/Skylis"
 cp "$ROOT/packaging/macos/Info.plist" "$APP/Contents/Info.plist"
 /usr/bin/plutil -lint "$APP/Contents/Info.plist"
-/usr/bin/codesign --force --sign - "$APP"
+/usr/bin/codesign --force --sign "$SIGNING_IDENTITY" "$APP"
 /usr/bin/codesign --verify --deep --strict "$APP"
 printf '%s\n' "$APP"
 if [[ "${2:-}" == --launch ]]; then /usr/bin/open "$APP"; fi

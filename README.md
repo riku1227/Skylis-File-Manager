@@ -2,7 +2,7 @@
 
 Windows / macOS向けの、軽快でコンパクトなファイルマネージャーを目指しています。RustとGPUI Fastを使い、WebViewなしでネイティブUIを描画します。
 
-現在はWindows向けの初期実装です。採用したPrism Canopy Compactのデザインをもとに、タブ・ファイル一覧・検索・OSアイコン表示などを実装しています。macOS向けのローカル.appビルドとアクセス権限の案内にも対応しています。
+現在はWindows向けの初期実装です。採用したPrism Canopy Compactのデザインをもとに、タブ・ファイル一覧・検索・OSアイコン表示などを実装しています。macOS向けのローカル.appビルド、ネイティブのファイル／フォルダーアイコン、ボリューム容量表示とアクセス権限の案内にも対応しています。
 
 正式リポジトリ: https://github.com/riku1227/Skylis-File-Manager
 
@@ -65,4 +65,4 @@ Windowsの設定「Windows連携」で通常のフォルダー起動をSkylisに
 
 [Apache License 2.0](LICENSE)。取り込んだ第三者ソースの出典とライセンスは [licenses/README.md](licenses/README.md) を参照してください。
 
-macOSでは `bash scripts/build-macos.sh debug --launch` でローカル署名付きのアプリをビルド・起動できます。環境構築とFDA設定は[macOSビルドガイド](docs/implementation/macos-build.md)を参照してください。
+macOSでは `bash scripts/build-macos.sh debug --launch` でローカル署名付きのアプリをビルド・起動できます。署名は有効な開発用証明書が一つなら自動選択し、なければ警告してアドホック署名を使います。FDAはOS側での設定が必要です。環境構築・署名の指定・検証範囲とFDA設定は[macOSビルドガイド](docs/implementation/macos-build.md)を参照してください。

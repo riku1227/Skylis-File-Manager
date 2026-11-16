@@ -2,7 +2,7 @@
 
 Skylis uses Rust/GPUI Fast and ships here as a non-sandboxed local `.app`.
 The bundle identifier is `dev.skylis.file-manager`; its executable is `Skylis`.
-This is a development bundle with an ad-hoc signature, not a notarized distribution.
+This is a locally signed development bundle, not a notarized distribution.
 Intel and App Store distribution are not validated.
 
 ## Environment
@@ -70,10 +70,56 @@ to the affected folder, and press **F5**. This retries only that listing; it is
 not an FDA check or a background scan. Navigating elsewhere clears that tab's
 old observation, and cancelled listing callbacks cannot apply stale observations.
 
-Ad-hoc signatures change when code changes. The OS may require manually removing
-and adding the current bundle again after a rebuild. For stable distribution,
-Developer ID signing and notarization remain future work. This workflow never
-grants/revokes permissions or resets TCC.
+### Stable development signing
+
+The build script uses `SKYLIS_SIGNING_IDENTITY` when explicitly set (certificate
+SHA-1 or an identity accepted by `codesign`). An empty override is an error;
+invalid identities fail at signing without downgrading to ad-hoc. Otherwise it
+auto-selects a single valid **Apple Development** or **Developer ID Application**
+identity from `security find-identity -v -p codesigning`. With multiple eligible
+identities it stops: choose one with the override. With none it prints a warning
+and falls back to ad-hoc; `SKYLIS_SIGNING_IDENTITY=-` explicitly chooses ad-hoc.
+No certificates, trust settings or private-key ACLs are created or modified.
+
+```sh
+security find-identity -v -p codesigning
+SKYLIS_SIGNING_IDENTITY='<certificate SHA-1>' bash scripts/build-macos.sh debug
+```
+
+The bundle ID stays `dev.skylis.file-manager`, and `codesign` generates its normal
+certificate-based designated requirement (DR). No custom requirement is supplied.
+Using the same certificate lets debug and release satisfy each other's DR even
+when their code hashes differ. Apple's [TN3127: Inside Code Signing: Requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements.md)
+explains why ad-hoc identity is version-specific and certificate-based identity
+can persist across builds. Certificate signing does not itself grant FDA.
+
+Use the settings **Finder** button to identify the exact running bundle; debug
+and release live in different directories. After migrating from ad-hoc signing,
+remove the old FDA entry and re-add the current bundle yourself if needed, then
+quit and relaunch. Stable certificate signing avoids relying on a new code hash
+at each rebuild; ad-hoc builds may still need re-adding after code changes.
+This workflow never grants/revokes permissions or resets TCC. FDA does not promise
+to suppress every macOS privacy prompt, nor fix POSIX/ACL failures.
+
+### Native icons and capacity
+
+macOS file, folder, type and volume icons use NSWorkspace through a small native
+adapter on the existing single icon worker. Each job drains an autorelease pool,
+copies its NSImage, and draws into a private 16–256 pixel bitmap. Only straight
+BGRA bytes cross to GPUI. Type lookups use an extension or generic folder type,
+never a real file lookup; extensionless and unknown types use the OS generic
+icon. The Windows virtual recycle-bin icon remains unsupported on macOS.
+The existing bounded pending queue, image cache and fallback flow apply.
+See Apple's [thread-safety guidance](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Multithreading/ThreadSafetySummary/ThreadSafetySummary.html)
+for NSImage and per-thread graphics contexts/autorelease pools.
+
+The existing asynchronous capacity service now uses macOS `statfs`, with checked
+64-bit multiplication and available-to-user `f_bavail` bytes. It queries `/` and
+the home volume for the home cards; it does not enumerate mounted volumes.
+APFS volumes share container free space, so root and home can have the same
+available bytes. Finder's purgeable-space estimates can differ from `df`/`statfs`.
+Invalid paths preserve OS errors; embedded NUL is rejected. Other unsupported
+platforms keep reporting unavailable capacity.
 
 ## Verification record
 
@@ -107,8 +153,8 @@ and making the action buttons visible, all **204 explorer + 42 core tests** pass
 again. No FDA grants or revocations were required for these checks.
 
 Intel, Developer ID/notarization, and interactive FDA grant/revoke/relaunch
-transitions remain unverified. Existing unrelated platform gaps remain, including
-unavailable drive-capacity reporting on this host. Existing deprecation/dead-code
+transitions remain unverified. The follow-up below supersedes the earlier ad-hoc
+signing and unavailable native icon/capacity behavior. Existing deprecation/dead-code
 warnings are present; they do not prevent the debug build or tests.
 
 Archive tests canonicalize their disposable temp root because macOS `/var` is a
@@ -116,3 +162,39 @@ system symlink and the archive engine deliberately rejects symlink ancestors.
 This does not relax that production safety rule. Quick Look tests use a headless
 GPUI window and assert honest native-handle failure; actual Quick Look parity is
 outside this verification.
+
+## Follow-up verification (2026-11-16)
+
+- Native worker extraction tests cover visible, bounded root/volume and folder
+  icons plus nonexistent Unicode/space/extensionless/unknown-type fallback names;
+  invalid NUL/oversized inputs and the unsupported virtual bin are rejected.
+- Root and home capacity tests compare against a fresh native `statfs` result,
+  allowing concurrent disk writes; invalid/nonexistent paths are tested.
+  A separate `df -k` and Python `os.statvfs` reference agreed: total
+  494,384,795,648 bytes and approximately 73.85 GB available during verification
+  (free space changes while building).
+- Shell fixtures exercise zero, one and multiple identities, explicit identity,
+  explicit ad-hoc and empty override behavior. Personal identity subjects are
+  intentionally omitted from this document.
+- Earlier release/debug ad-hoc DRs had different code hashes; the observed running
+  app was the debug bundle, so prior release FDA authorization is a plausible
+  mismatch. This is not evidence of the exact TCC decision or proof that all
+  Documents/Downloads prompts are fixed. No TCC database was inspected and no
+  FDA settings were changed.
+- Final workspace tests: **205 explorer + 44 core passed**, zero failures; doc
+  tests passed. Formatting, diff whitespace, shell syntax and signing fixtures
+  passed. Debug and release builds passed with existing unrelated warnings.
+- A valid Apple Development certificate signed both profiles without private-key
+  authentication blocking. Strict signature verification passed, and each app
+  satisfied the other profile's default certificate-based DR, with no `cdhash`
+  term. A disposable executable rejected an explicitly invalid signing identity.
+- To preserve the existing running debug bundle, builds used
+  `CARGO_TARGET_DIR=target/macos-followup`. The final debug binary was packaged and
+  signed as `target/macos-followup/aarch64-apple-darwin/debug/Skylis-verified.app`
+  (same bundle ID). Release is `target/macos-followup/aarch64-apple-darwin/release/Skylis.app`.
+- Launch Services started the separate debug review bundle. Actual native UI
+  verification of icons, capacity and settings remains blocked: computer-use
+  returned `cgWindowNotFound` for Skylis and Finder. No screen-rendering success
+  is claimed from worker tests. The pre-existing running debug app was not
+  overwritten or terminated. No FDA grants, revokes or re-add operations were
+  performed, so Documents/Downloads prompt behavior after migration is unproved.
