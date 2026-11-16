@@ -564,14 +564,7 @@ impl Render for Explorer {
                             .mt(px(6.))
                             .on_click(cx.listener(|this, _, w, cx| this.new_tab(&NewTab, w, cx))),
                     )
-                    .child(
-                        div()
-                            .id("titlebar-drag")
-                            .flex_1()
-                            .min_w(px(32.))
-                            .h_full()
-                            .window_control_area(gpui::WindowControlArea::Drag),
-                    )
+                    .child(crate::window_chrome::drag_region())
                     .when(cfg!(target_os = "windows"), |d| {
                         d.child(window_controls(window.is_maximized(), true, t))
                     }),

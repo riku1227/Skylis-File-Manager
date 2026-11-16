@@ -54,16 +54,7 @@ impl Explorer {
         let compact = self.compact;
         let bounds = Bounds::new(w.bounds().origin + point(px(32.), px(32.)), w.bounds().size);
         if let Err(error) = cx.open_window(
-            gpui::WindowOptions {
-                window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-                window_min_size: Some(size(px(900.), px(600.))),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: Some("Skylis".into()),
-                    appears_transparent: cfg!(any(windows, target_os = "macos")),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
+            crate::window_chrome::window_options(bounds, "Skylis"),
             move |w, cx| {
                 cx.new(|cx| {
                     let folder =
@@ -273,16 +264,7 @@ impl Explorer {
         let compact = self.compact;
         let bounds = Bounds::new(origin, w.bounds().size);
         let result = cx.open_window(
-            gpui::WindowOptions {
-                window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-                window_min_size: Some(size(px(900.), px(600.))),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: Some("Skylis".into()),
-                    appears_transparent: cfg!(any(windows, target_os = "macos")),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
+            crate::window_chrome::window_options(bounds, "Skylis"),
             move |w, cx| cx.new(|cx| Explorer::with_tabs(vec![tab], icons, mode, compact, w, cx)),
         );
         match result {
