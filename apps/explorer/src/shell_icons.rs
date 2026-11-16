@@ -356,9 +356,41 @@ impl ShellIcons {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn extract(_: Option<&Path>, _: bool, _: u32, _: bool) -> Option<Vec<u8>> {
     None
+}
+
+#[cfg(target_os = "macos")]
+fn extract(path: Option<&Path>, is_dir: bool, size: u32, attributes_only: bool) -> Option<Vec<u8>> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    unsafe extern "C" {
+        fn skylis_macos_icon(
+            path: *const std::ffi::c_char,
+            directory: i32,
+            size: u32,
+            type_only: i32,
+            pixels: *mut u8,
+        ) -> i32;
+    }
+    // The Windows virtual recycle bin has no equivalent in this adapter.
+    let path = CString::new(path?.as_os_str().as_bytes()).ok()?;
+    if !(16..=256).contains(&size) {
+        return None;
+    }
+    let mut pixels = vec![0; size as usize * size as usize * 4];
+    // SAFETY: NUL-terminated path and a size-bounded writable BGRA buffer. The
+    // bridge drains an autorelease pool and retains no pointer after this call.
+    let ok = unsafe {
+        skylis_macos_icon(
+            path.as_ptr(),
+            is_dir.into(),
+            size,
+            attributes_only.into(),
+            pixels.as_mut_ptr(),
+        )
+    };
+    (ok == 1).then_some(pixels)
 }
 
 #[cfg(windows)]
@@ -700,6 +732,45 @@ mod tests {
             assert!(!type_only(Path::new(path)), "{path}");
         }
     }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_worker_icons_are_visible_bounded_and_support_type_fallbacks() {
+        std::thread::spawn(|| {
+            let root = tempfile::tempdir().unwrap();
+            let folder = root.path().join("日本語 folder");
+            std::fs::create_dir(&folder).unwrap();
+            let file = folder.join("file name.txt");
+            std::fs::write(&file, b"native icon fixture").unwrap();
+            let extensionless = folder.join("no extension");
+            std::fs::write(&extensionless, b"fixture").unwrap();
+            for (path, directory) in [(&folder, true), (&file, false), (&extensionless, false)] {
+                let pixels =
+                    extract(Some(path), directory, 32, false).expect("existing native icon");
+                assert!(pixels.chunks_exact(4).any(|p| p[3] > 0));
+            }
+            for (path, directory, type_only) in [
+                ("/", true, false),
+                ("/Applications", true, false),
+                ("/nonexistent/日本語 folder/file name.txt", false, true),
+                ("/nonexistent/日本語 folder/no extension", false, true),
+                ("/nonexistent/folder", true, true),
+                ("/nonexistent/file.unknown_skylis", false, true),
+            ] {
+                for size in [16, 32, 256] {
+                    let pixels =
+                        extract(Some(Path::new(path)), directory, size, type_only).expect(path);
+                    assert_eq!(pixels.len(), size as usize * size as usize * 4);
+                    assert!(pixels.chunks_exact(4).any(|p| p[3] > 0), "{path}");
+                }
+            }
+            assert!(extract(None, true, 32, false).is_none());
+            assert!(extract(Some(Path::new("/a\0b")), false, 32, false).is_none());
+            assert!(extract(Some(Path::new("/")), true, 257, false).is_none());
+        })
+        .join()
+        .unwrap();
+    }
+
     #[cfg(windows)]
     #[test]
     fn windows_folder_icon_has_visible_pixels() {

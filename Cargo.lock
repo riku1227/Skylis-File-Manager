@@ -1451,6 +1451,7 @@ dependencies = [
  "libc",
  "notify",
  "raw-window-handle",
+ "tempfile",
  "unicode-segmentation",
  "windows 0.61.3",
  "windows-core 0.61.2",
