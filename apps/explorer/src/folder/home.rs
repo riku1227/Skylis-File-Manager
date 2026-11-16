@@ -201,7 +201,13 @@ impl FolderView {
                             "surface.card"
                         }))
                         .when(!selected, |d| d.hover(|s| s.bg(t.c("state.hover"))))
-                        .child(self.object_icon(&place.path, true, 32., window, cx))
+                        .child(self.navigation_icon(
+                            &place.path,
+                            (!pinned).then_some(place.icon),
+                            32.,
+                            window,
+                            cx,
+                        ))
                         .child(info)
                         .on_mouse_down(
                             MouseButton::Left,

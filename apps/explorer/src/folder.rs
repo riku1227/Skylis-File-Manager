@@ -1160,6 +1160,47 @@ impl FolderView {
             .when_some(image, |d, image| d.child(img(image).size_full()))
             .into_any_element()
     }
+    fn navigation_icon(
+        &self,
+        path: &Path,
+        semantic: Option<platform::PlaceIcon>,
+        logical: f32,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        #[cfg(target_os = "macos")]
+        if let Some(semantic) = semantic {
+            let asset = match semantic {
+                platform::PlaceIcon::Home => "icons/home.svg",
+                platform::PlaceIcon::Desktop => "icons/desktop.svg",
+                platform::PlaceIcon::Documents => "icons/documents.svg",
+                platform::PlaceIcon::Downloads => "icons/downloads.svg",
+                platform::PlaceIcon::Pictures => "icons/pictures.svg",
+                platform::PlaceIcon::Drive => "icons/drive.svg",
+            };
+            return svg()
+                .path(asset)
+                .size(px(logical))
+                .flex_shrink_0()
+                .text_color(self.theme(window).c("accent.fg"))
+                .into_any_element();
+        }
+        let _ = semantic;
+        let image = self.icons.update(cx, |icons, cx| {
+            icons.get_navigation(
+                path,
+                true,
+                (logical * window.scale_factor()).ceil() as u32,
+                cx,
+            )
+        });
+        div()
+            .size(px(logical))
+            .flex_shrink_0()
+            .when_some(image, |d, image| d.child(img(image).size_full()))
+            .into_any_element()
+    }
+
     fn render_toolbar(
         &self,
         t: Theme,
@@ -1224,7 +1265,7 @@ impl FolderView {
                 }
             )));
         } else if let Some(path) = self.path() {
-            address = address.child(self.object_icon(path, true, 18., window, cx));
+            address = address.child(self.navigation_icon(path, None, 18., window, cx));
         } else {
             address = address
                 .child(
@@ -1594,7 +1635,13 @@ impl FolderView {
                             .when(active, |d| d.bg(t.c("nav.current.bg")))
                             .when(!active, |d| d.hover(|s| s.bg(t.c("state.hover"))))
                             .cursor_pointer()
-                            .child(self.object_icon(&path, true, 18., window, cx))
+                            .child(self.navigation_icon(
+                                &path,
+                                (title != "ピン留め").then_some(place.icon),
+                                18.,
+                                window,
+                                cx,
+                            ))
                             .child(label)
                             .when(title == "ピン留め", |d| {
                                 d.child(icon_button("unpin", "icons/x.svg", true, t).on_click(

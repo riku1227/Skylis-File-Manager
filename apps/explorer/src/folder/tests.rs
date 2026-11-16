@@ -1905,3 +1905,26 @@ fn listing_denial_is_distinct_and_navigation_clears_evidence(cx: &mut gpui::Test
         })
         .unwrap();
 }
+
+#[cfg(target_os = "macos")]
+#[gpui::test]
+fn navigation_render_avoids_pinned_and_missing_path_lookups(cx: &mut gpui::TestAppContext) {
+    let window = home_window(cx);
+    window
+        .update(cx, |view, w, cx| {
+            view.pinned = super::home::pinned_places(&[
+                PathBuf::from("/Users/example/Documents"),
+                PathBuf::from("/missing/pinned"),
+            ]);
+            let t = view.theme(w);
+            let _ = view.render_home(t, w, cx);
+            let _ = view.render_sidebar(t, w, cx);
+            view.history.push(
+                Location::Folder(PathBuf::from("/missing/archive.zip")),
+                None,
+            );
+            let _ = view.render_toolbar(t, w, cx);
+            view.icons.read(cx).assert_navigation_requests_only();
+        })
+        .unwrap();
+}

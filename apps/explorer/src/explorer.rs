@@ -316,7 +316,12 @@ impl Render for Explorer {
             let path = tab.read(cx).path().map(std::path::Path::to_path_buf);
             let image = path.as_ref().and_then(|path| {
                 self.icons.update(cx, |icons, cx| {
-                    icons.get(path, true, (14. * window.scale_factor()).ceil() as u32, cx)
+                    icons.get_navigation(
+                        path,
+                        true,
+                        (14. * window.scale_factor()).ceil() as u32,
+                        cx,
+                    )
                 })
             });
             tabs = tabs.child(

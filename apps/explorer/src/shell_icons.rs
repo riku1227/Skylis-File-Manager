@@ -321,6 +321,43 @@ impl ShellIcons {
         fallback_image.flatten()
     }
 
+    /// Navigation decoration must never inspect unopened macOS filesystem objects.
+    pub fn get_navigation(
+        &mut self,
+        path: &Path,
+        is_dir: bool,
+        size: u32,
+        cx: &mut Context<Self>,
+    ) -> Option<Arc<RenderImage>> {
+        #[cfg(target_os = "macos")]
+        {
+            let _ = cx;
+            self.get_type(path, is_dir, size)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.get(path, is_dir, size, cx)
+        }
+    }
+
+    #[cfg(all(test, target_os = "macos"))]
+    pub(crate) fn assert_navigation_requests_only(&self) {
+        let queue = self.requests.queue.lock().unwrap();
+        for key in queue
+            .queued
+            .iter()
+            .chain(queue.in_flight.iter())
+            .chain(self.cache.entries.keys())
+        {
+            assert!(
+                key.attributes_only,
+                "navigation queued an exact path: {:?}",
+                key.path
+            );
+            assert!(!key.path.as_ref().unwrap().is_absolute());
+        }
+    }
+
     pub fn get_type(&mut self, path: &Path, is_dir: bool, size: u32) -> Option<Arc<RenderImage>> {
         self.get_key(Key::file_type(path, is_dir, size))
     }
@@ -828,4 +865,25 @@ mod tests {
             vec![100, 50, 0, 128]
         );
     }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[gpui::test]
+fn navigation_requests_never_queue_real_paths(cx: &mut gpui::TestAppContext) {
+    use gpui::AppContext;
+    let icons = cx.new(ShellIcons::new);
+    icons.update(cx, |icons, cx| {
+        for path in [
+            "/Users/example/Documents",
+            "/missing/pinned",
+            "/missing/archive.zip",
+        ] {
+            icons.get_navigation(Path::new(path), true, 32, cx);
+        }
+        let queue = icons.requests.queue.lock().unwrap();
+        for key in queue.queued.iter().chain(queue.in_flight.iter()) {
+            assert!(key.attributes_only);
+            assert_eq!(key.path.as_deref(), Some(Path::new("folder")));
+        }
+    });
 }
