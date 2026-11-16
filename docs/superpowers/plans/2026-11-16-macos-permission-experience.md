@@ -41,23 +41,23 @@ When the current explicit listing fails with PermissionDenied, show one small no
 
 **Files:** `apps/explorer/src/shell_icons.rs`, `shell_icons_macos.m`, `folder.rs`, `folder/home.rs`, `explorer.rs`; add a small focused module only if useful.
 
-- [ ] Add regression coverage at the icon request boundary proving real protected/pinned paths are not queued by macOS navigation rendering. Include absent paths and archive/tab cases without performing real protected-folder reads.
-- [ ] Implement a path-independent navigation icon API and migrate navigation chrome. Keep visible file-entry native icons and Windows behavior intact.
-- [ ] Inspect startup, capacity, watcher and thumbnail paths for speculative protected-directory access. Fix only concrete paths relevant to this task; record remaining uncertainty.
-- [ ] Run focused tests, format and diff checks; commit the independently usable icon change with its intent and validation.
+- [x] Add regression coverage at the icon request boundary proving real protected/pinned paths are not queued by macOS navigation rendering. Include absent paths and archive/tab cases without performing real protected-folder reads.
+- [x] Implement a path-independent navigation icon API and migrate navigation chrome. Keep visible file-entry native icons and Windows behavior intact.
+- [x] Inspect startup, capacity, watcher and thumbnail paths for speculative protected-directory access. Fix only concrete paths relevant to this task; record remaining uncertainty.
+- [x] Run focused tests, format and diff checks; commit the independently usable icon change with its intent and validation.
 
 ## Task 2: Contextual recovery notice
 
 **Files:** `apps/explorer/src/macos_permissions.rs`, `folder.rs`, an optional `folder/permissions.rs`, and existing permission settings only as needed.
 
-- [ ] Add state-transition tests for denied -> dismiss -> rerender/automatic refresh; explicit retry -> denied/success; navigation cancellation; non-permission errors. Use existing GPUI tests for action routing where feasible.
-- [ ] Implement the notice, settings/retry/dismiss actions, and per-visit dismissal behavior. Maintain existing error access and keyboard navigation. Fit minimum 900x600 windows without covering navigation controls.
-- [ ] Run `cargo test --locked --workspace --target aarch64-apple-darwin`, `cargo fmt --all -- --check`, and `git diff --check` once final code is ready.
-- [ ] Build/sign `bash scripts/build-macos.sh release`. Verify actual UI with the exact bundle, keeping it uncovered. Use an owned disposable chmod-denied folder for denial/dismiss/retry/recovery, restoring its permissions afterwards; do not change TCC/FDA or access unrelated user data.
-- [ ] Commit the notice and concise verification documentation, including this plan. Report precisely which prompt behavior was tested and which remains unproven without resetting privacy permissions.
+- [x] Add state-transition tests for denied -> dismiss -> rerender/automatic refresh; explicit retry -> denied/success; navigation cancellation; non-permission errors. Use existing GPUI tests for action routing where feasible.
+- [x] Implement the notice, settings/retry/dismiss actions, and per-visit dismissal behavior. Maintain existing error access and keyboard navigation. Fit minimum 900x600 windows without covering navigation controls.
+- [x] Run `cargo test --locked --workspace --target aarch64-apple-darwin`, `cargo fmt --all -- --check`, and `git diff --check` once final code is ready.
+- [x] Build/sign `bash scripts/build-macos.sh release`. Verify actual UI with the exact bundle, keeping it uncovered. Use an owned disposable chmod-denied folder for denial/dismiss/retry/recovery, restoring its permissions afterwards; do not change TCC/FDA or access unrelated user data.
+- [x] Commit the notice and concise verification documentation, including this plan. Report precisely which prompt behavior was tested and which remains unproven without resetting privacy permissions.
 
 ## Parent acceptance
 
-- [ ] Review full implementation diff against the boundary and lifecycle constraints.
-- [ ] Inspect test/build evidence and native UI; fix small findings directly.
-- [ ] Leave the normal signed release running with no temporary instrumentation; report commit hashes and verification limits.
+- [x] Review full implementation diff against the boundary and lifecycle constraints.
+- [x] Inspect test/build evidence and native UI; fix small findings directly.
+- [x] Leave the normal signed release running with no temporary instrumentation; report commit hashes and verification limits.

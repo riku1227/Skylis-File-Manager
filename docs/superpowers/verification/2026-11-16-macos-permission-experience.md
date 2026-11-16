@@ -41,4 +41,11 @@ Native resizing through CUA edge drags did not change the window size; minimum-s
 
 Startup favorites are lexical paths; Home does not enumerate them. macOS drives are root only, with capacity workers querying root and Home. Watches attach to the requested location. Address candidate metadata checks are tied to user-entered paths on a worker. Thumbnail requests originate from opened-directory entries/selected previews; file metadata checks occur on workers. Navigation icon selection adds no filesystem checks or package traversal. Worker/cache limits remain unchanged.
 
-The removed `NSWorkspace iconForFile` call was a confirmed speculative path lookup, not a proven historical TCC trigger. The chmod test verifies filesystem denial recovery; it does not prove absence of fresh-install OS TCC prompts. No TCC database reads, grants, revokes, resets or global FDA probes were performed. Windows behavior was preserved by conditional routing but was not executed on this macOS host. Parent review remains outstanding.
+The removed `NSWorkspace iconForFile` call was a confirmed speculative path lookup, not a proven historical TCC trigger. The chmod test verifies filesystem denial recovery; it does not prove absence of fresh-install OS TCC prompts. No TCC database reads, grants, revokes, resets or global FDA probes were performed. Windows behavior was preserved by conditional routing but was not executed on this macOS host.
+
+
+## Parent review
+
+Reviewed the complete `fa80499..3d379ce` implementation diff and the surrounding listing/watch lifecycle. Home, sidebar, tab and address decoration now use semantic assets or the type-only request route on macOS. Remaining exact-path icon calls are for entries in opened directories or their previews. Navigation and watch cancellation guards remain in place; dismissal survives automatic failures and resets on an explicit retry, navigation or successful access. No additional application changes were needed.
+
+Inspected the recorded 212 explorer + 44 core passing test results, release build output, and native denial/recovery screenshots. Independently verified the final bundle with `codesign --verify --deep --strict --verbose=2` and checked the repository diff for whitespace errors. Also inspected the running normal release Home screen: icons/capacity rendered and no permission notice appeared. The documented TCC, native minimum-window-size, and Windows validation limits still apply. No temporary instrumentation or privacy setting changes were added during review.
