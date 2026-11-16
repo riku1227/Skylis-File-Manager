@@ -205,6 +205,7 @@ impl FolderView {
                             &place.path,
                             (!pinned).then_some(place.icon),
                             32.,
+                            t.c("accent.fg"),
                             window,
                             cx,
                         ))

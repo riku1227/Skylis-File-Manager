@@ -1175,6 +1175,7 @@ impl FolderView {
         path: &Path,
         semantic: Option<platform::PlaceIcon>,
         logical: f32,
+        color: gpui::Rgba,
         window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -1192,10 +1193,10 @@ impl FolderView {
                 .path(asset)
                 .size(px(logical))
                 .flex_shrink_0()
-                .text_color(self.theme(window).c("accent.fg"))
+                .text_color(color)
                 .into_any_element();
         }
-        let _ = semantic;
+        let _ = (semantic, color);
         let image = self.icons.update(cx, |icons, cx| {
             icons.get_navigation(
                 path,
@@ -1276,7 +1277,8 @@ impl FolderView {
                 }
             )));
         } else if let Some(path) = self.path() {
-            address = address.child(self.navigation_icon(path, None, 18., window, cx));
+            address =
+                address.child(self.navigation_icon(path, None, 18., t.c("accent.fg"), window, cx));
         } else {
             address = address
                 .child(
@@ -1650,6 +1652,11 @@ impl FolderView {
                                 &path,
                                 (title != "ピン留め").then_some(place.icon),
                                 18.,
+                                t.c(if active {
+                                    "nav.current.fg"
+                                } else {
+                                    "accent.fg"
+                                }),
                                 window,
                                 cx,
                             ))
