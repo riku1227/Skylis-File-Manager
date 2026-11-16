@@ -2,6 +2,87 @@ use super::*;
 use std::{cell::Cell, rc::Rc};
 
 #[gpui::test]
+fn deep_breadcrumbs_expose_omission_only_when_collapsed(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    for (path, omitted) in [
+        ("/one/two/three/four", false),
+        ("/one/two/three/four/five", true),
+        ("/one/two/three/four/five/six", true),
+    ] {
+        window
+            .update(&mut visual, |v, _, cx| {
+                v.history = History::new(Location::Folder(PathBuf::from(path)));
+                cx.notify();
+            })
+            .unwrap();
+        assert_eq!(
+            visual.debug_bounds("breadcrumb-omission").is_some(),
+            omitted
+        );
+    }
+    window
+        .update(&mut visual, |v, w, cx| v.edit_address(&EditAddress, w, cx))
+        .unwrap();
+    assert!(visual.debug_bounds("breadcrumb-omission").is_none());
+}
+
+#[gpui::test]
+fn pinned_remove_is_keyboard_reachable_and_returns_to_files(cx: &mut gpui::TestAppContext) {
+    cx.update(|cx| {
+        cx.bind_keys([
+            gpui::KeyBinding::new("enter", OpenSelected, Some("Explorer")),
+            gpui::KeyBinding::new("space", QuickPreview, Some("Explorer")),
+        ]);
+        let settings = crate::settings_data::Settings {
+            pinned_folders: vec![PathBuf::from("/missing/pin")],
+            ..Default::default()
+        };
+        let preferences = cx.new(|cx| {
+            crate::settings::Preferences::new((settings, Some("memory-only".into())), cx)
+        });
+        cx.set_global(crate::settings::SharedPreferences(preferences));
+    });
+    let window = workflow_window(cx);
+    window.update(cx, |v, w, cx| w.focus(&v.focus, cx)).unwrap();
+    cx.simulate_keystrokes(window.into(), "tab tab");
+    window
+        .update(cx, |v, w, cx| {
+            let focused = w.focused(cx);
+            assert_ne!(focused.as_ref(), Some(&v.focus));
+            assert_ne!(focused.as_ref(), Some(&v.display_settings.trigger_focus));
+        })
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "tab");
+    window
+        .update(cx, |v, w, _| assert!(v.focus.is_focused(w)))
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "shift-tab shift-tab");
+    window
+        .update(cx, |v, w, _| {
+            assert!(v.display_settings.trigger_focus.is_focused(w))
+        })
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "tab");
+    cx.simulate_keystrokes(window.into(), "space");
+    cx.run_until_parked();
+    window
+        .update(cx, |v, w, cx| {
+            assert!(
+                cx.global::<crate::settings::SharedPreferences>()
+                    .0
+                    .read(cx)
+                    .value
+                    .pinned_folders
+                    .is_empty()
+            );
+            assert!(v.focus.is_focused(w));
+            assert!(!v.preview_open);
+        })
+        .unwrap();
+}
+
+#[gpui::test]
 fn hidden_visibility_is_shared_and_inherited_without_listing_again(cx: &mut gpui::TestAppContext) {
     cx.background_executor.allow_parking();
     cx.update(|cx| {
@@ -161,7 +242,7 @@ fn display_popup_keeps_edits_open_and_esc_does_not_clear_search(cx: &mut gpui::T
     let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
     click_display_control(&mut visual, "display-settings-trigger");
     click_display_control(&mut visual, "display-sort-size");
-    click_display_control(&mut visual, "display-sort-descending");
+    click_display_control(&mut visual, "display-sort-size");
     click_display_control(&mut visual, "display-hidden");
     click_display_control(&mut visual, "display-gallery");
     window
@@ -190,6 +271,85 @@ fn display_popup_keeps_edits_open_and_esc_does_not_clear_search(cx: &mut gpui::T
 }
 
 #[gpui::test]
+fn display_popup_sort_keyboard_and_input_modality(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    click_display_control(&mut visual, "display-settings-trigger");
+    assert!(visual.debug_bounds("display-settings-close").is_none());
+    assert!(visual.debug_bounds("display-sort-ascending").is_none());
+    assert!(visual.debug_bounds("display-sort-descending").is_none());
+    window
+        .read_with(cx, |view, _| assert!(!view.display_settings.keyboard_mode))
+        .unwrap();
+    click_display_control(&mut visual, "display-sort-name");
+    window
+        .read_with(cx, |view, _| assert!(!view.sort.ascending))
+        .unwrap();
+    // At the first key, Left/Home must preserve descending order.
+    cx.simulate_keystrokes(window.into(), "left home");
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.sort.key, SortKey::Name);
+            assert!(!view.sort.ascending);
+            assert!(view.display_settings.keyboard_mode);
+        })
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "right");
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.sort.key, SortKey::Modified);
+            assert!(view.sort.ascending);
+        })
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "enter");
+    window
+        .read_with(cx, |view, _| assert!(!view.sort.ascending))
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "space");
+    window
+        .read_with(cx, |view, _| assert!(view.sort.ascending))
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "end enter right end");
+    window
+        .read_with(cx, |view, _| {
+            assert_eq!(view.sort.key, SortKey::Size);
+            assert!(!view.sort.ascending);
+        })
+        .unwrap();
+    // Row 2 is gone: Down from sort reaches the pane, then hidden, then density.
+    cx.simulate_keystrokes(window.into(), "down enter down enter down right");
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.pane);
+            assert!(view.show_hidden);
+            assert!(view.compact);
+        })
+        .unwrap();
+    let popup = visual.debug_bounds("display-settings-panel").unwrap();
+    visual.update(|w, cx| w.simulate_mouse_move(popup.center(), cx));
+    window
+        .read_with(cx, |view, _| assert!(!view.display_settings.keyboard_mode))
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "left");
+    window
+        .read_with(cx, |view, _| assert!(view.display_settings.keyboard_mode))
+        .unwrap();
+    click_display_control(&mut visual, "display-density-standard");
+    window
+        .read_with(cx, |view, _| assert!(!view.display_settings.keyboard_mode))
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "escape down");
+    window
+        .read_with(cx, |view, _| {
+            assert!(view.display_settings.open);
+            assert!(view.display_settings.keyboard_mode);
+        })
+        .unwrap();
+}
+
+#[gpui::test]
 fn display_popup_fits_small_windows_and_trigger_dismisses(cx: &mut gpui::TestAppContext) {
     let window = workflow_window(cx);
     cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
@@ -208,6 +368,13 @@ fn display_popup_fits_small_windows_and_trigger_dismisses(cx: &mut gpui::TestApp
             });
         assert!(bounds.origin.x >= px(0.) && bounds.origin.y >= px(0.));
         assert!(bounds.right() <= px(width) && bounds.bottom() <= px(height));
+        cx.simulate_keystrokes(window.into(), "down down down down end");
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let density = visual.debug_bounds("display-density-compact").unwrap();
+        assert!(
+            density.top() >= bounds.top() && density.bottom() <= bounds.bottom(),
+            "last row must scroll into the popup at {width}x{height}: {density:?} / {bounds:?}"
+        );
         cx.simulate_keystrokes(window.into(), "escape");
     }
     click_display_control(&mut visual, "display-settings-trigger");
@@ -267,7 +434,7 @@ fn display_popup_owns_bound_file_keys_and_tabs_out(cx: &mut gpui::TestAppContext
     window
         .read_with(cx, |view, _| assert!(view.show_hidden))
         .unwrap();
-    cx.simulate_keystrokes(window.into(), "tab tab tab tab tab");
+    cx.simulate_keystrokes(window.into(), "tab tab tab tab");
     window
         .update(cx, |view, w, _| {
             assert!(!view.display_settings.open);
@@ -632,6 +799,42 @@ fn dispatch_wheel(
         );
     })
     .unwrap();
+}
+
+#[gpui::test]
+fn pinned_remove_click_does_not_navigate_to_removed_place(cx: &mut gpui::TestAppContext) {
+    cx.update(|cx| {
+        let settings = crate::settings_data::Settings {
+            pinned_folders: vec![PathBuf::from("/missing/pin")],
+            ..Default::default()
+        };
+        let preferences = cx.new(|cx| {
+            crate::settings::Preferences::new((settings, Some("memory-only".into())), cx)
+        });
+        cx.set_global(crate::settings::SharedPreferences(preferences));
+    });
+    let window = workflow_window(cx);
+    let original = window
+        .read_with(cx, |v, _| v.path().unwrap().to_path_buf())
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    let bounds = visual.debug_bounds("unpin-0").unwrap();
+    assert_eq!(bounds.size, gpui::size(px(24.), px(24.)));
+    click_display_control(&mut visual, "unpin-0");
+    visual.run_until_parked();
+    window
+        .read_with(&visual, |v, cx| {
+            assert_eq!(v.path(), Some(original.as_path()));
+            assert!(
+                cx.global::<crate::settings::SharedPreferences>()
+                    .0
+                    .read(cx)
+                    .value
+                    .pinned_folders
+                    .is_empty()
+            );
+        })
+        .unwrap();
 }
 
 fn advance_motion_frame(
@@ -2012,4 +2215,62 @@ fn permission_notice_fits_minimum_window_and_dismiss_click_routes(cx: &mut gpui:
             assert!(!view.permission_observation.visible())
         })
         .unwrap();
+}
+
+#[gpui::test]
+fn feedback_generations_advance_only_on_opening(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |v, w, cx| {
+            assert_eq!(v.display_settings.generation, 0);
+            v.open_display_settings(w, cx);
+            let generation = v.display_settings.generation;
+            assert_eq!(generation, 1);
+            v.open_display_settings(w, cx);
+            v.set_gallery(true, cx);
+            v.request_pane(true, cx);
+            v.request_pane(true, cx);
+            v.compact = true;
+            v.select(0, cx);
+            assert_eq!(v.display_settings.generation, generation);
+            assert_eq!(v.pane_generation, 1);
+            v.request_pane(false, cx);
+            v.request_pane(true, cx);
+            assert_eq!(v.pane_generation, 2);
+            v.close_display_settings(cx);
+            v.open_display_settings(w, cx);
+            assert_eq!(v.display_settings.generation, generation + 1);
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn reduced_motion_segments_draw_at_selected_option_on_mount_and_change(
+    cx: &mut gpui::TestAppContext,
+) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |v, w, cx| {
+            cx.set_reduce_motion(true);
+            v.gallery = true;
+            v.open_display_settings(w, cx);
+        })
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    for selector in [
+        "display-gallery",
+        "display-details",
+        "display-gallery",
+        "display-details",
+    ] {
+        click_display_control(&mut visual, selector);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let face = visual.debug_bounds("display-segment-face-0").unwrap();
+        let option = visual.debug_bounds(selector).unwrap();
+        assert!(
+            (f32::from(face.left() - option.left())).abs() < 1.1,
+            "{face:?} / {option:?}"
+        );
+        assert!((f32::from(face.size.width - option.size.width)).abs() < 1.1);
+    }
 }

@@ -504,8 +504,10 @@ impl FolderView {
                     )
                     .with_animation(
                         ("menu-reveal", self.menu_generation),
-                        Animation::new(std::time::Duration::from_millis(110)),
-                        |element, progress| element.opacity(1. - (1. - progress).powi(3)),
+                        Animation::new(crate::motion::MENU_REVEAL),
+                        |element, progress| {
+                            element.opacity(crate::motion::ease_out_cubic(progress))
+                        },
                     ),
             ),
         )

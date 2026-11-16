@@ -83,6 +83,8 @@ pub struct FolderView {
     archive_jobs: Entity<crate::archive_jobs::ArchiveJobs>,
     transfer_progress: Entity<transfers::TransferProgress>,
     menu_generation: usize,
+    pane_generation: usize,
+    pane_revealed_at: Option<std::time::Instant>,
     menu_focus: FocusHandle,
     _shell_menu: Option<Task<()>>,
     _open_request: Option<Task<()>>,
@@ -127,6 +129,7 @@ pub struct FolderView {
     show_hidden: bool,
     scroll: UniformListScrollHandle,
     scrollbar_drag: Option<f32>,
+    scrollbar_hovered: bool,
     loading: bool,
     stats: Option<ListingStats>,
     error: Option<String>,
@@ -137,6 +140,8 @@ pub struct FolderView {
     watch_state: watch::WatchState,
     favorites: Vec<Place>,
     pinned: Vec<Place>,
+    // Bounded by the settings pin limit; stable across paints and keyboard traversal.
+    pin_remove_focus: Vec<FocusHandle>,
     drives: Vec<Place>,
     drive_space: HashMap<PathBuf, Option<DriveSpace>>,
     title_dirty: bool,
@@ -262,6 +267,8 @@ impl FolderView {
             archive_jobs,
             transfer_progress,
             menu_generation: 0,
+            pane_generation: 0,
+            pane_revealed_at: None,
             menu_focus: cx.focus_handle(),
             _shell_menu: None,
             _open_request: None,
@@ -300,6 +307,7 @@ impl FolderView {
             show_hidden,
             scroll: UniformListScrollHandle::new(),
             scrollbar_drag: None,
+            scrollbar_hovered: false,
             loading: false,
             stats: None,
             error: None,
@@ -310,6 +318,9 @@ impl FolderView {
             watch_state: Default::default(),
             favorites: platform::favorite_places(),
             pinned,
+            pin_remove_focus: (0..crate::settings_data::MAX_PINS)
+                .map(|_| cx.focus_handle())
+                .collect(),
             drives: platform::drives(),
             drive_space: HashMap::new(),
             title_dirty: true,
@@ -1291,6 +1302,17 @@ impl FolderView {
         }
         for (i, (label, path)) in crumbs.into_iter().filter(|_| !self.editing_address) {
             let last = i + 1 == n;
+            if n > 5 && i == n - 3 {
+                address = address.child(
+                    div()
+                        .id("breadcrumb-omission")
+                        .debug_selector(|| "breadcrumb-omission".into())
+                        .flex_shrink_0()
+                        .px(px(6.))
+                        .text_color(t.c("text.secondary"))
+                        .child("…"),
+                );
+            }
             address = address
                 .when(i > 0, |d| {
                     d.child(
@@ -1615,68 +1637,150 @@ impl FolderView {
                         );
                     }
                 }
-                panel =
-                    panel.child(
-                        div()
-                            .id((
-                                if drive {
-                                    "drive"
-                                } else if title == "ピン留め" {
-                                    "pin"
-                                } else {
-                                    "fav"
-                                },
-                                i,
-                            ))
-                            .flex()
-                            .items_start()
-                            .gap(px(10.))
-                            .px(px(10.))
-                            .py(px(if drive { 8. } else { 4. }))
-                            .mb(px(if drive { 6. } else { 3. }))
-                            .rounded(px(10.))
-                            .text_color(if active {
-                                t.c("nav.current.fg")
+                panel = panel.child(
+                    div()
+                        .id((
+                            if drive {
+                                "drive"
+                            } else if title == "ピン留め" {
+                                "pin"
                             } else {
-                                t.c("text.secondary")
-                            })
-                            .when(drive && !active, |d| {
-                                d.bg(t.c("surface.field"))
-                                    .border_1()
-                                    .border_color(t.c("border.subtle"))
-                            })
-                            .when(active, |d| d.bg(t.c("nav.current.bg")))
-                            .when(!active, |d| d.hover(|s| s.bg(t.c("state.hover"))))
-                            .cursor_pointer()
-                            .child(self.navigation_icon(
-                                &path,
-                                (title != "ピン留め").then_some(place.icon),
-                                18.,
-                                t.c(if active {
-                                    "nav.current.fg"
-                                } else {
-                                    "accent.fg"
-                                }),
-                                window,
-                                cx,
-                            ))
-                            .child(label)
-                            .when(title == "ピン留め", |d| {
-                                d.child(icon_button("unpin", "icons/x.svg", true, t).on_click(
-                                    cx.listener(move |this, _, _, cx| {
-                                        cx.stop_propagation();
-                                        this.toggle_pin_path(unpin_path.clone(), cx);
+                                "fav"
+                            },
+                            i,
+                        ))
+                        .group("sidebar-place")
+                        .flex()
+                        .items_start()
+                        .gap(px(10.))
+                        .px(px(10.))
+                        .py(px(if drive { 8. } else { 4. }))
+                        .mb(px(if drive { 6. } else { 3. }))
+                        .rounded(px(10.))
+                        .text_color(if active {
+                            t.c("nav.current.fg")
+                        } else {
+                            t.c("text.secondary")
+                        })
+                        .when(drive && !active, |d| {
+                            d.bg(t.c("surface.field"))
+                                .border_1()
+                                .border_color(t.c("border.subtle"))
+                        })
+                        .when(active, |d| d.bg(t.c("nav.current.bg")))
+                        .when(!active, |d| d.hover(|s| s.bg(t.c("state.hover"))))
+                        .cursor_pointer()
+                        .child(self.navigation_icon(
+                            &path,
+                            (title != "ピン留め").then_some(place.icon),
+                            18.,
+                            t.c(if active {
+                                "nav.current.fg"
+                            } else {
+                                "accent.fg"
+                            }),
+                            window,
+                            cx,
+                        ))
+                        .child(label)
+                        .when(title == "ピン留め", |d| {
+                            d.child(
+                                icon_button_with_color(
+                                    "unpin",
+                                    "icons/x.svg",
+                                    true,
+                                    t,
+                                    t.c(if active {
+                                        "nav.current.fg"
+                                    } else {
+                                        "icon.default"
                                     }),
-                                ))
-                            })
-                            .map(|d| Self::file_drop_target(d, Some(path.clone()), t, cx))
-                            .on_click(cx.listener(move |this, _, w, cx| {
-                                this.navigate_to(path.clone(), w, cx)
-                            })),
-                    );
+                                )
+                                .size(px(24.))
+                                .rounded(px(12.))
+                                .track_focus(&self.pin_remove_focus[i])
+                                .tab_index(0)
+                                .debug_selector(move || format!("unpin-{i}"))
+                                .border_1()
+                                .border_color(t.c("focus.ring").opacity(0.))
+                                // Opacity preserves hit testing for touch; tapping the row
+                                // focuses this control so the next tap has a visible target.
+                                .opacity(if self.pin_remove_focus[i].is_focused(window) {
+                                    1.
+                                } else {
+                                    0.
+                                })
+                                .group_hover("sidebar-place", |s| s.opacity(1.))
+                                .focus(|s| {
+                                    s.opacity(1.).border_color(t.c(if active {
+                                        "nav.current.fg"
+                                    } else {
+                                        "focus.ring"
+                                    }))
+                                })
+                                .on_click(cx.listener(move |this, _, w, cx| {
+                                    cx.stop_propagation();
+                                    w.focus(&this.focus, cx);
+                                    this.toggle_pin_path(unpin_path.clone(), cx);
+                                }))
+                                // These keys have Explorer action bindings. Consume the
+                                // actions too, before they reach the file list handlers.
+                                .on_action(cx.listener(move |this, _: &OpenSelected, w, cx| {
+                                    this.remove_sidebar_pin(i, w, cx);
+                                }))
+                                .on_action(cx.listener(move |this, _: &QuickPreview, w, cx| {
+                                    this.remove_sidebar_pin(i, w, cx);
+                                }))
+                                .on_key_down(cx.listener(
+                                    move |this, event: &gpui::KeyDownEvent, w, cx| {
+                                        let modifiers = event.keystroke.modifiers;
+                                        if modifiers.control || modifiers.alt || modifiers.platform
+                                        {
+                                            return;
+                                        }
+                                        match event.keystroke.key.as_str() {
+                                            "enter" | "space" => {
+                                                this.remove_sidebar_pin(i, w, cx);
+                                            }
+                                            "tab" => {
+                                                let target = if modifiers.shift && i == 0 {
+                                                    &this.display_settings.trigger_focus
+                                                } else if modifiers.shift {
+                                                    &this.pin_remove_focus[i - 1]
+                                                } else if i + 1 < this.pinned.len() {
+                                                    &this.pin_remove_focus[i + 1]
+                                                } else {
+                                                    &this.focus
+                                                };
+                                                w.focus(target, cx);
+                                            }
+                                            "escape" => w.focus(&this.focus, cx),
+                                            _ => return,
+                                        }
+                                        cx.stop_propagation();
+                                    },
+                                )),
+                            )
+                        })
+                        .map(|d| Self::file_drop_target(d, Some(path.clone()), t, cx))
+                        .on_click(cx.listener(move |this, _, w, cx| {
+                            this.navigate_to(path.clone(), w, cx);
+                            if title == "ピン留め" {
+                                w.focus(&this.pin_remove_focus[i], cx);
+                            }
+                        })),
+                );
             }
         }
         panel.child(self.render_wsl(t, cx))
+    }
+
+    fn remove_sidebar_pin(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
+        window.focus(&self.focus, cx);
+        if let Some(place) = self.pinned.get(index) {
+            self.toggle_pin_path(place.path.clone(), cx);
+        }
     }
     fn render_header(&self, t: Theme, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let col = |id: &'static str, label: &'static str, key: SortKey, cx: &mut Context<Self>| {
@@ -2031,7 +2135,7 @@ impl FolderView {
                     .border_color(t.c("border.subtle"))
                     .text_size(px(12.))
                     .text_color(t.c("text.muted"))
-                    .child("インスペクタ")
+                    .child("詳細")
                     .child(
                         icon_button("close-pane", "icons/x.svg", true, t)
                             .size(px(22.))
@@ -2198,7 +2302,22 @@ impl FolderView {
                     .child("項目を選択すると詳細を表示します"),
             );
         }
-        panel = panel.child(body);
+        use gpui::{Animation, AnimationExt};
+        let elapsed = self
+            .pane_revealed_at
+            .map(|at| cx.background_executor().now().saturating_duration_since(at));
+        panel = if let Some(elapsed) = elapsed.filter(|dt| *dt < crate::motion::PANE_REVEAL)
+            && !cx.reduce_motion()
+        {
+            let start = elapsed.as_secs_f32() / crate::motion::PANE_REVEAL.as_secs_f32();
+            panel.child(body.with_animation(
+                ("pane-reveal", self.pane_generation),
+                Animation::new(crate::motion::PANE_REVEAL),
+                move |d, p| d.opacity(crate::motion::ease_out_cubic(p.max(start))),
+            ))
+        } else {
+            panel.child(body)
+        };
         panel
     }
     fn render_permission_notice(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
@@ -2401,7 +2520,11 @@ impl Render for FolderView {
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
                 if event.keystroke.key == "tab" && !this.input_focused(w, cx) {
-                    w.focus(&this.display_settings.trigger_focus, cx);
+                    if event.keystroke.modifiers.shift && !this.pinned.is_empty() {
+                        w.focus(&this.pin_remove_focus[this.pinned.len() - 1], cx);
+                    } else {
+                        w.focus(&this.display_settings.trigger_focus, cx);
+                    }
                     cx.stop_propagation();
                 }
             }))
@@ -2682,6 +2805,16 @@ pub fn icon_button(
     enabled: bool,
     t: Theme,
 ) -> gpui::Stateful<gpui::Div> {
+    icon_button_with_color(id, icon, enabled, t, t.c("icon.default"))
+}
+
+fn icon_button_with_color(
+    id: &'static str,
+    icon: &'static str,
+    enabled: bool,
+    t: Theme,
+    color: gpui::Rgba,
+) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .flex()
@@ -2690,36 +2823,34 @@ pub fn icon_button(
         .size(px(32.))
         .flex_shrink_0()
         .rounded(px(16.))
-        .child(
-            svg()
-                .path(icon)
-                .size(px(16.))
-                .text_color(t.c("icon.default")),
-        )
+        .child(svg().path(icon).size(px(16.)).text_color(color))
         .when(enabled, |d| {
             d.cursor_pointer().hover(|s| s.bg(t.c("state.hover")))
         })
         .when(!enabled, |d| d.opacity(0.35))
-        .tooltip(move |_, cx| {
-            cx.new(|_| Tip {
-                text: match id {
-                    "back" => "戻る（Alt+←）",
-                    "forward" => "進む（Alt+→）",
-                    "up" => "上へ（Alt+↑）",
-                    "refresh" => "更新（F5）",
-                    "pane" => "詳細ペイン",
-                    "close-pane" => "詳細ペインを閉じる",
-                    "clear-search" => "検索をクリア（Esc）",
-                    "new-tab" => "新しいタブ（Ctrl+T）",
-                    "display-settings-trigger" => "表示設定",
-                    "settings" => "設定（Ctrl+,）",
-                    "close-settings" => "設定を閉じる（Esc）",
-                    _ => "テーマ切替",
-                }
-                .into(),
-                theme: t,
+        .when(id != "display-settings-trigger", |d| {
+            d.tooltip(move |_, cx| {
+                cx.new(|_| Tip {
+                    text: match id {
+                        "back" => "戻る（Alt+←）",
+                        "forward" => "進む（Alt+→）",
+                        "up" => "上へ（Alt+↑）",
+                        "refresh" => "更新（F5）",
+                        "pane" => "詳細ペイン",
+                        "close-pane" => "詳細ペインを閉じる",
+                        "unpin" => "ピン留めを外す",
+                        "clear-search" => "検索をクリア（Esc）",
+                        "new-tab" => "新しいタブ（Ctrl+T）",
+                        "display-settings-trigger" => "表示設定",
+                        "settings" => "設定（Ctrl+,）",
+                        "close-settings" => "設定を閉じる（Esc）",
+                        _ => "テーマ切替",
+                    }
+                    .into(),
+                    theme: t,
+                })
+                .into()
             })
-            .into()
         })
 }
 fn empty_state(msg: String, color: gpui::Rgba) -> impl IntoElement {

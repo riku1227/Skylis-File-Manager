@@ -15,12 +15,17 @@ pub(super) fn thumb_geometry(viewport: f32, max_scroll: f32, offset: f32) -> (f3
 impl FolderView {
     pub(super) fn render_scrollbar(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let scroll = self.scroll.clone();
+        let emphasized = self.scrollbar_hovered || self.scrollbar_drag.is_some();
         div()
             .id("list-scrollbar")
             .w(px(12.))
             .h_full()
             .flex_shrink_0()
             .cursor_default()
+            .on_hover(cx.listener(|this, hovered, _, cx| {
+                this.scrollbar_hovered = *hovered;
+                cx.notify();
+            }))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, _, cx| {
@@ -61,13 +66,20 @@ impl FolderView {
                                 max_scroll,
                                 -f32::from(handle.offset().y),
                             );
-                            window.paint_quad(fill(
-                                Bounds::new(
-                                    point(bounds.origin.x + px(3.), bounds.origin.y + px(top)),
-                                    size(px(6.), px(height)),
-                                ),
-                                t.c("text.muted"),
-                            ));
+                            window.paint_quad(
+                                fill(
+                                    Bounds::new(
+                                        point(bounds.origin.x + px(3.), bounds.origin.y + px(top)),
+                                        size(px(6.), px(height)),
+                                    ),
+                                    t.c("scrollbar.thumb").opacity(if emphasized {
+                                        1.5
+                                    } else {
+                                        1.
+                                    }),
+                                )
+                                .corner_radii(px(3.)),
+                            );
                         }
                     },
                 )
