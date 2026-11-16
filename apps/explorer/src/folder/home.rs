@@ -124,7 +124,7 @@ impl FolderView {
                                 place.label.clone()
                             }),
                     );
-                if drive {
+                if drive || (cfg!(target_os = "macos") && place.icon == platform::PlaceIcon::Home) {
                     info = match self.drive_space.get(&place.path) {
                         Some(Some(space)) => {
                             let used = if space.total > 0 {
@@ -201,7 +201,14 @@ impl FolderView {
                             "surface.card"
                         }))
                         .when(!selected, |d| d.hover(|s| s.bg(t.c("state.hover"))))
-                        .child(self.object_icon(&place.path, true, 32., window, cx))
+                        .child(self.navigation_icon(
+                            &place.path,
+                            (!pinned).then_some(place.icon),
+                            32.,
+                            t.c("accent.fg"),
+                            window,
+                            cx,
+                        ))
                         .child(info)
                         .on_mouse_down(
                             MouseButton::Left,

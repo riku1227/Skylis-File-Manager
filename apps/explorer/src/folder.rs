@@ -130,6 +130,7 @@ pub struct FolderView {
     loading: bool,
     stats: Option<ListingStats>,
     error: Option<String>,
+    pub(crate) permission_observation: crate::macos_permissions::Notice,
     notice: Option<String>,
     cancel: CancelToken,
     _listing: Option<Task<()>>,
@@ -302,6 +303,7 @@ impl FolderView {
             loading: false,
             stats: None,
             error: None,
+            permission_observation: Default::default(),
             notice: None,
             cancel: CancelToken::new(),
             _listing: None,
@@ -382,6 +384,15 @@ impl FolderView {
         self.drives = platform::drives();
         self.drive_space.clear();
         let paths: Vec<_> = self.drives.iter().map(|p| p.path.clone()).collect();
+        #[cfg(target_os = "macos")]
+        let paths = {
+            let mut paths = paths;
+            let home = platform::home_dir();
+            if !paths.contains(&home) {
+                paths.push(home);
+            }
+            paths
+        };
         let (tx, rx) = async_channel::bounded(paths.len().max(1));
         let _ = std::thread::Builder::new()
             .name("drive-space".into())
@@ -487,6 +498,7 @@ impl FolderView {
         self.loading = true;
         self.stats = None;
         self.error = None;
+        self.permission_observation = Default::default();
         self.notice = None;
         self.title_dirty = true;
         self.scroll.scroll_to_item(0, ScrollStrategy::Top);
@@ -522,10 +534,13 @@ impl FolderView {
             return;
         }
 
+        let listing_token = self.cancel.clone();
         self._listing = Some(cx.spawn(async move |this, cx| {
             while let Ok(ev) = rx.recv().await {
                 if this
-                    .update(cx, |this, cx| this.on_listing_event(ev, cx))
+                    .update(cx, |this, cx| {
+                        this.on_requested_listing_event(ev, &listing_token, cx);
+                    })
                     .is_err()
                 {
                     break;
@@ -533,6 +548,17 @@ impl FolderView {
             }
         }));
         cx.notify();
+    }
+
+    fn on_requested_listing_event(
+        &mut self,
+        ev: ListingEvent,
+        token: &CancelToken,
+        cx: &mut Context<Self>,
+    ) {
+        if !token.is_cancelled() {
+            self.on_listing_event(ev, cx);
+        }
     }
 
     fn on_listing_event(&mut self, ev: ListingEvent, cx: &mut Context<Self>) {
@@ -557,6 +583,7 @@ impl FolderView {
                 }
             }
             ListingEvent::Done(stats) => {
+                self.permission_observation.record(Ok(()), stats.cancelled);
                 self.loading = false;
                 self.stats = Some(stats);
                 self.choose_auto_gallery(cx);
@@ -568,6 +595,7 @@ impl FolderView {
                 self.pending_select = None;
             }
             ListingEvent::Failed(kind, msg) => {
+                self.permission_observation.record(Err(kind), false);
                 self.startup_handoff = None;
                 self.loading = false;
                 self.error = Some(match kind {
@@ -809,6 +837,7 @@ impl FolderView {
         if self.close_display_settings(cx) {
             w.focus(&self.focus, cx);
         }
+        self.permission_observation.retry();
         self.refresh_drives(cx);
         if self.path().is_some() && !self.loading {
             self.request_refresh(cx);
@@ -1100,6 +1129,13 @@ impl FolderView {
                         window.focus(&this.focus, cx);
                         this.navigate_to(path, window, cx);
                     }
+                    Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                        // Attempt the requested location through the listing path so the denial
+                        // retains its kind and offers the same recovery UI as sidebar navigation.
+                        this.editing_address = false;
+                        window.focus(&this.focus, cx);
+                        this.navigate_to(path, window, cx);
+                    }
                     Err(error) => {
                         this.address_error = Some(format!("開けませんでした: {error}"));
                     }
@@ -1134,6 +1170,48 @@ impl FolderView {
             .when_some(image, |d, image| d.child(img(image).size_full()))
             .into_any_element()
     }
+    fn navigation_icon(
+        &self,
+        path: &Path,
+        semantic: Option<platform::PlaceIcon>,
+        logical: f32,
+        color: gpui::Rgba,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        #[cfg(target_os = "macos")]
+        if let Some(semantic) = semantic {
+            let asset = match semantic {
+                platform::PlaceIcon::Home => "icons/home.svg",
+                platform::PlaceIcon::Desktop => "icons/desktop.svg",
+                platform::PlaceIcon::Documents => "icons/documents.svg",
+                platform::PlaceIcon::Downloads => "icons/downloads.svg",
+                platform::PlaceIcon::Pictures => "icons/pictures.svg",
+                platform::PlaceIcon::Drive => "icons/drive.svg",
+            };
+            return svg()
+                .path(asset)
+                .size(px(logical))
+                .flex_shrink_0()
+                .text_color(color)
+                .into_any_element();
+        }
+        let _ = (semantic, color);
+        let image = self.icons.update(cx, |icons, cx| {
+            icons.get_navigation(
+                path,
+                true,
+                (logical * window.scale_factor()).ceil() as u32,
+                cx,
+            )
+        });
+        div()
+            .size(px(logical))
+            .flex_shrink_0()
+            .when_some(image, |d, image| d.child(img(image).size_full()))
+            .into_any_element()
+    }
+
     fn render_toolbar(
         &self,
         t: Theme,
@@ -1149,6 +1227,7 @@ impl FolderView {
             .collect();
         let mut address = div()
             .id("breadcrumbs")
+            .debug_selector(|| "breadcrumbs".into())
             .flex()
             .items_center()
             .h(px(36.))
@@ -1198,7 +1277,8 @@ impl FolderView {
                 }
             )));
         } else if let Some(path) = self.path() {
-            address = address.child(self.object_icon(path, true, 18., window, cx));
+            address =
+                address.child(self.navigation_icon(path, None, 18., t.c("accent.fg"), window, cx));
         } else {
             address = address
                 .child(
@@ -1568,7 +1648,18 @@ impl FolderView {
                             .when(active, |d| d.bg(t.c("nav.current.bg")))
                             .when(!active, |d| d.hover(|s| s.bg(t.c("state.hover"))))
                             .cursor_pointer()
-                            .child(self.object_icon(&path, true, 18., window, cx))
+                            .child(self.navigation_icon(
+                                &path,
+                                (title != "ピン留め").then_some(place.icon),
+                                18.,
+                                t.c(if active {
+                                    "nav.current.fg"
+                                } else {
+                                    "accent.fg"
+                                }),
+                                window,
+                                cx,
+                            ))
                             .child(label)
                             .when(title == "ピン留め", |d| {
                                 d.child(icon_button("unpin", "icons/x.svg", true, t).on_click(
@@ -1836,7 +1927,37 @@ impl FolderView {
     fn render_list(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
         if let Some(err) = &self.error {
             return self
-                .selection_surface(empty_state(err.clone(), t.c("danger.fg")), t, cx)
+                .selection_surface(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(12.))
+                        .child(empty_state(err.clone(), t.c("danger.fg")))
+                        .when(
+                            cfg!(target_os = "macos")
+                                && self.permission_observation.observation
+                                    == crate::macos_permissions::Observation::Denied,
+                            |d| {
+                                d.child(
+                                    div()
+                                        .id("permission-recovery")
+                                        .cursor_pointer()
+                                        .p(px(12.))
+                                        .text_color(t.c("accent.fg"))
+                                        .child("アクセス権限の設定を開く")
+                                        .on_click(cx.listener(|_, _, window, cx| {
+                                            window.dispatch_action(
+                                                Box::new(crate::OpenPermissions),
+                                                cx,
+                                            )
+                                        })),
+                                )
+                            },
+                        ),
+                    t,
+                    cx,
+                )
                 .into_any_element();
         }
         if self.visible.is_empty() {
@@ -2080,7 +2201,67 @@ impl FolderView {
         panel = panel.child(body);
         panel
     }
-    fn render_status(&self, t: Theme, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_permission_notice(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .id("folder-permission-notice")
+            .debug_selector(|| "folder-permission-notice".into())
+            .mx(px(6.))
+            .mb(px(6.))
+            .p(px(12.))
+            .rounded(px(10.))
+            .bg(t.c("surface.card"))
+            .border_1()
+            .border_color(t.c("border.subtle"))
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(div().child("このフォルダーにアクセスできません"))
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(t.c("text.secondary"))
+                    .child("macOS のアクセス設定、またはフォルダー自体の権限を確認してください。"),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap(px(16.))
+                    .child(
+                        div()
+                            .id("folder-permission-settings")
+                            .debug_selector(|| "folder-permission-settings".into())
+                            .cursor_pointer()
+                            .text_color(t.c("accent.fg"))
+                            .child("設定の案内")
+                            .on_click(cx.listener(|_, _, w, cx| {
+                                w.dispatch_action(Box::new(crate::OpenPermissions), cx)
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("folder-permission-retry")
+                            .debug_selector(|| "folder-permission-retry".into())
+                            .cursor_pointer()
+                            .text_color(t.c("accent.fg"))
+                            .child("再試行")
+                            .on_click(cx.listener(|this, _, w, cx| this.refresh(&Refresh, w, cx))),
+                    )
+                    .child(
+                        div()
+                            .id("folder-permission-dismiss")
+                            .debug_selector(|| "folder-permission-dismiss".into())
+                            .cursor_pointer()
+                            .child("閉じる")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.permission_observation.dismiss();
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    fn render_status(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .items_center()
@@ -2117,6 +2298,23 @@ impl FolderView {
             .when_some(self.notice.clone(), |d, n| {
                 d.child(div().truncate().child(n))
             })
+            .when(
+                cfg!(target_os = "macos")
+                    && self.permission_observation.observation
+                        == crate::macos_permissions::Observation::Denied,
+                |d| {
+                    d.child(
+                        div()
+                            .id("status-permission-recovery")
+                            .cursor_pointer()
+                            .text_color(t.c("accent.fg"))
+                            .child("アクセス権限の設定")
+                            .on_click(cx.listener(|_, _, w, cx| {
+                                w.dispatch_action(Box::new(crate::OpenPermissions), cx)
+                            })),
+                    )
+                },
+            )
             .child(div().flex_1())
             .when(self.show_hidden, |d| {
                 d.child(
@@ -2308,7 +2506,11 @@ impl Render for FolderView {
             .flex_col()
             .bg(t.c("surface.canvas"))
             .text_color(t.c("text.primary"))
-            .font_family("Segoe UI")
+            .font_family(if cfg!(target_os = "macos") {
+                ".SystemUIFont"
+            } else {
+                "Segoe UI"
+            })
             .text_size(px(13.5))
             .child(
                 div()
@@ -2379,6 +2581,10 @@ impl Render for FolderView {
                         ),
                 )
             })
+            .when(
+                cfg!(target_os = "macos") && self.permission_observation.visible(),
+                |d| d.child(self.render_permission_notice(t, cx)),
+            )
             .child(self.render_status(t, cx))
             .when_some(
                 self.transfer_progress.read(cx).latest.clone(),

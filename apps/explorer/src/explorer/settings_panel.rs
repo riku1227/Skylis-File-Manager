@@ -118,6 +118,9 @@ impl Explorer {
         if cfg!(windows) {
             categories.push(("Windows連携", "icons/link.svg", 8..8));
         }
+        if cfg!(target_os = "macos") {
+            categories.push(("macOSアクセス権限", "icons/link.svg", 8..8));
+        }
         let category_count = categories.len();
         let mut nav = div()
             .id("settings-navigation")
@@ -196,7 +199,7 @@ impl Explorer {
                         .child(error),
                 )
             });
-        if self.settings_category == 4 {
+        if cfg!(windows) && self.settings_category == 4 {
             use crate::folder_integration::Integration;
             body = body.child(div().text_color(t.c("text.secondary")).child("現在のユーザーに適用します。それぞれ個別に元へ戻せます。登録後はSkylisの実行ファイルを移動しないでください。"))
                 .when_some(integration_error, |d, error| d.child(div().mt(px(12.)).text_color(t.c("danger.fg")).child(error)));
@@ -281,6 +284,57 @@ impl Explorer {
                             })),
                     );
                 }
+            }
+        }
+        if cfg!(target_os = "macos") && self.settings_category == 4 {
+            use crate::macos_permissions::{Action, Observation};
+            let observation = self.tabs[self.active]
+                .read(cx)
+                .permission_observation
+                .observation;
+            let status = match observation {
+                Observation::Unknown => {
+                    "未確認：フルディスクアクセスの許可状態は自動判定できません。"
+                }
+                Observation::Denied => {
+                    "このフォルダーへのアクセスが拒否されました。下の手順でアクセス権限を確認できます。"
+                }
+                Observation::Accessible => {
+                    "このフォルダーは開けます。フルディスクアクセスの許可状態は未確認です。"
+                }
+                Observation::OtherFailure => {
+                    "このフォルダーで別のエラーが発生しました。フルディスクアクセスの許可状態は未確認です。"
+                }
+            };
+            body = body.child(div().id("permission-status").debug_selector(|| "permission-status".into()).mb(px(16.)).child(status))
+                .child(div().mb(px(16.)).child("「ファイルとフォルダ」は書類・デスクトップなどの場所ごとの許可です。「フルディスクアクセス」は保護されたデータにもアクセスできる広い権限なので、必要な場合だけ許可してください。フォルダーの所有者や読み取り権限が原因の場合は、この設定だけでは開けません。"))
+                .child(div().mb(px(16.)).child("システム設定 → プライバシーとセキュリティ → フルディスクアクセスで、＋からSkylis.appを追加し、スイッチをオンにします。下のFinderボタンで、いま実行中のアプリを確認して追加してください。debug版とrelease版は保存場所が異なります。変更後はSkylisを終了して再起動し、対象フォルダーを開いてください。F5でそのフォルダーを再読み込みできます。"))
+                .child(div().mb(px(16.)).child("署名方式を変更した後は、一度だけ現在のSkylis.appを追加し直す必要がある場合があります。証明書による安定した署名を使わない開発版では、更新後にも再追加が必要になることがあります。macOSの確認がすべて不要になるわけではありません。"));
+            for (index, label, action) in [
+                (0, "システム設定を開く", Action::OpenPrivacy),
+                (1, "実行中の.appをFinderに表示", Action::RevealBundle),
+            ] {
+                body = body.child(
+                    div()
+                        .id(("macos-permission-action", index as usize))
+                        .p(px(12.))
+                        .mb(px(8.))
+                        .rounded(px(6.))
+                        .bg(t.c("button.bg"))
+                        .border_1()
+                        .border_color(t.c("button.border"))
+                        .hover(|style| style.bg(t.c("button.hover.bg")))
+                        .opacity(if p.permission_busy { 0.45 } else { 1. })
+                        .cursor_pointer()
+                        .child(label)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.preferences
+                                .update(cx, |p, cx| p.permission_action(action, cx));
+                        })),
+                );
+            }
+            if let Some(message) = &p.permission_message {
+                body = body.child(div().mt(px(8.)).child(message.clone()));
             }
         }
         for i in range.clone() {
@@ -393,11 +447,7 @@ impl Explorer {
                                 .mb(px(10.))
                                 .text_size(px(13.))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .child(if i == 0 {
-                                    "テーマ"
-                                } else {
-                                    "表示密度"
-                                }),
+                                .child(if i == 0 { "テーマ" } else { "表示密度" }),
                         )
                         .child(choices)
                         .child(

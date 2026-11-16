@@ -20,7 +20,8 @@ pub(super) struct WatchState {
     dirty: bool,
     refresh_cancel: CancelToken,
     refresh_task: Option<Task<()>>,
-    completed: Option<Result<Snapshot, String>>,
+    completed: Option<Result<Snapshot, std::io::Error>>,
+    last_error_notice: Option<String>,
     retry: Option<Task<()>>,
 }
 
@@ -157,7 +158,9 @@ impl FolderView {
                 Ok(_) => self.watch_state.dirty = true,
                 Err(error) => {
                     // Retain the last valid rows on permission/disconnection errors.
+                    self.permission_observation.record(Err(error.kind()), false);
                     self.notice = Some(format!("一覧を更新できませんでした: {error}"));
+                    self.watch_state.last_error_notice = self.notice.clone();
                     cx.notify();
                 }
             }
@@ -196,7 +199,7 @@ impl FolderView {
             let result = receiver
                 .recv()
                 .await
-                .unwrap_or_else(|_| Err("更新処理が終了しました".into()));
+                .unwrap_or_else(|_| Err(std::io::Error::other("更新処理が終了しました")));
             let _ = view.update(cx, |view, cx| {
                 if token.is_cancelled() {
                     return;
@@ -228,6 +231,15 @@ impl FolderView {
 
     fn apply_snapshot(&mut self, snapshot: Snapshot, cx: &mut Context<Self>) {
         self.stats = Some(snapshot.stats);
+        self.permission_observation
+            .record(Ok(()), snapshot.stats.cancelled);
+        if self.watch_state.last_error_notice.is_some()
+            && self.notice == self.watch_state.last_error_notice
+        {
+            self.notice = None;
+        }
+        self.watch_state.last_error_notice = None;
+        cx.notify();
         if same_entries(&self.entries, &snapshot.entries) {
             if self.error.take().is_some() {
                 cx.notify();
@@ -284,9 +296,9 @@ fn collect_snapshot(
     path: &Path,
     sort: SortOrder,
     cancel: &CancelToken,
-) -> Result<Snapshot, String> {
+) -> Result<Snapshot, std::io::Error> {
     if cancel.is_cancelled() {
-        return Err("更新は取り消されました".into());
+        return Err(std::io::Error::other("更新は取り消されました"));
     }
     let mut entries = Vec::new();
     let mut stats = None;
@@ -298,16 +310,16 @@ fn collect_snapshot(
         match event {
             ListingEvent::Batch(batch) => entries.extend(batch),
             ListingEvent::Done(done) => stats = Some(done),
-            ListingEvent::Failed(_, message) => error = Some(message),
+            ListingEvent::Failed(kind, message) => error = Some(std::io::Error::new(kind, message)),
         }
         true
     });
     if let Some(error) = error {
         return Err(error);
     }
-    let stats = stats.ok_or("更新は取り消されました")?;
+    let stats = stats.ok_or_else(|| std::io::Error::other("更新は取り消されました"))?;
     if stats.cancelled || cancel.is_cancelled() {
-        return Err("更新は取り消されました".into());
+        return Err(std::io::Error::other("更新は取り消されました"));
     }
     entries.sort_unstable_by(|a, b| sort.compare(a, b));
     Ok(Snapshot {
@@ -450,6 +462,47 @@ mod tests {
                 view.flush_directory_refresh(cx);
                 assert_eq!(view.entries[0].name, "new.txt");
                 assert!(view.watch_state.completed.is_none());
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn successful_retry_clears_denial_and_refresh_notice(cx: &mut gpui::TestAppContext) {
+        cx.background_executor.allow_parking();
+        cx.skip_drawing();
+        let window = cx.add_window(|w, cx| {
+            let icons = cx.new(ShellIcons::new);
+            FolderView::new(Location::Home, ThemeMode::Light, icons, w, cx)
+        });
+        window
+            .update(cx, |view, _, cx| {
+                let path = PathBuf::from("/skylis-disposable-model");
+                view.history.push(Location::Folder(path.clone()), None);
+                view.watch_state.path = Some(path);
+                view.loading = false;
+                view.permission_observation
+                    .record(Err(std::io::ErrorKind::PermissionDenied), false);
+                view.watch_state.completed = Some(Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "denied fixture",
+                )));
+                view.permission_observation.dismiss();
+                view.flush_directory_refresh(cx);
+                assert!(view.notice.is_some());
+                assert!(
+                    !view.permission_observation.visible(),
+                    "watch failure preserves dismissal"
+                );
+                let update = snapshot(view, vec![]);
+                view.apply_snapshot(update, cx);
+                assert!(
+                    view.notice.is_none(),
+                    "successful retry clears the old refresh failure"
+                );
+                assert_eq!(
+                    view.permission_observation.observation,
+                    crate::macos_permissions::Observation::Accessible
+                );
             })
             .unwrap();
     }

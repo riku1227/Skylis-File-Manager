@@ -1,3 +1,9 @@
+// Resolve the macOS system /var symlink before exercising the archive engine's
+// deliberate symlink-ancestor rejection. Tests still create fresh private roots.
+fn tempdir() -> tempfile::TempDir {
+    tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap()
+}
+
 use super::*;
 use crate::CancelToken;
 use std::{fs, path::Path};
@@ -5,7 +11,7 @@ use std::{fs, path::Path};
 #[test]
 fn zip_and_sevenz_roundtrip_preserves_unicode_empty_directories_and_binary_bytes() {
     for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZip] {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = tempdir();
         let input = tmp.path().join("資料");
         fs::create_dir_all(input.join("空のフォルダー")).unwrap();
         fs::write(input.join("文章.txt"), "こんにちは\n").unwrap();
@@ -126,7 +132,7 @@ fn rejects_unsafe_paths_duplicates_and_expansion_limits() {
 #[test]
 fn no_overwrite_and_parent_child_selection_is_deduplicated() {
     for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZip] {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = tempdir();
         let source = tmp.path().join("folder");
         fs::create_dir(&source).unwrap();
         fs::write(source.join("file"), b"original").unwrap();
@@ -161,7 +167,7 @@ fn no_overwrite_and_parent_child_selection_is_deduplicated() {
 #[test]
 fn cancellation_before_work_and_during_stream_cleans_owned_output() {
     for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZip] {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = tempdir();
         let source = tmp.path().join("source");
         fs::write(&source, vec![42u8; 2 * COPY_BUFFER]).unwrap();
         let destination = tmp.path().join(if format == ArchiveFormat::Zip {
@@ -197,7 +203,7 @@ fn cancellation_before_work_and_during_stream_cleans_owned_output() {
         assert_no_stage(tmp.path());
     }
     // Deterministic cancellation at the first decoded chunk, independent of machine speed.
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let stage = paths::Staging::directory(tmp.path()).unwrap();
     let cancel = CancelToken::new();
     let token = cancel.clone();
@@ -240,7 +246,7 @@ fn write_limit_and_truncation_are_enforced_before_publication() {
 
 #[test]
 fn changed_archive_fingerprint_is_rejected() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let path = tmp.path().join("test.zip");
     fs::write(&path, raw_zip(&[(b"one", b"data", 0, 0, 0)])).unwrap();
     let cancel = CancelToken::new();
@@ -252,7 +258,7 @@ fn changed_archive_fingerprint_is_rejected() {
 
 #[test]
 fn selected_solid_sevenz_decodes_preceding_members_without_extracting_them() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let path = tmp.path().join("solid.7z");
     let mut writer = sevenz_rust2::ArchiveWriter::new(File::create(&path).unwrap()).unwrap();
     let names = ["first", "nested/selected", "last"];
@@ -283,7 +289,7 @@ fn selected_solid_sevenz_decodes_preceding_members_without_extracting_them() {
 
 #[test]
 fn zip_cp932_and_unicode_names_survive_inspection_and_extraction() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let path = tmp.path().join("日本語.zip");
     let (sjis, _, errors) = encoding_rs::SHIFT_JIS.encode("資料.txt");
     assert!(!errors);
@@ -312,7 +318,7 @@ fn zip_cp932_and_unicode_names_survive_inspection_and_extraction() {
 
 #[test]
 fn zip_unicode_path_extra_overrides_legacy_name_and_is_validated() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let path = tmp.path().join("unicode.zip");
     for name in ["日本語.txt", "../escape"] {
         let raw_name = b"fallback.txt";
@@ -347,7 +353,7 @@ fn zip_unicode_path_extra_overrides_legacy_name_and_is_validated() {
 
 #[test]
 fn publication_never_replaces_an_existing_file() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let destination = tmp.path().join("keep.zip");
     fs::write(&destination, b"original").unwrap();
     let (stage, mut file) = paths::Staging::file(tmp.path()).unwrap();
@@ -372,7 +378,7 @@ fn raw_sevenz_header(header: &[u8]) -> Vec<u8> {
 
 #[test]
 fn sevenz_declared_counts_are_rejected_before_allocating_file_records() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let path = tmp.path().join("count.7z");
     let count = MAX_ENTRIES as u64 + 1;
     let mut header = vec![1, 5, 0xff]; // Header, FilesInfo, full-width u64 count
@@ -413,7 +419,7 @@ fn sevenz_parser_budget_is_charged_before_entry_allocation_and_resets_after_fail
 
 #[test]
 fn sevenz_encrypted_header_is_reported_as_unsupported_password() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let path = tmp.path().join("encrypted.7z");
     // EncodedHeader with one AES256SHA256 coder; decoding must reject the password
     // requirement before ever interpreting its encrypted bytes as an empty archive.
@@ -427,7 +433,7 @@ fn sevenz_encrypted_header_is_reported_as_unsupported_password() {
 
 #[test]
 fn extraction_accepts_only_directories_created_under_the_exact_name() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let stage = paths::Staging::directory(tmp.path()).unwrap();
     let mut created = HashSet::new();
     fs::create_dir(stage.path.join("untracked")).unwrap();
@@ -496,7 +502,7 @@ fn raw_win32_paths_use_extended_drive_and_unc_spelling() {
 #[cfg(windows)]
 #[test]
 fn archive_creation_and_extraction_work_beyond_max_path() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let mut parent = tmp.path().to_path_buf();
     for _ in 0..5 {
         parent.push("long-folder-segment-with-more-than-forty-characters");
@@ -518,7 +524,7 @@ fn archive_creation_and_extraction_work_beyond_max_path() {
 
 #[test]
 fn zip_rejects_encryption_unsupported_codecs_links_and_traversal() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let path = tmp.path().join("bad.zip");
     for record in [
         (&b"../escape"[..], &b"data"[..], 0, 0, 0),
@@ -539,7 +545,7 @@ fn zip_rejects_encryption_unsupported_codecs_links_and_traversal() {
 
 #[test]
 fn corrupt_zip_and_sevenz_never_publish_partial_results() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let cancel = CancelToken::new();
     let zip_path = tmp.path().join("bad.zip");
     let mut bytes = raw_zip(&[(b"name", b"correct contents", 0, 0, 0)]);
@@ -574,7 +580,7 @@ fn corrupt_zip_and_sevenz_never_publish_partial_results() {
 #[cfg(windows)]
 #[test]
 fn downloaded_archive_zone_is_preserved_and_oversized_marks_fail_closed() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tempdir();
     let path = tmp.path().join("download.zip");
     fs::write(
         &path,

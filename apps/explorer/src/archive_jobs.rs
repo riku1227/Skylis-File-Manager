@@ -757,6 +757,8 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir(&root).unwrap();
+        // macOS temp_dir may begin with the system /var -> /private/var symlink.
+        let root = root.canonicalize().unwrap();
         let source = root.join("source.txt");
         let output = root.join("source.zip");
         std::fs::write(&source, b"source").unwrap();

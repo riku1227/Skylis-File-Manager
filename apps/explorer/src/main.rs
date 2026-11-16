@@ -9,6 +9,7 @@ mod file_operation_progress;
 mod folder;
 mod folder_integration;
 mod launch_request;
+mod macos_permissions;
 mod motion;
 mod motion_preferences;
 mod native_shell;
@@ -20,6 +21,7 @@ mod shell_icons;
 mod size_service;
 mod theme;
 mod theme_tokens;
+mod window_chrome;
 mod actions {
     gpui::actions!(
         explorer,
@@ -49,6 +51,7 @@ mod actions {
             FocusSearch,
             EditAddress,
             OpenSettings,
+            OpenPermissions,
             ShowContextMenu,
             QuickPreview,
             SelectAllFiles,
@@ -68,9 +71,7 @@ mod actions {
     );
 }
 use actions::*;
-use gpui::{
-    App, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
-};
+use gpui::{App, Bounds, KeyBinding, prelude::*, px, size};
 fn main() {
     if launch_request::current().shell_command_server {
         shell_handoff::run_command_server();
@@ -151,16 +152,7 @@ fn main() {
             cx.on_action(|_: &Quit, cx| explorer::request_quit(cx));
             let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
             cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    window_min_size: Some(size(px(900.), px(600.))),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some("Explorer".into()),
-                        appears_transparent: cfg!(any(target_os = "windows", target_os = "macos")),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
+                window_chrome::window_options(bounds, "Explorer"),
                 |w, cx| cx.new(|cx| explorer::Explorer::new(w, cx)),
             )
             .expect("failed to open window");

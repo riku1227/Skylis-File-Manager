@@ -30,7 +30,7 @@ pub struct DriveSpace {
 ///
 /// リムーバブル・ネットワークドライブ等で待たされる場合があるため、
 /// 必ずワーカースレッドから呼び、UIの描画/イベント処理内で呼ばないこと。
-/// 現在はWindowsのみ対応。ほかのOSでは`Unsupported`を返す。
+/// WindowsとmacOSに対応。ほかのOSでは`Unsupported`を返す。
 pub fn drive_space(path: &Path) -> std::io::Result<DriveSpace> {
     imp::drive_space(path)
 }
@@ -235,6 +235,30 @@ mod imp {
         }]
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn drive_space(path: &Path) -> std::io::Result<DriveSpace> {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt};
+        let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "path contains NUL")
+        })?;
+        let mut stats = std::mem::MaybeUninit::<libc::statfs>::uninit();
+        // SAFETY: valid C path and writable output; initialized only on success.
+        if unsafe { libc::statfs(path.as_ptr(), stats.as_mut_ptr()) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let stats = unsafe { stats.assume_init() };
+        let bytes = |blocks: u64| {
+            blocks
+                .checked_mul(u64::from(stats.f_bsize))
+                .ok_or_else(|| std::io::Error::other("volume capacity overflows byte count"))
+        };
+        Ok(DriveSpace {
+            total: bytes(stats.f_blocks)?,
+            available: bytes(stats.f_bavail)?,
+        })
+    }
+
+    #[cfg(not(target_os = "macos"))]
     pub fn drive_space(_: &Path) -> std::io::Result<DriveSpace> {
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
@@ -274,6 +298,46 @@ mod tests {
         assert_eq!(
             drive_space(&path).unwrap_err().kind(),
             std::io::ErrorKind::InvalidInput
+        );
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_space_tests {
+    use super::*;
+    #[test]
+    fn capacity_matches_native_statfs_for_root_and_home() {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt};
+        for path in [PathBuf::from("/"), home_dir()] {
+            let before = drive_space(&path).unwrap();
+            let cpath = CString::new(path.as_os_str().as_bytes()).unwrap();
+            let mut native = std::mem::MaybeUninit::<libc::statfs>::uninit();
+            assert_eq!(
+                unsafe { libc::statfs(cpath.as_ptr(), native.as_mut_ptr()) },
+                0
+            );
+            let native = unsafe { native.assume_init() };
+            let after = drive_space(&path).unwrap();
+            assert!(before.total > 0);
+            assert_eq!(before.total, native.f_blocks * u64::from(native.f_bsize));
+            let reference = native.f_bavail * u64::from(native.f_bsize);
+            // Concurrent disk writes can change available blocks between calls.
+            assert!(before.available.abs_diff(reference) < 64 * 1024 * 1024);
+            assert!(after.available.abs_diff(reference) < 64 * 1024 * 1024);
+            assert!(before.available <= before.total);
+        }
+    }
+    #[test]
+    fn invalid_capacity_paths_are_errors() {
+        assert_eq!(
+            drive_space(Path::new("/\0truncated")).unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            drive_space(Path::new("/nonexistent-skylis-capacity/path"))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound
         );
     }
 }
