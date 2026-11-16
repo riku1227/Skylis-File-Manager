@@ -709,7 +709,10 @@ mod tests {
                 assert!(view.settings_open);
                 assert_eq!(view.settings_category, 4);
                 assert_eq!(
-                    view.tabs[view.active].read(cx).permission_observation,
+                    view.tabs[view.active]
+                        .read(cx)
+                        .permission_observation
+                        .observation,
                     crate::macos_permissions::Observation::Unknown
                 );
                 assert!(!view.preferences.read(cx).permission_busy);

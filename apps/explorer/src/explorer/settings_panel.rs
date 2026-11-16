@@ -288,7 +288,10 @@ impl Explorer {
         }
         if cfg!(target_os = "macos") && self.settings_category == 4 {
             use crate::macos_permissions::{Action, Observation};
-            let observation = self.tabs[self.active].read(cx).permission_observation;
+            let observation = self.tabs[self.active]
+                .read(cx)
+                .permission_observation
+                .observation;
             let status = match observation {
                 Observation::Unknown => {
                     "未確認：フルディスクアクセスの許可状態は自動判定できません。"

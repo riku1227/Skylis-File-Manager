@@ -480,13 +480,19 @@ mod tests {
                 view.history.push(Location::Folder(path.clone()), None);
                 view.watch_state.path = Some(path);
                 view.loading = false;
-                view.permission_observation = crate::macos_permissions::Observation::Denied;
+                view.permission_observation
+                    .record(Err(std::io::ErrorKind::PermissionDenied), false);
                 view.watch_state.completed = Some(Err(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
                     "denied fixture",
                 )));
+                view.permission_observation.dismiss();
                 view.flush_directory_refresh(cx);
                 assert!(view.notice.is_some());
+                assert!(
+                    !view.permission_observation.visible(),
+                    "watch failure preserves dismissal"
+                );
                 let update = snapshot(view, vec![]);
                 view.apply_snapshot(update, cx);
                 assert!(
@@ -494,7 +500,7 @@ mod tests {
                     "successful retry clears the old refresh failure"
                 );
                 assert_eq!(
-                    view.permission_observation,
+                    view.permission_observation.observation,
                     crate::macos_permissions::Observation::Accessible
                 );
             })

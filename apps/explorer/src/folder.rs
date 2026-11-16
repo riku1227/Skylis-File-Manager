@@ -130,7 +130,7 @@ pub struct FolderView {
     loading: bool,
     stats: Option<ListingStats>,
     error: Option<String>,
-    pub(crate) permission_observation: crate::macos_permissions::Observation,
+    pub(crate) permission_observation: crate::macos_permissions::Notice,
     notice: Option<String>,
     cancel: CancelToken,
     _listing: Option<Task<()>>,
@@ -539,9 +539,7 @@ impl FolderView {
             while let Ok(ev) = rx.recv().await {
                 if this
                     .update(cx, |this, cx| {
-                        if !listing_token.is_cancelled() {
-                            this.on_listing_event(ev, cx);
-                        }
+                        this.on_requested_listing_event(ev, &listing_token, cx);
                     })
                     .is_err()
                 {
@@ -550,6 +548,17 @@ impl FolderView {
             }
         }));
         cx.notify();
+    }
+
+    fn on_requested_listing_event(
+        &mut self,
+        ev: ListingEvent,
+        token: &CancelToken,
+        cx: &mut Context<Self>,
+    ) {
+        if !token.is_cancelled() {
+            self.on_listing_event(ev, cx);
+        }
     }
 
     fn on_listing_event(&mut self, ev: ListingEvent, cx: &mut Context<Self>) {
@@ -828,6 +837,7 @@ impl FolderView {
         if self.close_display_settings(cx) {
             w.focus(&self.focus, cx);
         }
+        self.permission_observation.retry();
         self.refresh_drives(cx);
         if self.path().is_some() && !self.loading {
             self.request_refresh(cx);
@@ -1216,6 +1226,7 @@ impl FolderView {
             .collect();
         let mut address = div()
             .id("breadcrumbs")
+            .debug_selector(|| "breadcrumbs".into())
             .flex()
             .items_center()
             .h(px(36.))
@@ -1918,7 +1929,7 @@ impl FolderView {
                         .child(empty_state(err.clone(), t.c("danger.fg")))
                         .when(
                             cfg!(target_os = "macos")
-                                && self.permission_observation
+                                && self.permission_observation.observation
                                     == crate::macos_permissions::Observation::Denied,
                             |d| {
                                 d.child(
@@ -2183,6 +2194,66 @@ impl FolderView {
         panel = panel.child(body);
         panel
     }
+    fn render_permission_notice(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .id("folder-permission-notice")
+            .debug_selector(|| "folder-permission-notice".into())
+            .mx(px(6.))
+            .mb(px(6.))
+            .p(px(12.))
+            .rounded(px(10.))
+            .bg(t.c("surface.card"))
+            .border_1()
+            .border_color(t.c("border.subtle"))
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(div().child("このフォルダーにアクセスできません"))
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(t.c("text.secondary"))
+                    .child("macOS のアクセス設定、またはフォルダー自体の権限を確認してください。"),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap(px(16.))
+                    .child(
+                        div()
+                            .id("folder-permission-settings")
+                            .debug_selector(|| "folder-permission-settings".into())
+                            .cursor_pointer()
+                            .text_color(t.c("accent.fg"))
+                            .child("設定の案内")
+                            .on_click(cx.listener(|_, _, w, cx| {
+                                w.dispatch_action(Box::new(crate::OpenPermissions), cx)
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("folder-permission-retry")
+                            .debug_selector(|| "folder-permission-retry".into())
+                            .cursor_pointer()
+                            .text_color(t.c("accent.fg"))
+                            .child("再試行")
+                            .on_click(cx.listener(|this, _, w, cx| this.refresh(&Refresh, w, cx))),
+                    )
+                    .child(
+                        div()
+                            .id("folder-permission-dismiss")
+                            .debug_selector(|| "folder-permission-dismiss".into())
+                            .cursor_pointer()
+                            .child("閉じる")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.permission_observation.dismiss();
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn render_status(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
@@ -2222,7 +2293,8 @@ impl FolderView {
             })
             .when(
                 cfg!(target_os = "macos")
-                    && self.permission_observation == crate::macos_permissions::Observation::Denied,
+                    && self.permission_observation.observation
+                        == crate::macos_permissions::Observation::Denied,
                 |d| {
                     d.child(
                         div()
@@ -2502,6 +2574,10 @@ impl Render for FolderView {
                         ),
                 )
             })
+            .when(
+                cfg!(target_os = "macos") && self.permission_observation.visible(),
+                |d| d.child(self.render_permission_notice(t, cx)),
+            )
             .child(self.render_status(t, cx))
             .when_some(
                 self.transfer_progress.read(cx).latest.clone(),

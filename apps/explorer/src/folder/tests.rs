@@ -1891,17 +1891,66 @@ fn listing_denial_is_distinct_and_navigation_clears_evidence(cx: &mut gpui::Test
                 ListingEvent::Failed(std::io::ErrorKind::PermissionDenied, "fixture".into()),
                 cx,
             );
-            assert_eq!(view.permission_observation, Observation::Denied);
+            assert_eq!(view.permission_observation.observation, Observation::Denied);
             assert!(view.error.is_some());
             view.load(Location::Home, None, cx);
-            assert_eq!(view.permission_observation, Observation::Unknown);
+            assert_eq!(
+                view.permission_observation.observation,
+                Observation::Unknown
+            );
             assert!(view.error.is_none());
             view.on_listing_event(
                 ListingEvent::Failed(std::io::ErrorKind::NotFound, "fixture".into()),
                 cx,
             );
-            assert_eq!(view.permission_observation, Observation::OtherFailure);
+            assert_eq!(
+                view.permission_observation.observation,
+                Observation::OtherFailure
+            );
             assert!(view.error.as_ref().unwrap().contains("見つかりません"));
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn permission_notice_visit_retry_and_stale_listing_boundary(cx: &mut gpui::TestAppContext) {
+    let window = home_window(cx);
+    window
+        .update(cx, |view, w, cx| {
+            let denied =
+                || ListingEvent::Failed(std::io::ErrorKind::PermissionDenied, "fixture".into());
+            view.on_listing_event(denied(), cx);
+            assert!(view.permission_observation.visible());
+            view.permission_observation.dismiss();
+            view.on_listing_event(denied(), cx); // automatic refresh result
+            assert!(!view.permission_observation.visible());
+            view.permission_observation.retry();
+            view.on_listing_event(denied(), cx);
+            assert!(view.permission_observation.visible());
+            let stale = view.cancel.clone();
+            view.load(Location::Home, None, cx);
+            view.on_requested_listing_event(denied(), &stale, cx);
+            assert!(!view.permission_observation.visible());
+            view.on_listing_event(denied(), cx);
+            let stats = ListingStats {
+                total: 0,
+                first_batch: None,
+                elapsed: std::time::Duration::ZERO,
+                cancelled: false,
+            };
+            view.on_requested_listing_event(ListingEvent::Done(stats), &stale, cx);
+            assert!(view.permission_observation.visible());
+            view.on_listing_event(ListingEvent::Done(stats), cx);
+            assert!(!view.permission_observation.visible());
+            view.on_listing_event(
+                ListingEvent::Failed(std::io::ErrorKind::NotFound, "fixture".into()),
+                cx,
+            );
+            assert!(!view.permission_observation.visible());
+            view.permission_observation.dismiss();
+            view.refresh(&Refresh, w, cx);
+            view.on_listing_event(denied(), cx);
+            assert!(view.permission_observation.visible());
         })
         .unwrap();
 }
@@ -1925,6 +1974,42 @@ fn navigation_render_avoids_pinned_and_missing_path_lookups(cx: &mut gpui::TestA
             );
             let _ = view.render_toolbar(t, w, cx);
             view.icons.read(cx).assert_navigation_requests_only();
+        })
+        .unwrap();
+}
+
+#[cfg(target_os = "macos")]
+#[gpui::test]
+fn permission_notice_fits_minimum_window_and_dismiss_click_routes(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |view, _, cx| {
+            view.on_listing_event(
+                ListingEvent::Failed(std::io::ErrorKind::PermissionDenied, "fixture".into()),
+                cx,
+            );
+        })
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    visual.simulate_resize(gpui::size(px(900.), px(600.)));
+    let notice = visual.debug_bounds("folder-permission-notice").unwrap();
+    let toolbar = visual.debug_bounds("breadcrumbs").unwrap();
+    assert!(notice.left() >= px(0.) && notice.right() <= px(900.));
+    assert!(notice.bottom() <= px(600.) && notice.top() > toolbar.bottom());
+    for action in [
+        "folder-permission-settings",
+        "folder-permission-retry",
+        "folder-permission-dismiss",
+    ] {
+        let bounds = visual.debug_bounds(action).unwrap();
+        assert!(bounds.left() >= notice.left() && bounds.right() <= notice.right());
+        assert!(bounds.top() >= notice.top() && bounds.bottom() <= notice.bottom());
+    }
+    click_display_control(&mut visual, "folder-permission-dismiss");
+    assert!(visual.debug_bounds("folder-permission-notice").is_none());
+    window
+        .read_with(cx, |view, _| {
+            assert!(!view.permission_observation.visible())
         })
         .unwrap();
 }

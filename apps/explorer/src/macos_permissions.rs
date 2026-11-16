@@ -107,3 +107,63 @@ pub fn perform(action: Action) -> Result<String, String> {
         Err("macOSでのみ利用できます".into())
     }
 }
+
+/// Per-visit presentation state, independent of a global privacy authorization.
+#[derive(Default)]
+pub struct Notice {
+    pub observation: Observation,
+    dismissed: bool,
+}
+impl Notice {
+    pub fn record(&mut self, result: Result<(), std::io::ErrorKind>, obsolete: bool) {
+        if obsolete {
+            return;
+        }
+        self.observation.record(result, false);
+        if self.observation == Observation::Accessible {
+            self.dismissed = false;
+        }
+    }
+    pub fn visible(&self) -> bool {
+        self.observation == Observation::Denied && !self.dismissed
+    }
+    pub fn dismiss(&mut self) {
+        self.dismissed = true;
+    }
+    pub fn retry(&mut self) {
+        self.dismissed = false;
+    }
+}
+
+#[cfg(test)]
+mod notice_tests {
+    use super::*;
+    #[test]
+    fn dismissal_survives_automatic_denials_but_retry_and_success_reset_it() {
+        let mut notice = Notice::default();
+        notice.record(Err(std::io::ErrorKind::PermissionDenied), false);
+        assert!(notice.visible());
+        notice.dismiss();
+        notice.record(Err(std::io::ErrorKind::PermissionDenied), false);
+        assert!(!notice.visible());
+        notice.record(Err(std::io::ErrorKind::NotFound), false);
+        notice.record(Err(std::io::ErrorKind::PermissionDenied), false);
+        assert!(
+            !notice.visible(),
+            "other automatic failures do not end dismissal"
+        );
+        notice.retry();
+        assert!(notice.visible());
+        notice.record(Ok(()), true);
+        assert!(notice.visible());
+        notice.record(Ok(()), false);
+        assert!(!notice.visible());
+        notice.record(Err(std::io::ErrorKind::NotFound), false);
+        assert!(!notice.visible());
+        notice.record(Err(std::io::ErrorKind::PermissionDenied), true);
+        assert!(!notice.visible());
+        notice.record(Err(std::io::ErrorKind::PermissionDenied), false);
+        notice = Notice::default();
+        assert!(!notice.visible());
+    }
+}
