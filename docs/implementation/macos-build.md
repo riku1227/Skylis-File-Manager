@@ -198,3 +198,19 @@ outside this verification.
   is claimed from worker tests. The pre-existing running debug app was not
   overwritten or terminated. No FDA grants, revokes or re-add operations were
   performed, so Documents/Downloads prompt behavior after migration is unproved.
+
+### Parent follow-up review
+
+The parent independently reran the workspace suite: **205 explorer + 44 core
+passed**, with zero failures. Signing selection fixtures, formatting and shell
+syntax checks passed. Both review profiles satisfied each other's certificate
+requirements. The normal `bash scripts/build-macos.sh release` command also
+passed, replacing the default release artifact at
+`target/aarch64-apple-darwin/release/Skylis.app` with the corrected, certificate-signed
+build; its strict signature verification passed. The pre-existing debug process
+was not overwritten. Quit that older app before opening the updated release.
+
+The parent also encountered `cgWindowNotFound` with both debug and release
+window capture. Native display verification remains pending an accessible desktop;
+test pixel buffers and successful builds are not treated as proof of on-screen
+rendering or of FDA prompt resolution.
