@@ -7,7 +7,9 @@ use crate::{
 use explorer_core::location::Location;
 use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, img, prelude::*, px, svg};
 mod settings_panel;
+mod tab_workflows;
 mod tabs;
+pub(crate) use tab_workflows::bind_keys as bind_workflow_keys;
 use tabs::TabDrag;
 
 fn operations_pending(cx: &App) -> bool {
@@ -35,6 +37,7 @@ pub(crate) fn request_quit(cx: &mut App) {
 
 /// Each tab owns its entity and asynchronous listing. Switching never redirects a pending batch.
 pub struct Explorer {
+    closed_tabs: std::collections::VecDeque<tab_workflows::ClosedTab>,
     tabs: Vec<Entity<FolderView>>,
     active: usize,
     mode: ThemeMode,
@@ -282,6 +285,7 @@ impl Explorer {
             });
         });
         let mut this = Self {
+            closed_tabs: Default::default(),
             tabs,
             active: 0,
             mode,
@@ -344,6 +348,7 @@ impl Explorer {
         if self.tabs.len() == 1 || index >= self.tabs.len() {
             return;
         }
+        self.remember_closed(index, cx);
         let removed = self.tabs.remove(index);
         removed.update(cx, |tab, _| tab.cancel_scroll_motion());
         self.tab_subscriptions.remove(&removed.entity_id());
@@ -653,6 +658,14 @@ impl Render for Explorer {
                 }
             }))
             .on_action(cx.listener(Self::new_window))
+            .on_action(
+                cx.listener(|this, _: &tab_workflows::ReopenClosedTab, w, cx| {
+                    this.reopen_closed_tab(w, cx)
+                }),
+            )
+            .on_action(cx.listener(|this, _: &tab_workflows::DuplicateTab, w, cx| {
+                this.duplicate_tab_at(this.active, w, cx)
+            }))
             .on_action(cx.listener(|this, action, w, cx| {
                 if !this.settings_open {
                     this.close_tab(action, w, cx);
@@ -722,6 +735,94 @@ impl Render for Explorer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[gpui::test]
+    fn reopen_and_duplicate_shortcuts_preserve_display_and_stay_window_local(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(bind_workflow_keys);
+        let window = settings_key_window(cx);
+        let other = settings_key_window(cx);
+        window
+            .update(cx, |probe, w, cx| {
+                probe.explorer.update(cx, |v, cx| {
+                    v.settings_open = false;
+                    v.new_tab(&NewTab, w, cx);
+                    v.tabs[1].update(cx, |t, _| {
+                        t.restore_session_display(crate::session_data::SavedDisplay {
+                            gallery: Some(true),
+                            ..Default::default()
+                        })
+                    });
+                    v.close(1, w, cx);
+                })
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        visual.simulate_keystrokes("ctrl-shift-t ctrl-shift-k");
+        window
+            .read_with(&visual, |probe, cx| {
+                let view = probe.explorer.read(cx);
+                assert_eq!(view.tabs.len(), 3);
+                assert_eq!(view.active, 2);
+                assert_eq!(view.tabs[2].read(cx).session_display().gallery, Some(true));
+            })
+            .unwrap();
+        other
+            .read_with(&visual, |probe, cx| {
+                let view = probe.explorer.read(cx);
+                assert_eq!(view.tabs.len(), 1);
+                assert!(view.closed_tabs.is_empty());
+            })
+            .unwrap();
+    }
+    #[gpui::test]
+    fn closed_tabs_reopen_in_place_as_new_entities_and_duplicate_to_the_right(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let window = settings_key_window(cx);
+        window
+            .update(cx, |probe, w, cx| {
+                probe.explorer.update(cx, |view, cx| {
+                    view.settings_open = false;
+                    view.new_tab(&NewTab, w, cx);
+                    let old = view.tabs[1].entity_id();
+                    view.close(1, w, cx);
+                    assert_eq!(view.closed_tabs.len(), 1);
+                    view.reopen_closed_tab(w, cx);
+                    assert_eq!(view.tabs.len(), 2);
+                    assert_eq!(view.active, 1);
+                    assert_ne!(view.tabs[1].entity_id(), old);
+                    assert!(view.closed_tabs.is_empty());
+                    view.duplicate_tab_at(0, w, cx);
+                    assert_eq!(view.tabs.len(), 3);
+                    assert_eq!(view.active, 1);
+                    assert_ne!(view.tabs[0].entity_id(), view.tabs[1].entity_id());
+                });
+            })
+            .unwrap();
+    }
+    #[gpui::test]
+    fn closed_tab_history_is_bounded_and_last_tab_stays_open(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        window
+            .update(cx, |probe, w, cx| {
+                probe.explorer.update(cx, |view, cx| {
+                    view.settings_open = false;
+                    view.new_tab(&NewTab, w, cx);
+                    for _ in 0..25 {
+                        view.remember_closed(1, cx);
+                    }
+                    assert_eq!(view.closed_tabs.len(), 20);
+                    view.close(1, w, cx);
+                    let count = view.closed_tabs.len();
+                    view.close(0, w, cx);
+                    assert_eq!(view.tabs.len(), 1);
+                    assert_eq!(view.closed_tabs.len(), count);
+                });
+            })
+            .unwrap();
+    }
     #[gpui::test]
     fn restores_window_pane_and_each_tabs_display_before_loading(cx: &mut gpui::TestAppContext) {
         use crate::session_data::{SavedDisplay, SavedSort, SavedWindow};

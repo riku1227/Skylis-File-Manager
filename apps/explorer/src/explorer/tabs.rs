@@ -427,6 +427,12 @@ impl Explorer {
                 cx.notify();
             }));
         for (name, label, enabled) in [
+            ("duplicate-tab", "タブを複製", true),
+            (
+                "reopen-closed-tab",
+                "閉じたタブを開き直す",
+                !self.closed_tabs.is_empty(),
+            ),
             ("detach-tab", "別のウィンドウに移動", self.tabs.len() > 1),
             (
                 "merge-tabs",
@@ -450,7 +456,15 @@ impl Explorer {
                         if !enabled {
                             return;
                         }
-                        if name == "merge-tabs" {
+                        if name == "reopen-closed-tab" {
+                            this.reopen_closed_tab(w, cx);
+                        } else if name == "duplicate-tab" {
+                            if let Some(index) =
+                                this.tabs.iter().position(|tab| tab.entity_id() == id)
+                            {
+                                this.duplicate_tab_at(index, w, cx);
+                            }
+                        } else if name == "merge-tabs" {
                             this.merge_windows(&MergeWindowTabs, w, cx);
                         } else if let Some(index) =
                             this.tabs.iter().position(|tab| tab.entity_id() == id)

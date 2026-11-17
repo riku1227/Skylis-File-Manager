@@ -153,6 +153,16 @@ pub struct FolderView {
 }
 
 impl FolderView {
+    pub(crate) fn tab_location(&self) -> &Location {
+        self.history.current()
+    }
+    pub(crate) fn tab_workflow_blocked(&self) -> bool {
+        self.name_editor.is_some()
+            || self.archive_dialog.is_some()
+            || self.context_menu.is_some()
+            || self.display_settings.open
+            || !self.typeahead.composition.is_empty()
+    }
     pub(crate) fn session_display(&self) -> crate::session_data::SavedDisplay {
         use crate::session_data::{SavedDisplay, SavedSort};
         self.restored_display.unwrap_or_else(|| SavedDisplay {
