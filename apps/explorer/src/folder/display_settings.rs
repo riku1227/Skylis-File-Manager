@@ -1,6 +1,6 @@
 use super::*;
 use crate::motion;
-use gpui::{Animation, AnimationExt, SpringAnimation, relative};
+use gpui::{AnimationExt, SpringAnimation, relative};
 use gpui::{Bounds, KeyDownEvent, Point, anchored, canvas, deferred, point};
 use std::{cell::Cell, rc::Rc};
 
@@ -13,7 +13,7 @@ const KEYS: [SortKey; 4] = [
 
 pub(super) struct DisplaySettings {
     pub open: bool,
-    pub generation: usize,
+    pub(super) presence: motion::Presence<()>,
     pub trigger_focus: FocusHandle,
     focus: FocusHandle,
     anchor: Rc<Cell<Bounds<Pixels>>>,
@@ -26,7 +26,7 @@ impl DisplaySettings {
     pub fn new(cx: &mut App) -> Self {
         Self {
             open: false,
-            generation: 0,
+            presence: Default::default(),
             trigger_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
             anchor: Default::default(),
@@ -82,9 +82,6 @@ impl FolderView {
         self.display_settings.keyboard_mode = false;
         self.cancel_scroll_motion();
         self.context_menu = None;
-        if !self.display_settings.open {
-            self.display_settings.generation = self.display_settings.generation.wrapping_add(1);
-        }
         self.display_settings.open = true;
         self.display_settings.active_row = self.display_rows()[0];
         self.display_settings
@@ -461,6 +458,10 @@ impl FolderView {
         w: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let Some(shown) = self.display_settings.presence.shown() else {
+            return div().into_any_element();
+        };
+        let (progress, live) = (shown.progress, shown.live);
         let anchor = self.display_settings.anchor.get();
         let viewport = w.viewport_size();
         let width = px(306.).min((viewport.width - px(16.)).max(px(1.)));
@@ -564,7 +565,7 @@ impl FolderView {
                         .shadow_sm()
                         .with_spring(
                             ("display-segment", row),
-                            SpringAnimation::new(motion::SEGMENT_SPRING)
+                            SpringAnimation::new(motion::spring::BRISK)
                                 .to(selected_index as f32 / count as f32),
                             |d, position| d.left(relative(position)),
                         ),
@@ -663,7 +664,7 @@ impl FolderView {
                         .id("display-settings-panel")
                         .debug_selector(|| "display-settings-panel".into())
                         .key_context("DisplaySettings")
-                        .track_focus(&self.display_settings.focus)
+                        .when(live, |d| d.track_focus(&self.display_settings.focus))
                         .occlude()
                         .w(width)
                         .h(height)
@@ -688,7 +689,10 @@ impl FolderView {
                         .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                         .on_mouse_down_out(cx.listener(|this, event: &MouseDownEvent, w, cx| {
                             // The trigger handles its own toggle; don't close on down then reopen on click.
-                            if !this.display_settings.anchor.get().contains(&event.position) {
+                            // A ghost is already closed and must not move focus again.
+                            if this.display_settings.open
+                                && !this.display_settings.anchor.get().contains(&event.position)
+                            {
                                 this.close_display_settings(cx);
                                 // Give blank areas a live dispatch path. A clicked input can
                                 // still take focus in its own subsequent mouse-down handler.
@@ -714,18 +718,15 @@ impl FolderView {
                                 .child("表示設定"),
                         )
                         .child(body)
-                        .with_animation(
-                            ("display-reveal", self.display_settings.generation),
-                            Animation::new(motion::POPUP_REVEAL),
-                            move |d, p| {
-                                let p = motion::ease_out_cubic(p);
-                                d.opacity(p).relative().top(px(if below >= above {
-                                    -motion::POPUP_OFFSET
-                                } else {
-                                    motion::POPUP_OFFSET
-                                } * (1. - p)))
-                            },
-                        ),
+                        .when(!live, |d| d.child(motion::ghost_shield()))
+                        // Arrives from, and leaves toward, the trigger's side.
+                        .opacity(progress)
+                        .relative()
+                        .top(px(if below >= above {
+                            -motion::POPUP_OFFSET
+                        } else {
+                            motion::POPUP_OFFSET
+                        } * (1. - progress))),
                 ),
         )
         .with_priority(2)

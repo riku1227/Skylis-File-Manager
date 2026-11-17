@@ -134,18 +134,45 @@ pub(crate) fn edge_distance(speed: f32, elapsed: Duration) -> f32 {
     speed * elapsed.min(Duration::from_millis(32)).as_secs_f32()
 }
 
-// UI feedback only. Springs begin at their target on mount and retain velocity
-// on retarget. Critical damping prevents visible overshoot.
-pub(crate) const MENU_REVEAL: Duration = Duration::from_millis(110);
-pub(crate) const POPUP_REVEAL: Duration = Duration::from_millis(120);
-pub(crate) const BACKDROP_REVEAL: Duration = Duration::from_millis(100);
-pub(crate) const MODAL_REVEAL: Duration = Duration::from_millis(140);
+// UI feedback only. Motion is named by role, not by widget, so every surface
+// of one kind moves alike. All springs are critically damped (no visible
+// overshoot), keep their velocity when retargeted and stop requesting frames
+// once settled. See docs/implementation/motion.md.
+mod presence;
+pub(crate) use presence::{Presence, Transition, ghost_shield};
+
+/// Critically damped springs, mass 1. `response` is the approximate time to
+/// cover 99% of the distance.
+pub(crate) mod spring {
+    use gpui::SpringConfig;
+    /// ~85ms. Small controls under the pointer, and every exit.
+    pub(crate) const SNAPPY: SpringConfig = SpringConfig::new(6400., 160., 1.);
+    /// ~110ms. Selection surfaces and popups arriving next to their trigger.
+    pub(crate) const BRISK: SpringConfig = SpringConfig::new(3600., 120., 1.);
+    /// ~140ms. Large surfaces that cover the window.
+    pub(crate) const SMOOTH: SpringConfig = SpringConfig::new(2304., 96., 1.);
+}
+pub(crate) const MENU: Transition = Transition {
+    enter: spring::BRISK,
+    exit: spring::SNAPPY,
+};
+pub(crate) const POPUP: Transition = Transition {
+    enter: spring::BRISK,
+    exit: spring::SNAPPY,
+};
+pub(crate) const MODAL: Transition = Transition {
+    enter: spring::SMOOTH,
+    exit: spring::SNAPPY,
+};
+/// Opacity-only fades that have no exit: content swaps and separate windows.
+// The preview is a GPUI window only where the OS has no native Quick Look.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) const WINDOW_REVEAL: Duration = Duration::from_millis(110);
 pub(crate) const CATEGORY_REVEAL: Duration = Duration::from_millis(90);
 pub(crate) const PANE_REVEAL: Duration = Duration::from_millis(100);
+/// Distance a surface travels from its origin while arriving.
 pub(crate) const POPUP_OFFSET: f32 = 6.;
 pub(crate) const MODAL_OFFSET: f32 = 8.;
-pub(crate) const SEGMENT_SPRING: gpui::SpringConfig = gpui::SpringConfig::new(3600., 120., 1.);
-pub(crate) const SWITCH_SPRING: gpui::SpringConfig = gpui::SpringConfig::new(6400., 160., 1.);
 pub(crate) fn ease_out_cubic(p: f32) -> f32 {
     1. - (1. - p).powi(3)
 }
@@ -168,7 +195,7 @@ pub(crate) fn switch(
         .rounded(px(10.))
         .with_spring(
             id,
-            SpringAnimation::new(SWITCH_SPRING).to(if enabled { 1. } else { 0. }),
+            SpringAnimation::new(spring::SNAPPY).to(if enabled { 1. } else { 0. }),
             move |d, p| {
                 let p = p.clamp(0., 1.);
                 d.bg(off.blend(on.opacity(p))).child(
@@ -428,7 +455,11 @@ mod feedback_tests {
     }
     #[test]
     fn feedback_springs_converge_without_visible_overshoot() {
-        for (spring, perceptual_ms) in [(SEGMENT_SPRING, 130.), (SWITCH_SPRING, 100.)] {
+        for (spring, perceptual_ms) in [
+            (spring::BRISK, 130.),
+            (spring::SNAPPY, 100.),
+            (spring::SMOOTH, 160.),
+        ] {
             let state = gpui::SpringState {
                 position: 0.,
                 velocity: 0.,

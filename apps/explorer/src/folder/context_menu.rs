@@ -1,6 +1,6 @@
 use super::name_operations::NameOperation;
 use super::*;
-use gpui::{Animation, AnimationExt, KeyDownEvent, Point, anchored, deferred};
+use gpui::{KeyDownEvent, Point, anchored, deferred};
 
 #[derive(Clone)]
 pub(super) struct ContextMenu {
@@ -10,7 +10,7 @@ pub(super) struct ContextMenu {
     active: usize,
 }
 #[derive(Clone, Copy)]
-enum Command {
+pub(super) enum Command {
     Open,
     NewTab,
     Preview,
@@ -87,7 +87,6 @@ impl FolderView {
         cx.stop_propagation();
         self.close_display_settings(cx);
         self.cancel_scroll_motion();
-        self.menu_generation = self.menu_generation.wrapping_add(1);
         window.focus(&self.menu_focus, cx);
         if let Some(ix) = item {
             let path = self.entries[self.visible[ix]].path.clone();
@@ -121,7 +120,6 @@ impl FolderView {
             return;
         }
         self.cancel_scroll_motion();
-        self.menu_generation = self.menu_generation.wrapping_add(1);
         self.context_menu = Some(ContextMenu {
             position: self.menu_anchor(),
             target: self.selected_entry().map(|e| e.path.clone()),
@@ -149,7 +147,7 @@ impl FolderView {
             .clamp(px(8.), bounds.size.height.max(px(8.)));
         bounds.origin + gpui::point(px(24.), y)
     }
-    fn menu_commands(&self) -> Vec<(&'static str, Command)> {
+    pub(super) fn menu_commands(&self) -> Vec<(&'static str, Command)> {
         let mut commands = Vec::new();
         let item = self.context_menu.as_ref().is_some_and(|m| m.item.is_some());
         let single = item && self.multi_selection.len() <= 1;
@@ -392,16 +390,20 @@ impl FolderView {
         cx.notify();
     }
     pub(super) fn render_context_menu(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
-        let Some(menu) = self.context_menu.clone() else {
+        // The ghost draws the commands it had when it closed: the selection they
+        // were derived from may already be gone.
+        let Some(shown) = self.menu_presence.shown() else {
             return div().into_any_element();
         };
-        let commands = self.menu_commands();
+        let (progress, live) = (shown.progress, shown.live);
+        let (menu, commands) = shown.content.clone();
         deferred(
             anchored().position(menu.position).snap_to_window().child(
                 div()
                     .id("context-menu")
+                    .debug_selector(|| "context-menu".into())
                     .occlude()
-                    .track_focus(&self.menu_focus)
+                    .when(live, |d| d.track_focus(&self.menu_focus))
                     .w(px(300.))
                     .text_size(px(13.))
                     .p(px(4.))
@@ -411,9 +413,11 @@ impl FolderView {
                     .border_color(t.c("border.subtle"))
                     .shadow_md()
                     .on_mouse_down_out(cx.listener(|this, _, w, cx| {
-                        this.context_menu = None;
-                        w.focus(&this.focus, cx);
-                        cx.notify();
+                        // A ghost is already closed and must not move focus again.
+                        if this.context_menu.take().is_some() {
+                            w.focus(&this.focus, cx);
+                            cx.notify();
+                        }
                     }))
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, w, cx| {
                         let commands = this.menu_commands();
@@ -502,13 +506,8 @@ impl FolderView {
                                     )
                             }),
                     )
-                    .with_animation(
-                        ("menu-reveal", self.menu_generation),
-                        Animation::new(crate::motion::MENU_REVEAL),
-                        |element, progress| {
-                            element.opacity(crate::motion::ease_out_cubic(progress))
-                        },
-                    ),
+                    .when(!live, |d| d.child(crate::motion::ghost_shield()))
+                    .opacity(progress),
             ),
         )
         .with_priority(2)
