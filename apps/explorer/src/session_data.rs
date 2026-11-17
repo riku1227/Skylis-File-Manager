@@ -6,8 +6,46 @@ pub const MAX_WINDOWS: usize = 8;
 pub const MAX_TABS: usize = 32;
 pub const MAX_BYTES: usize = 512 * 1024;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SavedSort {
+    #[default]
+    Name,
+    Modified,
+    Kind,
+    Size,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SavedDisplay {
+    pub gallery: Option<bool>,
+    pub sort: SavedSort,
+    pub ascending: bool,
+    /// Preserve a manual sort that disabled Downloads date grouping.
+    pub manual_sort: bool,
+}
+impl Default for SavedDisplay {
+    fn default() -> Self {
+        Self {
+            gallery: None,
+            sort: SavedSort::Name,
+            ascending: true,
+            manual_sort: false,
+        }
+    }
+}
+fn default_pane() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SavedWindow {
+    #[serde(default = "default_pane")]
+    pub pane: bool,
+    /// Empty for legacy sessions; otherwise one item per saved tab.
+    #[serde(default)]
+    pub tab_display: Vec<SavedDisplay>,
     #[serde(default)]
     pub display: Option<String>,
     pub rect: [f32; 4],
@@ -19,6 +57,8 @@ pub struct SavedWindow {
 impl Default for SavedWindow {
     fn default() -> Self {
         Self {
+            pane: true,
+            tab_display: Vec::new(),
             display: None,
             rect: [80., 80., 1280., 800.],
             maximized: false,
@@ -47,6 +87,9 @@ impl Session {
             return Err("未対応のセッション形式、またはウィンドウ数の上限超過".into());
         }
         for w in &self.windows {
+            if !w.tab_display.is_empty() && w.tab_display.len() != w.tabs.len() {
+                return Err("タブ表示設定の数が一致しません".into());
+            }
             if w.display.as_ref().is_some_and(|s| s.len() > 128) {
                 return Err("画面識別子が長すぎます".into());
             }
@@ -86,6 +129,7 @@ impl Session {
     pub fn without_tabs(&mut self) {
         for w in &mut self.windows {
             w.tabs = vec![None];
+            w.tab_display.clear();
             w.active = 0;
         }
     }
@@ -97,6 +141,7 @@ impl Session {
             .first()
             .map(|w| SavedWindow {
                 tabs: vec![None],
+                tab_display: Vec::new(),
                 active: 0,
                 ..w.clone()
             })
@@ -146,9 +191,32 @@ pub fn fit_rect(rect: [f32; 4], screens: &[[f32; 4]]) -> [f32; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_session_defaults_and_display_state_survive_roundtrip() {
+        let old=Session::decode(r#"{"version":1,"windows":[{"rect":[0,0,1000,700],"maximized":false,"tabs":[null],"active":0}]}"#).unwrap();
+        assert!(old.windows[0].pane);
+        assert!(old.windows[0].tab_display.is_empty());
+        let mut value = old;
+        value.windows[0].pane = false;
+        value.windows[0].tab_display = vec![SavedDisplay {
+            gallery: Some(true),
+            sort: SavedSort::Size,
+            ascending: false,
+            manual_sort: true,
+        }];
+        assert_eq!(Session::decode(&value.encode().unwrap()).unwrap(), value);
+        let off = value.startup(false, false);
+        assert!(!off[0].pane);
+        assert!(off[0].tab_display.is_empty());
+        value.without_tabs();
+        assert!(!value.windows[0].pane);
+        assert!(value.windows[0].tab_display.is_empty());
+    }
 
     fn window() -> SavedWindow {
         SavedWindow {
+            pane: true,
+            tab_display: Vec::new(),
             display: Some("test-display".into()),
             rect: [40., 50., 1100., 700.],
             maximized: true,
@@ -182,6 +250,9 @@ mod tests {
         value.windows[0].tabs = vec![None; MAX_TABS + 1];
         assert!(value.encode().is_err());
         value.windows[0].tabs = vec![Some("relative".into())];
+        assert!(value.encode().is_err());
+        value.windows[0].tabs = vec![None];
+        value.windows[0].tab_display = vec![SavedDisplay::default(); 2];
         assert!(value.encode().is_err());
     }
 

@@ -2,6 +2,67 @@ use super::*;
 use std::{cell::Cell, rc::Rc};
 
 #[gpui::test]
+fn restored_display_applies_before_listing_and_keeps_download_sort_choice(
+    cx: &mut gpui::TestAppContext,
+) {
+    use crate::session_data::{SavedDisplay, SavedSort};
+    cx.background_executor.allow_parking();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("Downloads");
+    let window = cx.add_window(|w, cx| {
+        let icons = cx.new(ShellIcons::new);
+        FolderView::new_deferred(
+            Location::Folder(path.clone()),
+            ThemeMode::Light,
+            icons,
+            w,
+            cx,
+        )
+    });
+    window
+        .update(cx, |tab, _, cx| {
+            tab.favorites.push(platform::Place {
+                label: "Downloads".into(),
+                path: path.clone(),
+                icon: platform::PlaceIcon::Downloads,
+            });
+            assert!(tab.is_downloads());
+            let display = SavedDisplay {
+                gallery: Some(false),
+                sort: SavedSort::Size,
+                ascending: false,
+                manual_sort: true,
+            };
+            tab.restore_session_display(display);
+            assert_eq!(tab.session_display(), display);
+            tab.activate_session(cx);
+            assert_eq!(
+                tab.sort,
+                SortOrder {
+                    key: SortKey::Size,
+                    ascending: false
+                }
+            );
+            assert_eq!(tab.gallery_override, Some(false));
+            assert!(!tab.grouped);
+            assert!(tab.session_display().manual_sort);
+            tab.grouped = true;
+            assert!(
+                !tab.session_display().manual_sort,
+                "active date grouping must win over the previous sort key"
+            );
+            tab.restore_session_display(SavedDisplay {
+                manual_sort: false,
+                ..display
+            });
+            tab.load(Location::Folder(path.clone()), None, cx);
+            assert!(tab.grouped);
+            assert!(tab.restored_display.is_none());
+        })
+        .unwrap();
+}
+
+#[gpui::test]
 fn restored_tab_defers_listing_until_selected(cx: &mut gpui::TestAppContext) {
     cx.background_executor.allow_parking();
     let dir = tempfile::tempdir().unwrap();

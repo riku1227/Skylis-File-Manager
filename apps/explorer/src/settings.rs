@@ -15,7 +15,7 @@ struct SaveSettings {
 }
 pub struct Preferences {
     pub value: Settings,
-    /// Shared by all windows for this run only; deliberately excluded from Settings encoding.
+    /// Shared by all windows; mirrors the persisted setting for existing UI readers.
     pub show_hidden: bool,
     pub error: Option<String>,
     writable: bool,
@@ -51,12 +51,17 @@ mod tests {
         cx.update(|cx| {
             let preferences =
                 cx.new(|cx| Preferences::new_at((Settings::default(), None), path.clone(), cx));
-            preferences.update(cx, |p, cx| p.change(|s| s.restore_tabs = false, cx));
+            preferences.update(cx, |p, cx| {
+                p.change(|s| s.restore_tabs = false, cx);
+                p.set_show_hidden(true, cx);
+                assert!(p.value.show_hidden && p.show_hidden);
+            });
             cx.set_global(SharedPreferences(preferences));
             cx.shutdown();
         });
         let saved = Settings::decode(&std::fs::read_to_string(path).unwrap()).unwrap();
         assert!(!saved.restore_tabs);
+        assert!(saved.show_hidden);
     }
     #[test]
     fn atomic_save_replaces_prior_settings() {
@@ -314,9 +319,10 @@ impl Preferences {
             }
         });
         // Keep a receiver only to replace the pending snapshot without growing the queue.
+        let show_hidden = initial.0.show_hidden;
         Self {
             value: initial.0,
-            show_hidden: false,
+            show_hidden,
             error,
             writable,
             revision: 0,
@@ -387,15 +393,13 @@ impl Preferences {
         cx.notify();
     }
     pub fn set_show_hidden(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        if self.show_hidden != enabled {
-            self.show_hidden = enabled;
-            cx.notify();
-        }
+        self.change(|s| s.show_hidden = enabled, cx);
     }
 
     pub fn change(&mut self, edit: impl FnOnce(&mut Settings), cx: &mut Context<Self>) {
         let before = self.value.clone();
         edit(&mut self.value);
+        self.show_hidden = self.value.show_hidden;
         if self.value == before {
             return;
         }

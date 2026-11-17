@@ -74,6 +74,13 @@ impl Explorer {
             rect.origin -= display.bounds().origin;
         }
         crate::session_data::SavedWindow {
+            pane: self.pane,
+            tab_display: self
+                .tabs
+                .iter()
+                .take(crate::session_data::MAX_TABS)
+                .map(|t| t.read(cx).session_display())
+                .collect(),
             display: display.and_then(|d| d.uuid().ok()).map(|id| id.to_string()),
             rect: [
                 rect.origin.x.into(),
@@ -111,23 +118,37 @@ impl Explorer {
         };
         let compact = preferences.value.compact;
         let icons = cx.new(ShellIcons::new);
+        let displays = saved.tab_display;
         let tabs = saved
             .tabs
             .into_iter()
             .take(crate::session_data::MAX_TABS)
-            .map(|path| {
+            .enumerate()
+            .map(|(index, path)| {
                 cx.new(|cx| {
-                    FolderView::new_deferred(
+                    let mut folder = FolderView::new_deferred(
                         path.map(Location::Folder).unwrap_or(Location::Home),
                         mode,
                         icons.clone(),
                         window,
                         cx,
-                    )
+                    );
+                    folder
+                        .restore_session_display(displays.get(index).copied().unwrap_or_default());
+                    folder
                 })
             })
             .collect();
-        Self::with_tabs_active(tabs, icons, mode, compact, saved.active, window, cx)
+        Self::with_tabs_active(
+            tabs,
+            icons,
+            mode,
+            compact,
+            saved.active,
+            saved.pane,
+            window,
+            cx,
+        )
     }
 
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -170,7 +191,7 @@ impl Explorer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::with_tabs_active(tabs, icons, mode, compact, 0, window, cx)
+        Self::with_tabs_active(tabs, icons, mode, compact, 0, true, window, cx)
     }
 
     fn with_tabs_active(
@@ -179,6 +200,7 @@ impl Explorer {
         mode: ThemeMode,
         compact: bool,
         active: usize,
+        pane: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -264,7 +286,7 @@ impl Explorer {
             active: 0,
             mode,
             compact,
-            pane: true,
+            pane,
             icons,
             last_saved_theme: preferences.read(cx).value.theme,
             preferences,
@@ -700,6 +722,39 @@ impl Render for Explorer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[gpui::test]
+    fn restores_window_pane_and_each_tabs_display_before_loading(cx: &mut gpui::TestAppContext) {
+        use crate::session_data::{SavedDisplay, SavedSort, SavedWindow};
+        let _probe = settings_key_window(cx);
+        let displays = vec![
+            SavedDisplay {
+                gallery: Some(true),
+                sort: SavedSort::Size,
+                ascending: false,
+                manual_sort: false,
+            },
+            SavedDisplay::default(),
+        ];
+        let saved = SavedWindow {
+            pane: false,
+            tabs: vec![None, None],
+            tab_display: displays.clone(),
+            active: 1,
+            ..Default::default()
+        };
+        let window = cx.add_window(|w, cx| Explorer::restore(saved, w, cx));
+        window
+            .update(cx, |view, w, cx| {
+                assert!(!view.pane);
+                for tab in &view.tabs {
+                    assert!(!tab.read(cx).pane);
+                }
+                assert_eq!(view.session_snapshot(w, cx).tab_display, displays);
+                view.switch(0, w, cx);
+                assert_eq!(view.session_snapshot(w, cx).tab_display[0], displays[0]);
+            })
+            .unwrap();
+    }
 
     #[gpui::test]
     fn pane_is_shared_by_window_tabs_and_inherited_on_attach(cx: &mut gpui::TestAppContext) {

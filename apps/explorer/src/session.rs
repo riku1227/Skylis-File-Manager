@@ -409,6 +409,16 @@ mod tests {
             crate::explorer::Explorer::restore(
                 SavedWindow {
                     tabs: vec![Some(path.clone()), None],
+                    pane: false,
+                    tab_display: vec![
+                        crate::session_data::SavedDisplay {
+                            gallery: Some(false),
+                            sort: crate::session_data::SavedSort::Modified,
+                            ascending: false,
+                            manual_sort: false,
+                        },
+                        crate::session_data::SavedDisplay::default(),
+                    ],
                     active: 1,
                     ..Default::default()
                 },
@@ -441,6 +451,13 @@ mod tests {
                 .iter()
                 .any(|w| w.active == 1 && w.tabs[0] == Some(path.clone()))
         );
+        let first = saved.windows.iter().find(|w| w.active == 1).unwrap();
+        assert!(!first.pane);
+        assert_eq!(
+            first.tab_display[0].sort,
+            crate::session_data::SavedSort::Modified
+        );
+        assert!(!first.tab_display[0].ascending);
     }
 
     #[gpui::test]

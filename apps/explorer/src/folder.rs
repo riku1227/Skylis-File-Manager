@@ -59,6 +59,7 @@ pub enum FolderEvent {
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
+    restored_display: Option<crate::session_data::SavedDisplay>,
     session_deferred: bool,
     display_settings: display_settings::DisplaySettings,
     marquee: marquee::MarqueeState,
@@ -150,6 +151,35 @@ pub struct FolderView {
 }
 
 impl FolderView {
+    pub(crate) fn session_display(&self) -> crate::session_data::SavedDisplay {
+        use crate::session_data::{SavedDisplay, SavedSort};
+        self.restored_display.unwrap_or_else(|| SavedDisplay {
+            gallery: self.gallery_override,
+            sort: match self.sort.key {
+                SortKey::Name => SavedSort::Name,
+                SortKey::Modified => SavedSort::Modified,
+                SortKey::Kind => SavedSort::Kind,
+                SortKey::Size => SavedSort::Size,
+            },
+            ascending: self.sort.ascending,
+            manual_sort: self.is_downloads() && !self.grouped,
+        })
+    }
+
+    pub(crate) fn restore_session_display(&mut self, saved: crate::session_data::SavedDisplay) {
+        use crate::session_data::SavedSort;
+        self.gallery_override = saved.gallery;
+        self.sort = SortOrder {
+            key: match saved.sort {
+                SavedSort::Name => SortKey::Name,
+                SavedSort::Modified => SortKey::Modified,
+                SavedSort::Kind => SortKey::Kind,
+                SavedSort::Size => SortKey::Size,
+            },
+            ascending: saved.ascending,
+        };
+        self.restored_display = Some(saved);
+    }
     pub(crate) fn session_path(&self) -> Option<PathBuf> {
         let path = match self.history.current() {
             Location::Home => return None,
@@ -282,6 +312,7 @@ impl FolderView {
         cx.observe(&transfer_progress, |_, _, cx| cx.notify())
             .detach();
         let mut this = Self {
+            restored_display: None,
             session_deferred: deferred,
             display_settings: display_settings::DisplaySettings::new(cx),
             marquee: Default::default(),
@@ -517,6 +548,7 @@ impl FolderView {
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
         self.session_deferred = false;
+        let restored_display = self.restored_display.take();
         self.close_display_settings(cx);
         self.archive_dialog = None;
         self.startup_handoff = None;
@@ -539,7 +571,9 @@ impl FolderView {
         self.cancel = CancelToken::new();
         self._listing = None;
 
-        self.grouped = self.group_downloads && self.is_downloads();
+        self.grouped = self.group_downloads
+            && self.is_downloads()
+            && !restored_display.is_some_and(|s| s.manual_sort);
         self.group_date = chrono::Local::now().date_naive();
         self.display_rows.clear();
         self.entry_rows.clear();
