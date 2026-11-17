@@ -26,6 +26,7 @@ mod name_operations;
 mod name_search;
 mod scroll_motion;
 mod scrollbar;
+mod search_presentation;
 mod watch;
 use context_menu::ContextMenu;
 use explorer_core::history::breadcrumbs;
@@ -2062,6 +2063,8 @@ impl FolderView {
         let t = self.theme(window);
         let focused = self.focus.is_focused(window);
         let narrow = self.narrow(window);
+        let query_key = self.query.to_lowercase();
+        let name_matcher = explorer_core::entry::NameMatcher::new(&query_key);
         range
             .filter_map(|row_ix| {
                 // Keep a reachable blank starting area even in a full folder.
@@ -2069,7 +2072,13 @@ impl FolderView {
                     && row_ix >= self.display_rows.len()
                     && row_ix < self.search_row_count()
                 {
-                    return Some(self.render_descendant(row_ix - self.display_rows.len(), t, cx));
+                    return Some(self.render_descendant(
+                        row_ix - self.display_rows.len(),
+                        t,
+                        &name_matcher,
+                        window,
+                        cx,
+                    ));
                 }
                 if row_ix >= self.display_rows.len() {
                     return Some(
@@ -2145,11 +2154,17 @@ impl FolderView {
                             ))
                             .child(self.render_inline_name(&e.path, t, cx).unwrap_or_else(|| {
                                 div()
+                                    .id(("entry-name", ix))
+                                    .debug_selector(move || format!("entry-name-{ix}").into())
                                     .truncate()
                                     .text_color(name_color)
                                     .when(selected, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
                                     .when(e.hidden, |d| d.opacity(0.55))
-                                    .child(e.name.clone())
+                                    .child(search_presentation::name_text(
+                                        &e.name,
+                                        name_matcher.ranges(&e),
+                                        t,
+                                    ))
                                     .into_any_element()
                             })),
                     )

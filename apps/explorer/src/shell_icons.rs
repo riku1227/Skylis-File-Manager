@@ -361,6 +361,23 @@ impl ShellIcons {
     pub fn get_type(&mut self, path: &Path, is_dir: bool, size: u32) -> Option<Arc<RenderImage>> {
         self.get_key(Key::file_type(path, is_dir, size))
     }
+    #[cfg(test)]
+    pub(crate) fn assert_type_requests(&self, expected: &[&str]) {
+        let queue = self.requests.queue.lock().unwrap();
+        let mut paths = std::collections::BTreeSet::new();
+        for key in queue
+            .queued
+            .iter()
+            .chain(queue.in_flight.iter())
+            .chain(self.cache.entries.keys())
+        {
+            assert!(key.attributes_only, "exact Shell lookup queued: {key:?}");
+            let path = key.path.as_ref().unwrap();
+            assert!(!path.is_absolute());
+            paths.insert(path.to_string_lossy().into_owned());
+        }
+        assert_eq!(paths, expected.iter().map(|s| s.to_string()).collect());
+    }
 
     pub fn get_recycle_bin(
         &mut self,

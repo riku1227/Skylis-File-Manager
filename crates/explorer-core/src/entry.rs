@@ -12,6 +12,147 @@ impl<'a> NameMatcher<'a> {
     pub fn matches(&self, entry: &Entry) -> bool {
         self.0.find(entry.name_key.as_bytes()).is_some()
     }
+    /// Original UTF-8 ranges for presentation; kept separate from the full filter.
+    pub fn ranges(&self, entry: &Entry) -> Vec<std::ops::Range<usize>> {
+        self.ranges_in(&entry.name, &entry.name_key)
+    }
+    pub fn ranges_for_name(&self, name: &str) -> Vec<std::ops::Range<usize>> {
+        if self.0.needle().is_empty() {
+            return Vec::new();
+        }
+        self.ranges_in(name, &name.to_lowercase())
+    }
+    fn ranges_in(&self, name: &str, key: &str) -> Vec<std::ops::Range<usize>> {
+        if self.0.needle().is_empty() {
+            return Vec::new();
+        }
+        let mut result = Vec::new();
+        let mut hits = self.0.find_iter(key.as_bytes()).peekable();
+        if hits.peek().is_none() {
+            return result;
+        }
+        if name.is_ascii() && name.len() == key.len() {
+            for start in hits {
+                if !push_match(&mut result, start..start + self.0.needle().len()) {
+                    break;
+                }
+            }
+            return result;
+        }
+        // str::to_lowercase handles final sigma contextually. Its contextual
+        // variant has the same UTF-8 width; every expansion still maps to one
+        // original character. Fail closed if a future Unicode mapping differs.
+        let width = |c: char| c.to_lowercase().map(char::len_utf8).sum::<usize>();
+        if name.chars().map(width).sum::<usize>() != key.len() {
+            return result;
+        }
+        let mut offset = 0;
+        let mut chars = name.char_indices().map(|(start, c)| {
+            let from = offset;
+            offset += width(c);
+            (from..offset, start..start + c.len_utf8())
+        });
+        let mut current = chars.next();
+        for start in hits {
+            let end = start + self.0.needle().len();
+            while current.as_ref().is_some_and(|(k, _)| k.end <= start) {
+                current = chars.next();
+            }
+            let Some((_, original)) = &current else {
+                break;
+            };
+            let original_start = original.start;
+            while current.as_ref().is_some_and(|(k, _)| k.end < end) {
+                current = chars.next();
+            }
+            let Some((_, original)) = &current else {
+                break;
+            };
+            if !push_match(&mut result, original_start..original.end) {
+                break;
+            }
+        }
+        result
+    }
+}
+
+fn push_match(ranges: &mut Vec<std::ops::Range<usize>>, next: std::ops::Range<usize>) -> bool {
+    if let Some(last) = ranges.last_mut()
+        && last.end >= next.start
+    {
+        last.end = last.end.max(next.end);
+        return true;
+    }
+    if ranges.len() >= 128 {
+        return false;
+    }
+    ranges.push(next);
+    true
+}
+
+#[cfg(test)]
+mod match_range_tests {
+    use super::*;
+    fn ranges(name: &str, query: &str) -> Vec<std::ops::Range<usize>> {
+        let key = query.to_lowercase();
+        NameMatcher::new(&key).ranges_for_name(name)
+    }
+    #[test]
+    fn highlights_repeated_ascii_and_japanese_without_overlaps() {
+        assert_eq!(ranges("TXT.txt", "txt"), vec![0..3, 4..7]);
+        assert_eq!(ranges("aaa", "aa"), vec![0..2]);
+        assert_eq!(ranges("MEGA-回復キー.txt", "回復"), vec![5..11]);
+        assert!(ranges("report.txt", "").is_empty());
+        assert!(ranges("x", "long").is_empty());
+    }
+    #[test]
+    fn lowercasing_changes_width_and_uses_context_without_invalid_ranges() {
+        assert_eq!(ranges("İstanbul", "i"), vec![0..2]);
+        assert_eq!(ranges("İ", "\u{307}"), vec![0..2]);
+        assert_eq!(ranges("ẞ.txt", "ß"), vec![0..3]);
+        assert_eq!(ranges("ΟΔΟΣ", "ς"), vec![6..8]);
+        assert!(ranges("ΟΔΟΣ", "σ").is_empty());
+        assert_eq!(ranges("İİ", "i\u{307}"), vec![0..4]);
+    }
+    #[test]
+    fn cached_matching_and_highlights_agree_for_unicode_combinations() {
+        for name in [
+            "report.TXT",
+            "İ_ẞ_ΟΔΟΣ_日本語",
+            "ΣΣςΣσ",
+            "e\u{301}👩\u{200d}💻.txt",
+        ] {
+            let entry =
+                Entry::virtual_entry(name.into(), PathBuf::new(), EntryKind::File, None, None);
+            for query in [
+                "txt",
+                "i",
+                "ß",
+                "ς",
+                "σ",
+                "日本語",
+                "\u{301}",
+                "💻",
+                "absent",
+            ] {
+                let key = query.to_lowercase();
+                let matcher = NameMatcher::new(&key);
+                let r = matcher.ranges(&entry);
+                assert_eq!(!r.is_empty(), matcher.matches(&entry), "{name:?}/{query:?}");
+                assert_eq!(r, matcher.ranges_for_name(name));
+                assert!(r.iter().all(|r| r.start < r.end
+                    && name.is_char_boundary(r.start)
+                    && name.is_char_boundary(r.end)));
+                assert!(r.windows(2).all(|r| r[0].end < r[1].start));
+            }
+        }
+    }
+    #[test]
+    fn range_count_is_bounded_and_touching_matches_merge() {
+        let r = ranges(&"a_".repeat(200), "a");
+        assert_eq!(r.len(), 128);
+        assert_eq!(ranges(&"a".repeat(300), "a"), vec![0..300]);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

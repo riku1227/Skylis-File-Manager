@@ -210,6 +210,43 @@ mod tests {
         assert!(token.is_cancelled());
     }
     #[gpui::test]
+    fn descendant_icons_request_only_the_rendered_type_not_the_real_path(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let w = fixture(cx);
+        w.update(cx, |v, w, cx| {
+            v.icons = cx.new(ShellIcons::new);
+            for i in 0..200 {
+                v.descendants.hits.push(Arc::new(Hit {
+                    path: PathBuf::from(format!("C:/private/sub/item_{i}.ext{i}")),
+                    name: format!("item_{i}.ext{i}"),
+                    parent: "sub".into(),
+                    kind: EntryKind::File,
+                }));
+            }
+            let key = v.query.to_lowercase();
+            let matcher = explorer_core::entry::NameMatcher::new(&key);
+            let _ = v.render_descendant(0, v.theme(w), &matcher, w, cx);
+            v.icons.read(cx).assert_type_requests(&["file.ext0"]);
+        })
+        .unwrap();
+    }
+    #[gpui::test]
+    fn direct_and_descendant_names_share_the_same_left_edge(cx: &mut gpui::TestAppContext) {
+        let w = fixture(cx);
+        w.update(cx, |v, _, cx| {
+            v.descendants.hits.push(hit(v));
+            cx.notify();
+        })
+        .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(w.into(), cx);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let direct = visual.debug_bounds("entry-name-0").unwrap();
+        let descendant = visual.debug_bounds("descendant-name-0").unwrap();
+        assert!((f32::from(direct.left() - descendant.left())).abs() < 0.1);
+        assert_eq!(direct.size.height, descendant.size.height);
+    }
+    #[gpui::test]
     fn rendered_descendant_and_section_padding_are_not_root_targets(cx: &mut gpui::TestAppContext) {
         let w = fixture(cx);
         w.update(cx, |v, _, cx| {
@@ -644,12 +681,25 @@ impl FolderView {
         &self,
         index: usize,
         t: Theme,
+        matcher: &explorer_core::entry::NameMatcher<'_>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(hit) = self.descendants.hits.get(index) else {
             return div().into_any_element();
         };
         let selected = self.descendants.selected == Some(index);
+        let focused = self.focus.is_focused(window);
+        let name_color = if selected && focused {
+            t.c("selection.fg")
+        } else {
+            t.c("text.primary")
+        };
+        let meta_color = if selected && focused {
+            t.c("selection.fg-secondary")
+        } else {
+            t.c("text.muted")
+        };
         div()
             .id(("descendant", index))
             .debug_selector(move || format!("descendant-{index}").into())
@@ -657,20 +707,48 @@ impl FolderView {
             .px(px(12.))
             .w_full()
             .child(
-                row_surface(t, selected, true)
-                    .child(div().w(px(22.)).child(if hit.kind == EntryKind::Dir {
-                        "▸"
-                    } else {
-                        "·"
-                    }))
-                    .child(div().flex_1().min_w_0().truncate().child(hit.name.clone()))
+                row_surface(t, selected, focused)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .flex_1()
+                            .min_w_0()
+                            .child(self.type_icon(
+                                &hit.path,
+                                hit.kind == EntryKind::Dir,
+                                18.,
+                                t,
+                                window,
+                                cx,
+                            ))
+                            .child(
+                                div()
+                                    .id(("descendant-name", index))
+                                    .debug_selector(move || {
+                                        format!("descendant-name-{index}").into()
+                                    })
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_color(name_color)
+                                    .when(selected, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
+                                    .child(search_presentation::name_text(
+                                        &hit.name,
+                                        matcher.ranges_for_name(&hit.name),
+                                        t,
+                                    )),
+                            ),
+                    )
                     .child(
                         div()
                             .w(px(240.))
+                            .flex_shrink_0()
                             .min_w_0()
                             .truncate()
                             .text_size(px(11.))
-                            .text_color(t.c("text.muted"))
+                            .text_color(meta_color)
                             .child(hit.parent.clone()),
                     ),
             )
