@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">Skylis J2 — front-facing aqua glass folder</title>
+  <desc id="description">Editable vector reconstruction. A rounded transparent aqua folder with an upper-left tab and a broad opalescent surface flowing from the upper edge to the lower-right corner. No background or raster content.</desc>
+  <defs>
+    <!-- Glass colour is independent from the contours and the opal overlay. -->
+    <linearGradient id="glass-body" x1="220" y1="270" x2="1020" y2="950" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7fddea" stop-opacity=".77"/>
+      <stop offset=".32" stop-color="#9ccedb" stop-opacity=".83"/>
+      <stop offset=".69" stop-color="#8ed8e5" stop-opacity=".77"/>
+      <stop offset="1" stop-color="#9ce9ef" stop-opacity=".79"/>
+    </linearGradient>
+    <linearGradient id="glass-edge" x1="150" y1="220" x2="1105" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00b5dc"/><stop offset=".23" stop-color="#13ecff"/>
+      <stop offset=".6" stop-color="#49eff3"/><stop offset="1" stop-color="#00acd2"/>
+    </linearGradient>
+    <linearGradient id="edge-light" x1="160" y1="300" x2="1095" y2="985" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#faffff"/><stop offset=".42" stop-color="#b9ffff"/>
+      <stop offset=".83" stop-color="#f5ffff"/><stop offset="1" stop-color="#d2ffff"/>
+    </linearGradient>
+    <radialGradient id="glass-left-light" cx="0" cy="0" r="1" gradientTransform="translate(193 575) scale(140 365)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#caffff" stop-opacity=".68"/><stop offset="1" stop-color="#b4ffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glass-bottom-light" cx="0" cy="0" r="1" gradientTransform="translate(515 936) scale(580 170)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b5ffff" stop-opacity=".82"/><stop offset="1" stop-color="#aeffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glass-central-shade" cx="0" cy="0" r="1" gradientTransform="translate(646 580) rotate(24) scale(440 305)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#609fae" stop-opacity=".23"/><stop offset="1" stop-color="#559da9" stop-opacity="0"/>
+    </radialGradient>
+    <!-- The opal boundary is one continuous editable cubic silhouette. -->
+    <linearGradient id="opal-base" x1="620" y1="328" x2="850" y2="884" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#eaf7ff" stop-opacity=".87"/>
+      <stop offset=".24" stop-color="#d2e4ef" stop-opacity=".64"/>
+      <stop offset=".57" stop-color="#e9e4e8" stop-opacity=".83"/>
+      <stop offset=".8" stop-color="#fff2e6" stop-opacity=".93"/>
+      <stop offset="1" stop-color="#daebf0" stop-opacity=".77"/>
+    </linearGradient>
+    <radialGradient id="opal-cool-reflection" cx="0" cy="0" r="1" gradientTransform="translate(1039 418) rotate(40) scale(240 163)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e6f3ff" stop-opacity=".9"/><stop offset="1" stop-color="#c4e6f6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="opal-pearl" cx="0" cy="0" r="1" gradientTransform="translate(856 653) rotate(43) scale(255 100)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff9df" stop-opacity=".96"/><stop offset=".4" stop-color="#ffe6da" stop-opacity=".65"/>
+      <stop offset="1" stop-color="#fff1e6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="opal-lower-fire" cx="0" cy="0" r="1" gradientTransform="translate(773 754) rotate(36) scale(240 75)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffe9"/><stop offset=".5" stop-color="#fff4d7" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#fff5e5" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="opal-lip" x1="265" y1="345" x2="1050" y2="887" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".91"/><stop offset=".32" stop-color="#fff4ec"/>
+      <stop offset=".68" stop-color="#fffde9"/><stop offset="1" stop-color="#fff9f7" stop-opacity=".73"/>
+    </linearGradient>
+    <linearGradient id="opal-top-lip" x1="650" y1="328" x2="650" y2="382" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".95"/><stop offset=".35" stop-color="#fff4f4" stop-opacity=".7"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="folder-clip">
+      <path d="M234 214H457C496 214 518 234 540 267C558 291 570 302 598 302H1030C1076 302 1111 338 1111 383V923C1111 962 1079 993 1039 993H215C175 993 142 961 142 921V305C142 255 184 214 234 214Z"/>
+    </clipPath>
+    <clipPath id="opal-clip">
+      <path d="M230 351C237 333 276 331 338 330C561 324 822 326 1027 325C1073 325 1099 347 1099 389V925C1094 875 1026 849 931 821C768 773 640 706 530 557C447 444 367 368 287 348C263 342 241 342 230 351Z"/>
+    </clipPath>
+    <!-- Small bounded blurs, no whole-canvas filter or procedural texture. -->
+    <filter id="edge-soften" x="-5%" y="-6%" width="110%" height="112%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+    <filter id="reflection-soften" filterUnits="userSpaceOnUse" x="140" y="885" width="970" height="110" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+  </defs>
+
+  <!-- Orthographic back panel and the upper-left tab; no exposed side face. -->
+  <g id="aqua-folder">
+    <path id="folder-body" d="M234 214H457C496 214 518 234 540 267C558 291 570 302 598 302H1030C1076 302 1111 338 1111 383V923C1111 962 1079 993 1039 993H215C175 993 142 961 142 921V305C142 255 184 214 234 214Z" fill="url(#glass-body)"/>
+    <g id="glass-reflections" clip-path="url(#folder-clip)">
+      <path id="left-reflection" d="M142 214H1112V994H142Z" fill="url(#glass-left-light)"/>
+      <path id="central-transmission" d="M142 214H1112V994H142Z" fill="url(#glass-central-shade)"/>
+      <path id="lower-reflection" d="M142 214H1112V994H142Z" fill="url(#glass-bottom-light)"/>
+      <path id="inner-rim-glow" d="M183 370C162 381 159 401 159 433V920C159 953 181 978 216 978H1037C1071 978 1094 954 1094 922V391" stroke="#d8ffff" stroke-opacity=".78" stroke-width="15" filter="url(#edge-soften)"/>
+      <path id="bottom-caustic" d="M185 930C331 960 880 955 1074 944" stroke="#b5ffff" stroke-opacity=".67" stroke-width="24" filter="url(#reflection-soften)"/>
+    </g>
+    <path id="outer-cyan-rim" d="M234 214H457C496 214 518 234 540 267C558 291 570 302 598 302H1030C1076 302 1111 338 1111 383V923C1111 962 1079 993 1039 993H215C175 993 142 961 142 921V305C142 255 184 214 234 214Z" stroke="url(#glass-edge)" stroke-width="3"/>
+    <path id="outer-white-hairline" d="M234 216H457C495 216 516 235 538 268C555 292 571 304 598 304H1030C1075 304 1109 339 1109 383V923C1109 961 1078 991 1039 991H215C176 991 144 960 144 921V305C144 256 185 216 234 216Z" stroke="#e7ffff" stroke-width="1.6"/>
+    <path id="inset-cyan-rim" d="M234 221H457C490 221 513 240 534 270C554 298 571 309 598 309H1030C1071 309 1104 341 1104 383V923C1104 958 1075 986 1039 986H215C179 986 149 958 149 921V305C149 259 188 221 234 221Z" stroke="#0fe8f5" stroke-opacity=".84" stroke-width="5"/>
+    <path id="back-panel-inner-light" d="M155 381V306C155 262 190 226 235 226H457C486 226 509 242 530 273C551 302 570 311 599 311H1030C1070 311 1099 344 1099 384" stroke="url(#edge-light)" stroke-width="2.3"/>
+  </g>
+
+  <!-- Broad opalescent sheet; the clip keeps every reflection inside its shape. -->
+  <g id="opalescent-surface" clip-path="url(#opal-clip)">
+    <path id="opal-sheet" d="M227 323H1102V930H227Z" fill="url(#opal-base)"/>
+    <path id="opal-blue-sheen" d="M227 323H1102V930H227Z" fill="url(#opal-cool-reflection)"/>
+    <path id="opal-warm-sheen" d="M227 323H1102V930H227Z" fill="url(#opal-pearl)"/>
+    <path id="opal-ivory-sheen" d="M227 323H1102V930H227Z" fill="url(#opal-lower-fire)"/>
+    <path id="rolled-top-reflection" d="M230 351C270 329 714 338 1024 337C1070 336 1087 352 1094 387" stroke="url(#opal-top-lip)" stroke-width="28" filter="url(#edge-soften)"/>
+    <path id="opal-right-reflection" d="M1084 369C1100 479 1085 766 1094 909" stroke="#fff" stroke-opacity=".38" stroke-width="12" filter="url(#edge-soften)"/>
+    <path id="flowing-lip-glow" d="M230 351C241 342 263 342 287 348C367 368 447 444 530 557C640 706 768 773 931 821C1026 849 1094 875 1099 925" stroke="#fff7ef" stroke-opacity=".83" stroke-width="21" filter="url(#edge-soften)"/>
+  </g>
+  <path id="flowing-opal-edge" d="M230 351C241 342 263 342 287 348C367 368 447 444 530 557C640 706 768 773 931 821C1026 849 1094 875 1099 925" stroke="url(#opal-lip)" stroke-width="4"/>
+  <path id="opal-top-hairline" d="M230 351C237 333 276 331 338 330C561 324 822 326 1027 325C1066 325 1090 343 1097 371" stroke="#f5ffff" stroke-opacity=".71" stroke-width="1.7"/>
+
+  <!-- Front panel rim remains visible below the sheet. -->
+  <g id="front-glass-rim">
+    <path id="front-upper-left-roll" d="M307 354H193C167 354 151 375 151 405V922C151 960 178 985 216 985H1038C1077 985 1103 960 1103 923" stroke="#b9ffff" stroke-opacity=".72" stroke-width="6"/>
+    <path id="front-inner-hairline" d="M326 361H194C173 361 158 379 158 405V921C158 954 183 979 216 979H1038C1074 979 1096 957 1096 926" stroke="url(#edge-light)" stroke-width="2.4"/>
+    <path id="corner-specular" d="M157 383C160 365 173 353 192 353H234" stroke="#fff" stroke-opacity=".92" stroke-width="5" filter="url(#edge-soften)"/>
+  </g>
+</svg>
