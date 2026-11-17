@@ -2,6 +2,8 @@
 
 For the subsequent Home, direct address entry and hover fixes, see [home-address-verification.md](home-address-verification.md). The checks below record the initial UI implementation.
 
+For the current Windows CI scope and its latest local validation, see [continuous-integration.md](continuous-integration.md). The test counts below are historical.
+
 ## Result
 Windows / GPUI Fast 0.1.15で採用UIをネイティブ実装。タブとウィンドウ操作ボタンを最上段32pxへ統合し、別のOSタイトルバーを撤去した。描画にはWebViewや背景ガラス効果を使わない。
 

@@ -43,6 +43,8 @@ Windowsではホームに「ゴミ箱」カードがあります。ダブルク�
 - [ネイティブUI実装計画](docs/implementation/native-ui-plan.md)
 - [GPUI Fast移行記録](docs/implementation/gpui-fast.md)
 - [実画面・テストの確認結果と未実装項目](docs/implementation/verification.md)
+- [改善ロードマップと着手順](docs/implementation/daily-driver-roadmap.md)
+- [Windows CIの内容と検証範囲](docs/implementation/continuous-integration.md)
 - [取り込んだソースのライセンス](licenses/README.md)
 
 ファイル列挙・ソート・履歴は `explorer-core`、表示と入力は `apps/explorer`。Windowsのアイコンはワーカースレッドで取得し、色を変えずに表示します。GPUI Fastの依存入口はルートCargo.tomlに集約しています。
