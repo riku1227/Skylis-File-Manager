@@ -7,6 +7,7 @@ pub mod format;
 pub mod history;
 pub mod listing;
 pub mod location;
+pub mod name_search;
 pub mod platform;
 pub mod wsl;
 
