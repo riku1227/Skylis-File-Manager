@@ -82,7 +82,8 @@ pub struct FolderView {
     archive_dialog: Option<archives::ArchiveDialog>,
     archive_jobs: Entity<crate::archive_jobs::ArchiveJobs>,
     transfer_progress: Entity<transfers::TransferProgress>,
-    menu_generation: usize,
+    menu_presence:
+        crate::motion::Presence<(ContextMenu, Vec<(&'static str, context_menu::Command)>)>,
     pane_generation: usize,
     pane_revealed_at: Option<std::time::Instant>,
     menu_focus: FocusHandle,
@@ -266,7 +267,7 @@ impl FolderView {
             archive_dialog: None,
             archive_jobs,
             transfer_progress,
-            menu_generation: 0,
+            menu_presence: Default::default(),
             pane_generation: 0,
             pane_revealed_at: None,
             menu_focus: cx.focus_handle(),
@@ -2466,10 +2467,35 @@ impl Focusable for FolderView {
         }
     }
 }
+impl FolderView {
+    /// Transient surfaces close by clearing their state. Observing that here,
+    /// once per frame, lets them fade out without any close site knowing.
+    fn sync_presence(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (now, reduce) = (cx.background_executor().now(), cx.reduce_motion());
+        let menu = self
+            .context_menu
+            .clone()
+            .map(|menu| (menu, self.menu_commands()));
+        let menu = self
+            .menu_presence
+            .sync(menu, crate::motion::MENU, now, reduce);
+        let popup = self.display_settings.presence.sync(
+            self.display_settings.open.then_some(()),
+            crate::motion::POPUP,
+            now,
+            reduce,
+        );
+        if menu || popup {
+            window.request_animation_frame();
+        }
+    }
+}
+
 impl Render for FolderView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.flush_directory_refresh(cx);
         let t = self.theme(window);
+        self.sync_presence(window, cx);
         self.check_motion_layout();
         self.cancel_marquee_if_layout_changed();
         self.search.update(cx, |input, _| {
@@ -2754,10 +2780,10 @@ impl Render for FolderView {
                     },
                 )
             })
-            .when(self.context_menu.is_some(), |d| {
+            .when(self.menu_presence.mounted(), |d| {
                 d.child(self.render_context_menu(t, cx))
             })
-            .when(self.display_settings.open, |d| {
+            .when(self.display_settings.presence.mounted(), |d| {
                 d.child(self.render_display_settings(t, window, cx))
             })
             .when(

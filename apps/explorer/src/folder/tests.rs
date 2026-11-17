@@ -2218,28 +2218,21 @@ fn permission_notice_fits_minimum_window_and_dismiss_click_routes(cx: &mut gpui:
 }
 
 #[gpui::test]
-fn feedback_generations_advance_only_on_opening(cx: &mut gpui::TestAppContext) {
+fn pane_reveal_generation_advances_only_on_opening(cx: &mut gpui::TestAppContext) {
     let window = workflow_window(cx);
     window
         .update(cx, |v, w, cx| {
-            assert_eq!(v.display_settings.generation, 0);
             v.open_display_settings(w, cx);
-            let generation = v.display_settings.generation;
-            assert_eq!(generation, 1);
             v.open_display_settings(w, cx);
             v.set_gallery(true, cx);
             v.request_pane(true, cx);
             v.request_pane(true, cx);
             v.compact = true;
             v.select(0, cx);
-            assert_eq!(v.display_settings.generation, generation);
             assert_eq!(v.pane_generation, 1);
             v.request_pane(false, cx);
             v.request_pane(true, cx);
             assert_eq!(v.pane_generation, 2);
-            v.close_display_settings(cx);
-            v.open_display_settings(w, cx);
-            assert_eq!(v.display_settings.generation, generation + 1);
         })
         .unwrap();
 }
@@ -2273,4 +2266,94 @@ fn reduced_motion_segments_draw_at_selected_option_on_mount_and_change(
         );
         assert!((f32::from(face.size.width - option.size.width)).abs() < 1.1);
     }
+}
+
+/// Draws frames 16ms apart until nothing asks for another one.
+fn settle_frames(visual: &mut gpui::VisualTestContext) -> usize {
+    for frame in 0..60 {
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        if visual.update(|w, cx| w.simulate_next_frame(cx)) == 0 {
+            return frame;
+        }
+        visual
+            .executor()
+            .advance_clock(std::time::Duration::from_millis(16));
+    }
+    panic!("motion never settled");
+}
+
+/// The shield fills the surface inside its 1px border, which has no controls.
+fn assert_shield_covers(visual: &mut gpui::VisualTestContext, surface: gpui::Bounds<Pixels>) {
+    let shield = visual.debug_bounds("motion-ghost-shield").unwrap();
+    assert_eq!(shield.origin, surface.origin + gpui::point(px(1.), px(1.)));
+    assert_eq!(shield.size, surface.size - gpui::size(px(2.), px(2.)));
+}
+
+#[gpui::test]
+fn closed_popup_and_menu_fade_out_as_inert_ghosts(cx: &mut gpui::TestAppContext) {
+    cx.update(|cx| cx.set_reduce_motion(false));
+    let window = workflow_window(cx);
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    visual.update(|w, cx| w.draw(cx).clear(cx));
+
+    // Display settings: closing is immediate, the panel lingers without input.
+    click_display_control(&mut visual, "display-settings-trigger");
+    settle_frames(&mut visual);
+    let sort = window.read_with(&visual, |v, _| v.sort).unwrap();
+    visual.simulate_keystrokes("escape");
+    visual.update(|w, cx| w.draw(cx).clear(cx));
+    window
+        .update(&mut visual, |v, w, _| {
+            assert!(!v.display_settings.open);
+            assert!(v.display_settings.trigger_focus.is_focused(w));
+            let ghost = v.display_settings.presence.shown().unwrap();
+            assert!(!ghost.live && ghost.progress == 1.);
+        })
+        .unwrap();
+    let panel = visual.debug_bounds("display-settings-panel").unwrap();
+    assert_shield_covers(&mut visual, panel);
+    let stale = visual.debug_bounds("display-sort-size").unwrap().center();
+    visual.simulate_click(stale, gpui::Modifiers::none());
+    window
+        .update(&mut visual, |v, w, _| {
+            assert_eq!(v.sort, sort, "a ghost control must not act");
+            assert!(v.display_settings.trigger_focus.is_focused(w));
+        })
+        .unwrap();
+    assert!(settle_frames(&mut visual) >= 2);
+    assert!(visual.debug_bounds("display-settings-panel").is_none());
+
+    // Context menu: the ghost keeps the commands it closed with.
+    window
+        .update(&mut visual, |v, w, cx| {
+            v.keyboard_context_menu(&ShowContextMenu, w, cx);
+            assert!(v.context_menu.is_some());
+        })
+        .unwrap();
+    settle_frames(&mut visual);
+    let menu = visual.debug_bounds("context-menu").unwrap();
+    let commands = window
+        .read_with(&visual, |v, _| {
+            v.menu_presence.shown().unwrap().content.1.len()
+        })
+        .unwrap();
+    assert!(commands > 0);
+    visual.simulate_keystrokes("escape");
+    visual.update(|w, cx| w.draw(cx).clear(cx));
+    window
+        .update(&mut visual, |v, w, _| {
+            assert!(v.context_menu.is_none());
+            assert!(v.focus.is_focused(w));
+            let ghost = v.menu_presence.shown().unwrap();
+            assert!(!ghost.live);
+            assert_eq!(ghost.content.1.len(), commands);
+        })
+        .unwrap();
+    assert_eq!(visual.debug_bounds("context-menu"), Some(menu));
+    assert_shield_covers(&mut visual, menu);
+    assert!(settle_frames(&mut visual) >= 2);
+    assert!(visual.debug_bounds("context-menu").is_none());
+    window
+        .read_with(&visual, |v, _| assert!(!v.menu_presence.mounted()))
+        .unwrap();
 }

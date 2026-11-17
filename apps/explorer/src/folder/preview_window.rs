@@ -294,7 +294,7 @@ impl Render for PreviewWindow {
             )
             .with_animation(
                 "preview-reveal",
-                Animation::new(crate::motion::MENU_REVEAL),
+                Animation::new(crate::motion::WINDOW_REVEAL),
                 |element, progress| element.opacity(crate::motion::ease_out_cubic(progress)),
             )
     }

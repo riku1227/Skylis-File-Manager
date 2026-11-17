@@ -44,7 +44,7 @@ pub struct Explorer {
     preferences: Entity<crate::settings::Preferences>,
     settings_open: bool,
     settings_category: usize,
-    settings_generation: usize,
+    settings_presence: crate::motion::Presence<()>,
     settings_content_generation: usize,
     settings_scroll: gpui::ScrollHandle,
     settings_focus: FocusHandle,
@@ -184,7 +184,7 @@ impl Explorer {
             preferences,
             settings_open: false,
             settings_category: 0,
-            settings_generation: 0,
+            settings_presence: Default::default(),
             settings_content_generation: 0,
             settings_scroll: gpui::ScrollHandle::new(),
             settings_focus: cx.focus_handle(),
@@ -282,6 +282,14 @@ impl Render for Explorer {
             return div().into_any_element();
         }
         window.set_window_title(&self.tabs[self.active].read(cx).label());
+        if self.settings_presence.sync(
+            self.settings_open.then_some(()),
+            crate::motion::MODAL,
+            cx.background_executor().now(),
+            cx.reduce_motion(),
+        ) {
+            window.request_animation_frame();
+        }
         let mut tabs = div()
             .id("tabs")
             .relative()
@@ -507,9 +515,6 @@ impl Render for Explorer {
             .on_action(cx.listener(|this, _: &crate::OpenPermissions, w, cx| {
                 if cfg!(target_os = "macos") {
                     this.select_settings_category(4);
-                    if !this.settings_open {
-                        this.settings_generation = this.settings_generation.wrapping_add(1);
-                    }
                     this.settings_open = true;
                     this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
                     w.focus(&this.settings_focus, cx);
@@ -519,7 +524,6 @@ impl Render for Explorer {
             .on_action(cx.listener(|this, _: &OpenSettings, w, cx| {
                 this.settings_open = !this.settings_open;
                 if this.settings_open {
-                    this.settings_generation = this.settings_generation.wrapping_add(1);
                     crate::motion_preferences::refresh(cx);
                     this.tabs[this.active].update(cx, |tab, cx| {
                         tab.cancel_scroll_motion();
@@ -597,7 +601,7 @@ impl Render for Explorer {
             .when(self.tab_menu.is_some() && !self.settings_open, |d| {
                 d.child(gpui::deferred(self.render_tab_menu(t, window, cx)).with_priority(2))
             })
-            .when(self.settings_open, |d| {
+            .when(self.settings_presence.mounted(), |d| {
                 d.child(gpui::deferred(self.render_settings(t, window, cx)).with_priority(3))
             })
             .into_any_element()
@@ -1154,25 +1158,101 @@ mod tests {
             .unwrap();
     }
 
+    /// Draws frames 16ms apart until nothing asks for another one.
+    fn settle_frames(visual: &mut gpui::VisualTestContext) -> usize {
+        for frame in 0..60 {
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            if visual.update(|w, cx| w.simulate_next_frame(cx)) == 0 {
+                return frame;
+            }
+            visual
+                .executor()
+                .advance_clock(std::time::Duration::from_millis(16));
+        }
+        panic!("motion never settled");
+    }
+
     #[gpui::test]
-    fn modal_reveal_generation_advances_only_when_opening(cx: &mut gpui::TestAppContext) {
+    fn settings_modal_closes_at_once_and_fades_out_as_an_inert_ghost(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| cx.set_reduce_motion(false));
         let window = settings_key_window(cx);
-        for expected in [0, 1, 1, 2] {
-            cx.dispatch_action(window.into(), OpenSettings);
-            cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
-                .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        let presence = |cx: &mut gpui::VisualTestContext| {
             window
                 .read_with(cx, |p, cx| {
-                    assert_eq!(p.explorer.read(cx).settings_generation, expected)
+                    let explorer = p.explorer.read(cx);
+                    explorer
+                        .settings_presence
+                        .shown()
+                        .map(|shown| (shown.progress, shown.live))
                 })
-                .unwrap();
-        }
-        cx.simulate_keystrokes(window.into(), "2 2 8 8");
+                .unwrap()
+        };
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        assert_eq!(presence(&mut visual), Some((0., true)));
+        assert!(visual.debug_bounds("motion-ghost-shield").is_none());
+        let entering = settle_frames(&mut visual);
+        assert!((3..=14).contains(&entering), "enter used {entering} frames");
+        assert_eq!(presence(&mut visual), Some((1., true)));
+
+        visual.simulate_keystrokes("escape");
         window
-            .read_with(cx, |p, cx| {
-                assert_eq!(p.explorer.read(cx).settings_generation, 2)
-            })
+            .read_with(&visual, |p, cx| assert!(!p.explorer.read(cx).settings_open))
             .unwrap();
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        assert_eq!(presence(&mut visual), Some((1., false)));
+        let shield = visual.debug_bounds("motion-ghost-shield").unwrap();
+        assert_eq!(shield.size, visual.update(|w, _| w.viewport_size()));
+        // The Done button is still painted, but a click on it must do nothing.
+        let done = visual.debug_bounds("settings-done").unwrap().center();
+        visual.simulate_click(done, gpui::Modifiers::none());
+        window
+            .read_with(&visual, |p, cx| assert!(!p.explorer.read(cx).settings_open))
+            .unwrap();
+        let leaving = settle_frames(&mut visual);
+        assert!(
+            leaving >= 2 && leaving < entering,
+            "exit used {leaving} frames"
+        );
+        assert_eq!(presence(&mut visual), None);
+        assert!(visual.debug_bounds("settings-panel").is_none());
+
+        // Reopening mid-exit continues from the painted opacity.
+        visual.dispatch_action(OpenSettings);
+        settle_frames(&mut visual);
+        visual.dispatch_action(OpenSettings);
+        for _ in 0..2 {
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            visual.update(|w, cx| w.simulate_next_frame(cx));
+            visual
+                .executor()
+                .advance_clock(std::time::Duration::from_millis(16));
+        }
+        visual.dispatch_action(OpenSettings);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let (progress, live) = presence(&mut visual).unwrap();
+        assert!(
+            live && progress > 0.05 && progress < 0.95,
+            "resumed at {progress}"
+        );
+        settle_frames(&mut visual);
+        assert_eq!(presence(&mut visual), Some((1., true)));
+    }
+
+    #[gpui::test]
+    fn reduced_motion_mounts_and_unmounts_the_modal_without_frames(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| cx.set_reduce_motion(true));
+        let window = settings_key_window(cx);
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        assert!(visual.debug_bounds("settings-panel").is_some());
+        assert_eq!(visual.update(|w, cx| w.simulate_next_frame(cx)), 0);
+        visual.simulate_keystrokes("escape");
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        assert!(visual.debug_bounds("settings-panel").is_none());
+        assert_eq!(visual.update(|w, cx| w.simulate_next_frame(cx)), 0);
     }
     #[gpui::test]
     fn settings_content_fades_only_for_category_changes(cx: &mut gpui::TestAppContext) {
@@ -1187,7 +1267,6 @@ mod tests {
         window
             .read_with(cx, |p, cx| {
                 assert_eq!(p.explorer.read(cx).settings_content_generation, 1);
-                assert_eq!(p.explorer.read(cx).settings_generation, 0);
             })
             .unwrap();
         cx.simulate_keystrokes(window.into(), "up");

@@ -21,6 +21,10 @@ impl Explorer {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let (progress, live) = self
+            .settings_presence
+            .shown()
+            .map_or((1., true), |shown| (shown.progress, shown.live));
         let narrow = window.viewport_size().width < px(560.);
         let p = self.preferences.read(cx);
         let value = p.value.clone();
@@ -604,11 +608,11 @@ impl Explorer {
         }
         div().id("settings-backdrop").absolute().inset_0().occlude()
             .flex().items_center().justify_center().px(px(16.)).py(px(24.))
-            .child(div().absolute().inset_0().bg(t.c("surface.backdrop")).with_animation(("settings-backdrop-reveal", self.settings_generation), Animation::new(motion::BACKDROP_REVEAL), |d, p| d.opacity(motion::ease_out_cubic(p))))
+            .child(div().absolute().inset_0().bg(t.c("surface.backdrop")).opacity(progress))
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, w, cx| { cx.stop_propagation(); this.close_settings(w, cx); }))
             .child(div().id("settings-panel").debug_selector(|| "settings-panel".into())
                 .w(px(880.)).h(px(620.)).max_w_full().max_h_full()
-                .child(div().id("settings-panel-content").track_focus(&self.settings_focus).size_full().flex().flex_col().overflow_hidden()
+                .child(div().id("settings-panel-content").when(live, |d| d.track_focus(&self.settings_focus)).size_full().flex().flex_col().overflow_hidden()
                 .rounded(px(12.)).border_1().border_color(t.c("border.dialog")).bg(t.c("surface.dialog")).shadow_lg()
                 .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
@@ -637,7 +641,9 @@ impl Explorer {
                     .child(div().flex_shrink_0().id("settings-done").debug_selector(|| "settings-done".into()).h(px(28.)).px(px(14.)).rounded(px(6.)).flex().items_center()
                         .border_1().border_color(t.c("button.border")).bg(t.c("button.bg")).hover(|s| s.bg(t.c("state.hover")))
                         .cursor_pointer().child("完了").on_click(cx.listener(|this, _, w, cx| this.close_settings(w, cx)))))
-                .with_animation(("settings-panel-reveal", self.settings_generation), Animation::new(motion::MODAL_REVEAL), |d, p| { let p = motion::ease_out_cubic(p); d.opacity(p).relative().top(px(-motion::MODAL_OFFSET * (1. - p))) })))
+                .opacity(progress).relative().top(px(-motion::MODAL_OFFSET * (1. - progress)))))
+            // A closing modal absorbs pointer input for its last few frames.
+            .when(!live, |d| d.child(motion::ghost_shield()))
     }
 
     fn change_preference(&mut self, index: usize, cx: &mut Context<Self>) {
