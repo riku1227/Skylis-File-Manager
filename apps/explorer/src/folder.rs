@@ -4,6 +4,7 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
+pub(crate) mod keyboard;
 mod marquee;
 mod selection_geometry;
 mod transfers;
@@ -59,6 +60,7 @@ pub enum FolderEvent {
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
+    typeahead: keyboard::Typeahead,
     restored_display: Option<crate::session_data::SavedDisplay>,
     session_deferred: bool,
     display_settings: display_settings::DisplaySettings,
@@ -312,6 +314,7 @@ impl FolderView {
         cx.observe(&transfer_progress, |_, _, cx| cx.notify())
             .detach();
         let mut this = Self {
+            typeahead: Default::default(),
             restored_display: None,
             session_deferred: deferred,
             display_settings: display_settings::DisplaySettings::new(cx),
@@ -418,6 +421,7 @@ impl FolderView {
         self._window_subscriptions
             .push(cx.observe_window_activation(window, |this, w, cx| {
                 if !w.is_window_active() {
+                    this.typeahead = Default::default();
                     this.cancel_scroll_motion();
                     cx.notify();
                 }
@@ -441,6 +445,7 @@ impl FolderView {
             }));
         self._window_subscriptions
             .push(cx.on_blur(&self.focus, window, |this, _, cx| {
+                this.typeahead = Default::default();
                 this.cancel_scroll_motion();
                 cx.notify();
             }));
@@ -547,6 +552,7 @@ impl FolderView {
     }
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.typeahead = Default::default();
         self.session_deferred = false;
         let restored_display = self.restored_display.take();
         self.close_display_settings(cx);
@@ -862,6 +868,9 @@ impl FolderView {
     }
 
     fn go_back(&mut self, _: &GoBack, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.typeahead.composition.is_empty() {
+            return;
+        }
         if let Some((path, sel)) = self.history.go_back(self.selected_name()) {
             self.gallery_override = None;
             self.clear_query(window, cx);
@@ -870,6 +879,9 @@ impl FolderView {
     }
 
     fn go_forward(&mut self, _: &GoForward, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.typeahead.composition.is_empty() {
+            return;
+        }
         if let Some((path, sel)) = self.history.go_forward(self.selected_name()) {
             self.gallery_override = None;
             self.clear_query(window, cx);
@@ -878,6 +890,9 @@ impl FolderView {
     }
 
     fn go_up(&mut self, _: &GoUp, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.typeahead.composition.is_empty() {
+            return;
+        }
         if let Location::Archive { archive, prefix } = self.history.current().clone() {
             if prefix.is_empty() {
                 let parent = archive
@@ -1004,6 +1019,7 @@ impl FolderView {
         if self.marquee_in_progress() {
             return;
         }
+        self.typeahead = Default::default();
         self.preview_scope.cancel();
         self.multi_selection.clear();
         if let Some(&i) = self.visible.get(ix) {
@@ -1145,6 +1161,9 @@ impl FolderView {
         }
     }
     fn input_focused(&self, window: &Window, cx: &App) -> bool {
+        if !self.typeahead.composition.is_empty() {
+            return true;
+        }
         self.display_settings.open
             || self.name_editor.is_some()
             || self.archive_dialog.is_some()
@@ -2569,6 +2588,7 @@ impl FolderView {
 
 impl Render for FolderView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.reset_blocked_typeahead(window, cx);
         self.flush_directory_refresh(cx);
         let t = self.theme(window);
         self.sync_presence(window, cx);
@@ -2619,7 +2639,33 @@ impl Render for FolderView {
         }
         div()
             .key_context("Explorer")
+            .relative()
             .track_focus(&self.focus)
+            .child(self.typeahead_input(window, cx))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendUp, w, cx| {
+                v.extend_key(keyboard::Direction::Up, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendDown, w, cx| {
+                v.extend_key(keyboard::Direction::Down, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendLeft, w, cx| {
+                v.extend_key(keyboard::Direction::Left, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendRight, w, cx| {
+                v.extend_key(keyboard::Direction::Right, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendHome, w, cx| {
+                v.extend_key(keyboard::Direction::Home, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendEnd, w, cx| {
+                v.extend_key(keyboard::Direction::End, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendPageUp, w, cx| {
+                v.extend_key(keyboard::Direction::PageUp, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendPageDown, w, cx| {
+                v.extend_key(keyboard::Direction::PageDown, w, cx)
+            }))
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
                 if event.keystroke.key == "tab" && !this.input_focused(w, cx) {
                     if event.keystroke.modifiers.shift && !this.pinned.is_empty() {
@@ -2702,6 +2748,12 @@ impl Render for FolderView {
                 cx.notify()
             }))
             .on_action(cx.listener(|this, _: &ClearSearch, w, cx| {
+                if !this.typeahead.composition.is_empty() {
+                    this.typeahead = Default::default();
+                    w.notify_text_input_changed(&this.focus);
+                    cx.notify();
+                    return;
+                }
                 if this.cancel_marquee() {
                     cx.notify();
                     return;

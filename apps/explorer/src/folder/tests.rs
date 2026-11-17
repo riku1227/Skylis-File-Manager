@@ -762,7 +762,7 @@ fn cancelling_pending_address_cannot_navigate_later(cx: &mut gpui::TestAppContex
 
 // Read real entries without creating files: Entry's private sort key must agree
 // with its name. These tests replace enumeration with controlled listing batches.
-fn workflow_entries(names: &[&str]) -> Vec<Entry> {
+pub(super) fn workflow_entries(names: &[&str]) -> Vec<Entry> {
     let mut entries = Vec::new();
     list_dir(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
@@ -786,7 +786,7 @@ fn workflow_entries(names: &[&str]) -> Vec<Entry> {
         .collect()
 }
 
-fn workflow_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderView> {
+pub(super) fn workflow_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderView> {
     // Keep headless layout/paint enabled: real input dispatch needs its focus
     // and hit-test trees. The state-only home fixture intentionally skips them.
     cx.background_executor.allow_parking();

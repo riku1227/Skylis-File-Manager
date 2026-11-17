@@ -21,6 +21,7 @@ cargo run --release -p explorer -- --theme dark --path "C:\Users"
 
 - Ctrl+T / Ctrl+W: ホーム画面のタブを追加・閉じる（最後の1枚は残す）
 - Ctrl+Tab / Ctrl+Shift+Tab: タブ切替
+- 一覧で文字入力: 名前の先頭へジャンプ。Shift+矢印/Home/End/PageUp/PageDown: 範囲選択
 - Ctrl+F: 現在のフォルダー内を名前で絞り込み、Esc: 解除
 - 現在のパンくず／アドレス欄の空白をクリック、Ctrl+L / Alt+D: パスを直接入力（macOSはCmd+Lも対応）
 - パス入力中のEnter: フォルダーへ移動、Esc／欄外クリック: キャンセル。無効なパスは入力を保持してエラーを表示
@@ -46,6 +47,7 @@ Windowsではホームに「ゴミ箱」カードがあります。ダブルク�
 - [改善ロードマップと着手順](docs/implementation/daily-driver-roadmap.md)
 - [Windows CIの内容と検証範囲](docs/implementation/continuous-integration.md)
 - [タブとウィンドウのセッション復元](docs/implementation/session-restore.md)
+- [キーボード操作](docs/implementation/keyboard-tab-workflows.md)
 - [取り込んだソースのライセンス](licenses/README.md)
 
 ファイル列挙・ソート・履歴は `explorer-core`、表示と入力は `apps/explorer`。Windowsのアイコンはワーカースレッドで取得し、色を変えずに表示します。GPUI Fastの依存入口はルートCargo.tomlに集約しています。

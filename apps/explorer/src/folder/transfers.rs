@@ -417,6 +417,7 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.typeahead = Default::default();
         let Some(&index) = self.visible.get(ix) else {
             return;
         };

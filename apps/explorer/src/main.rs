@@ -160,6 +160,7 @@ fn main() {
                 KeyBinding::new("cmd-v", PasteFiles, ctx),
             ]);
             search::bind_keys(cx);
+            folder::keyboard::bind_keys(cx);
             folder::display_settings::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| explorer::request_quit(cx));
             if startup.is_empty() {
