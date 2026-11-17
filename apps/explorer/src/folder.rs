@@ -59,6 +59,7 @@ pub enum FolderEvent {
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
+    session_deferred: bool,
     display_settings: display_settings::DisplaySettings,
     marquee: marquee::MarqueeState,
     motion: scroll_motion::FolderMotion,
@@ -149,12 +150,49 @@ pub struct FolderView {
 }
 
 impl FolderView {
+    pub(crate) fn session_path(&self) -> Option<PathBuf> {
+        let path = match self.history.current() {
+            Location::Home => return None,
+            Location::Folder(path) => path.as_path(),
+            Location::Archive { archive, .. } => archive.parent()?,
+        };
+        crate::session_data::valid_path(path).then(|| path.to_path_buf())
+    }
     pub fn new(
         start: Location,
         mode: ThemeMode,
         icons: Entity<ShellIcons>,
         window: &mut Window,
         cx: &mut Context<Self>,
+    ) -> Self {
+        Self::create(start, mode, icons, window, cx, false)
+    }
+
+    pub(crate) fn new_deferred(
+        start: Location,
+        mode: ThemeMode,
+        icons: Entity<ShellIcons>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::create(start, mode, icons, window, cx, true)
+    }
+
+    pub(crate) fn activate_session(&mut self, cx: &mut Context<Self>) {
+        if std::mem::take(&mut self.session_deferred) {
+            self.refresh_drives(cx);
+            self.discover_wsl(cx);
+            self.load(self.history.current().clone(), None, cx);
+        }
+    }
+
+    fn create(
+        start: Location,
+        mode: ThemeMode,
+        icons: Entity<ShellIcons>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        deferred: bool,
     ) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
@@ -244,6 +282,7 @@ impl FolderView {
         cx.observe(&transfer_progress, |_, _, cx| cx.notify())
             .detach();
         let mut this = Self {
+            session_deferred: deferred,
             display_settings: display_settings::DisplaySettings::new(cx),
             marquee: Default::default(),
             motion: Default::default(),
@@ -329,9 +368,11 @@ impl FolderView {
         this.attach_window(window, cx);
         this.observe_file_transfers(cx);
         this.observe_archive_jobs(cx);
-        this.refresh_drives(cx);
-        this.discover_wsl(cx);
-        this.load(start, None, cx);
+        if !deferred {
+            this.refresh_drives(cx);
+            this.discover_wsl(cx);
+            this.load(start, None, cx);
+        }
         this
     }
 
@@ -475,6 +516,7 @@ impl FolderView {
     }
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.session_deferred = false;
         self.close_display_settings(cx);
         self.archive_dialog = None;
         self.startup_handoff = None;

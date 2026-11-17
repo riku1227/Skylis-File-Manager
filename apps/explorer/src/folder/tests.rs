@@ -2,6 +2,29 @@ use super::*;
 use std::{cell::Cell, rc::Rc};
 
 #[gpui::test]
+fn restored_tab_defers_listing_until_selected(cx: &mut gpui::TestAppContext) {
+    cx.background_executor.allow_parking();
+    let dir = tempfile::tempdir().unwrap();
+    let start = Location::Folder(dir.path().join("not-present"));
+    let window = cx.add_window(|w, cx| {
+        let icons = cx.new(ShellIcons::new);
+        FolderView::new_deferred(start.clone(), ThemeMode::Light, icons, w, cx)
+    });
+    window
+        .update(cx, |tab, _, cx| {
+            assert!(tab.session_deferred);
+            assert!(tab._listing.is_none());
+            assert!(!tab.loading);
+            assert_eq!(tab.history.current(), &start);
+            tab.activate_session(cx);
+            assert!(!tab.session_deferred);
+            assert!(tab._listing.is_some());
+            assert!(tab.loading);
+        })
+        .unwrap();
+}
+
+#[gpui::test]
 fn deep_breadcrumbs_expose_omission_only_when_collapsed(cx: &mut gpui::TestAppContext) {
     let window = workflow_window(cx);
     let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);

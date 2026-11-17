@@ -61,6 +61,75 @@ pub struct Explorer {
     diagnostics: Entity<crate::diagnostics::PerformanceDisplay>,
 }
 impl Explorer {
+    pub(crate) fn session_snapshot(
+        &self,
+        window: &Window,
+        cx: &App,
+    ) -> crate::session_data::SavedWindow {
+        let bounds = window.window_bounds();
+        let mut rect = bounds.get_bounds();
+        let display = window.display(cx);
+        #[cfg(not(target_os = "macos"))]
+        if let Some(display) = &display {
+            rect.origin -= display.bounds().origin;
+        }
+        crate::session_data::SavedWindow {
+            display: display.and_then(|d| d.uuid().ok()).map(|id| id.to_string()),
+            rect: [
+                rect.origin.x.into(),
+                rect.origin.y.into(),
+                rect.size.width.into(),
+                rect.size.height.into(),
+            ],
+            maximized: matches!(bounds, gpui::WindowBounds::Maximized(_)),
+            tabs: self
+                .tabs
+                .iter()
+                .take(crate::session_data::MAX_TABS)
+                .map(|t| t.read(cx).session_path())
+                .collect(),
+            active: self.active.min(
+                self.tabs
+                    .len()
+                    .min(crate::session_data::MAX_TABS)
+                    .saturating_sub(1),
+            ),
+        }
+    }
+
+    pub(crate) fn restore(
+        saved: crate::session_data::SavedWindow,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let preferences = cx.global::<crate::settings::SharedPreferences>().0.read(cx);
+        let mode = match crate::launch_request::current().theme {
+            Some(crate::launch_request::ThemeArgument::Light) => ThemeMode::Light,
+            Some(crate::launch_request::ThemeArgument::Dark) => ThemeMode::Dark,
+            Some(crate::launch_request::ThemeArgument::System) => ThemeMode::System,
+            None => preferences.value.theme.into(),
+        };
+        let compact = preferences.value.compact;
+        let icons = cx.new(ShellIcons::new);
+        let tabs = saved
+            .tabs
+            .into_iter()
+            .take(crate::session_data::MAX_TABS)
+            .map(|path| {
+                cx.new(|cx| {
+                    FolderView::new_deferred(
+                        path.map(Location::Folder).unwrap_or(Location::Home),
+                        mode,
+                        icons.clone(),
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .collect();
+        Self::with_tabs_active(tabs, icons, mode, compact, saved.active, window, cx)
+    }
+
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let request = crate::launch_request::current();
         let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
@@ -101,8 +170,20 @@ impl Explorer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::with_tabs_active(tabs, icons, mode, compact, 0, window, cx)
+    }
+
+    fn with_tabs_active(
+        tabs: Vec<Entity<FolderView>>,
+        icons: Entity<ShellIcons>,
+        mode: ThemeMode,
+        compact: bool,
+        active: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let weak = cx.entity().downgrade();
-        window.on_window_should_close(cx, move |_, cx| {
+        window.on_window_should_close(cx, move |w, cx| {
             let last_properties_owner = crate::native_shell::properties_active()
                 && cx.windows().iter().filter(|handle| handle.downcast::<Explorer>().is_some()).count() <= 1;
             if operations_pending(cx) || last_properties_owner {
@@ -113,7 +194,12 @@ impl Explorer {
                     cx.notify();
                 });
                 false
-            } else { true }
+            } else {
+                let _ = weak.update(cx, |this, cx| {
+                    crate::session::closing(this.session_snapshot(w, cx), w.window_handle().window_id(), cx);
+                });
+                true
+            }
         });
         let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
         apply_frame_limit(window, preferences.read(cx).value.high_refresh_rate);
@@ -202,7 +288,7 @@ impl Explorer {
         for tab in this.tabs.clone() {
             this.watch_tab(&tab, window, cx);
         }
-        this.switch(0, window, cx);
+        this.switch(active.min(this.tabs.len() - 1), window, cx);
         this
     }
     fn switch(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -216,6 +302,10 @@ impl Explorer {
             tab.close_display_settings(cx);
         });
         self.active = index;
+        self.tabs[index].update(cx, |tab, cx| {
+            tab.compact = self.compact;
+            tab.activate_session(cx);
+        });
         window.focus(&self.tabs[index].focus_handle(cx), cx);
         cx.notify();
     }
@@ -842,7 +932,7 @@ mod tests {
             .unwrap();
         cx.simulate_keystrokes(
             window.into(),
-            "alt-f4 ctrl-1 alt-2 shift-3 cmd-4 ctrl-5 ctrl-escape 9 x",
+            "alt-f4 ctrl-1 alt-2 shift-3 cmd-4 ctrl-5 ctrl-escape 0 x",
         );
         cx.dispatch_keystroke(
             window.into(),
@@ -870,7 +960,7 @@ mod tests {
                     .collect();
                 assert_eq!(
                     keys,
-                    ["f4", "1", "2", "3", "4", "5", "escape", "9", "x", "5"]
+                    ["f4", "1", "2", "3", "4", "5", "escape", "0", "x", "5"]
                 );
                 assert!(probe.bubbled_keys[0].modifiers.alt);
                 assert!(probe.bubbled_keys[9].modifiers.function);
@@ -994,9 +1084,9 @@ mod tests {
             })
             .unwrap();
         let last_category = if cfg!(any(windows, target_os = "macos")) {
-            4
+            5
         } else {
-            3
+            4
         };
         for (key, category) in [("up", last_category), ("down", 0), ("down", 1)] {
             cx.simulate_keystrokes(window.into(), key);
@@ -1010,6 +1100,7 @@ mod tests {
                 .unwrap();
         }
         for (key, category, selector) in [
+            ("9", last_category, "settings-row-restore-tabs"),
             ("8", 3, "settings-row-performance"),
             ("7", 2, "settings-row-smooth-scroll"),
             ("6", 2, "settings-row-high-refresh"),
@@ -1045,12 +1136,32 @@ mod tests {
                 assert_eq!(value.high_refresh_rate, !before.high_refresh_rate);
                 assert_eq!(value.smooth_scroll, !before.smooth_scroll);
                 assert_eq!(value.performance_overlay, !before.performance_overlay);
+                assert_eq!(value.restore_tabs, !before.restore_tabs);
                 assert_eq!(
                     ThemeMode::from(value.theme),
                     ThemeMode::from(before.theme).next()
                 );
             })
             .unwrap();
+    }
+
+    #[gpui::test]
+    fn startup_setting_scroll_accounts_for_session_error(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        window
+            .update(cx, |p, _, cx| {
+                let preferences = p.explorer.read(cx).preferences.clone();
+                preferences.update(cx, |p, _| p.error = None);
+                crate::session::init((Default::default(), Some("session test error".into())), cx);
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(px(640.), px(360.)));
+        cx.simulate_keystrokes(window.into(), "9");
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let body = visual.debug_bounds("settings-body").unwrap();
+        let row = visual.debug_bounds("settings-row-restore-tabs").unwrap();
+        assert!(row.top() >= body.top() && row.top() < body.bottom());
     }
 
     #[gpui::test]
