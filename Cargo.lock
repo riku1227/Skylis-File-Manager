@@ -1444,6 +1444,7 @@ dependencies = [
  "async-channel",
  "cc",
  "chrono",
+ "embed-resource",
  "explorer-core",
  "gpui-fast",
  "gpui-fast-platform",

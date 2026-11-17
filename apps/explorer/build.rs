@@ -1,6 +1,11 @@
 fn main() {
+    println!("cargo:rerun-if-changed=app.rc");
+    println!("cargo:rerun-if-changed=assets/branding/skylis.ico");
     println!("cargo:rerun-if-changed=src/shell_handoff/windows.cpp");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        embed_resource::compile("app.rc", embed_resource::NONE)
+            .manifest_required()
+            .expect("failed to embed Skylis application icon");
         cc::Build::new()
             .cpp(true)
             .file("src/shell_handoff/windows.cpp")
