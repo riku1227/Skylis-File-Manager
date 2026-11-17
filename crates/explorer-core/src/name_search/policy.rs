@@ -39,7 +39,7 @@ pub fn classify(path: &Path) -> Locality {
             let mut stat = std::mem::MaybeUninit::<libc::statfs>::uninit();
             unsafe {
                 if libc::statfs(path.as_ptr(), stat.as_mut_ptr()) == 0
-                    && stat.assume_init().f_flags & libc::MNT_LOCAL != 0
+                    && stat.assume_init().f_flags & libc::MNT_LOCAL as u32 != 0
                 {
                     return Locality::Local;
                 }
@@ -170,6 +170,8 @@ pub(super) fn directory(path: &Path) -> io::Result<Option<Identity>> {
 }
 #[cfg(unix)]
 pub(super) fn directory(path: &Path) -> io::Result<Option<Identity>> {
+    #[cfg(target_os = "macos")]
+    use std::os::macos::fs::MetadataExt as MacMetadataExt;
     use std::os::unix::fs::MetadataExt;
     let meta = std::fs::symlink_metadata(path)?;
     #[cfg(target_os = "macos")]
