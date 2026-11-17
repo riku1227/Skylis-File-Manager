@@ -10,6 +10,7 @@ chrono.workspace = true
 zip = { version = "=9.6.0", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64"] }
 sevenz-rust2 = { version = "=0.25.0", default-features = false, features = ["compress"] }
 encoding_rs = "0.8"
+memchr = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

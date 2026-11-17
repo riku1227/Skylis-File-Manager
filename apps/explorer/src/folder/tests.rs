@@ -2,6 +2,87 @@ use super::*;
 use std::{cell::Cell, rc::Rc};
 
 #[gpui::test]
+fn query_extension_narrows_but_listing_rebuild_finds_new_matches(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |v, _, _| {
+            v.entries = workflow_entries(&["file_open.rs", "file_operations.rs", "folder.rs"]);
+            v.query = "fi".into();
+            v.rebuild_visible(None);
+            assert_eq!(v.visible, vec![0, 1]);
+            v.query = "file_o".into();
+            v.rebuild_query_visible("fi", None);
+            assert_eq!(v.visible, vec![0, 1]);
+            v.query = "folder".into();
+            v.rebuild_query_visible("file_o", None);
+            assert_eq!(v.visible, vec![2]);
+            v.entries.push(Entry::virtual_entry(
+                "folder_new".into(),
+                PathBuf::from("new"),
+                EntryKind::File,
+                None,
+                None,
+            ));
+            v.rebuild_visible(None);
+            assert_eq!(v.visible, vec![2, 3]);
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+#[ignore = "manual release-mode direct projection diagnostic; no timing assertion"]
+fn direct_filter_100k_diagnostic(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |v, _, _| {
+            v.entries = (0..100_000)
+                .map(|i| {
+                    let name = if i % 10 == 0 {
+                        format!("日本語の報告書_Project_{i:06}.txt")
+                    } else {
+                        format!("Project_report_and_documents_{i:06}.txt")
+                    };
+                    Entry::virtual_entry(
+                        name.clone(),
+                        PathBuf::from("C:/fixture").join(name),
+                        EntryKind::File,
+                        None,
+                        None,
+                    )
+                })
+                .collect();
+            v.gallery = false;
+            v.grouped = false;
+            for query in [
+                "project",
+                "project_report_and_documents_09",
+                "日本語",
+                "no-match",
+            ] {
+                let mut times = Vec::new();
+                for _ in 0..41 {
+                    v.query.clear();
+                    v.rebuild_visible(None);
+                    v.query = query.into();
+                    let start = std::time::Instant::now();
+                    v.rebuild_query_visible("", None);
+                    times.push(start.elapsed().as_secs_f64() * 1000.);
+                    std::hint::black_box(&v.visible);
+                }
+                times.sort_by(f64::total_cmp);
+                println!(
+                    "direct-model query={query:?} count={} p50_ms={:.3} p95_ms={:.3} max_ms={:.3}",
+                    v.visible.len(),
+                    times[20],
+                    times[38],
+                    times[40]
+                );
+            }
+        })
+        .unwrap();
+}
+
+#[gpui::test]
 fn restored_display_applies_before_listing_and_keeps_download_sort_choice(
     cx: &mut gpui::TestAppContext,
 ) {

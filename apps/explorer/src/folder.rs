@@ -243,9 +243,9 @@ impl FolderView {
         cx.observe(&search, |this, search, cx| {
             let query = search.read(cx).content.to_string();
             if query != this.query {
-                this.query = query;
+                let previous = std::mem::replace(&mut this.query, query);
                 let keep = this.selected_entry().map(|e| e.path.clone());
-                this.rebuild_visible(keep.as_deref());
+                this.rebuild_query_visible(&previous, keep.as_deref());
                 this.scroll.scroll_to_item(0, ScrollStrategy::Top);
                 cx.notify();
             }
@@ -716,19 +716,34 @@ impl FolderView {
 
     /// visible を作り直し、選択を同じパスの項目に合わせ直す
     fn rebuild_visible(&mut self, keep: Option<&Path>) {
+        self.rebuild_filtered(keep, None);
+    }
+
+    fn rebuild_query_visible(&mut self, previous: &str, keep: Option<&Path>) {
+        self.rebuild_filtered(keep, Some(previous));
+    }
+
+    fn rebuild_filtered(&mut self, keep: Option<&Path>, previous: Option<&str>) {
         let show_hidden = self.show_hidden;
         let revealed = self.launch_reveal.as_deref();
         let query = self.query.to_lowercase();
-        self.visible = self
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| {
-                (show_hidden || !e.hidden || revealed == Some(e.name.as_str()))
-                    && e.name.to_lowercase().contains(&query)
-            })
-            .map(|(i, _)| i)
-            .collect();
+        let matcher = explorer_core::entry::NameMatcher::new(&query);
+        let matches = |e: &Entry| {
+            (show_hidden || !e.hidden || revealed == Some(e.name.as_str())) && matcher.matches(e)
+        };
+        let narrow = previous
+            .filter(|p| !p.is_empty())
+            .is_some_and(|p| query.starts_with(&p.to_lowercase()));
+        if narrow {
+            self.visible.retain(|&i| matches(&self.entries[i]));
+        } else {
+            self.visible = self
+                .entries
+                .iter()
+                .enumerate()
+                .filter_map(|(i, e)| matches(e).then_some(i))
+                .collect();
+        }
         self.apply_grouping();
         self.selected =
             keep.and_then(|p| self.visible.iter().position(|&i| self.entries[i].path == p));

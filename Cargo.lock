@@ -1467,6 +1467,7 @@ dependencies = [
  "chrono",
  "encoding_rs",
  "libc",
+ "memchr",
  "sevenz-rust2",
  "tempfile",
  "windows-sys 0.59.0",

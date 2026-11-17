@@ -3,6 +3,17 @@ use std::fs::DirEntry;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+/// Preprocess one normalized substring once for an entire folder, not for every name.
+pub struct NameMatcher<'a>(memchr::memmem::Finder<'a>);
+impl<'a> NameMatcher<'a> {
+    pub fn new(normalized_query: &'a str) -> Self {
+        Self(memchr::memmem::Finder::new(normalized_query.as_bytes()))
+    }
+    pub fn matches(&self, entry: &Entry) -> bool {
+        self.0.find(entry.name_key.as_bytes()).is_some()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EntryKind {
     Dir,
@@ -24,6 +35,10 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Caller normalizes the query once, rather than allocating a lowercase name per row.
+    pub fn matches_name_key(&self, normalized_query: &str) -> bool {
+        self.name_key.contains(normalized_query)
+    }
     /// Metadata for a read-only virtual location. `path` is its member identity,
     /// not a path that may be passed to filesystem or Shell operations.
     pub fn virtual_entry(
@@ -223,6 +238,20 @@ fn utf8_len(first: u8) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cached_name_matching_is_substring_and_unicode_case_aware() {
+        let entry = Entry::virtual_entry(
+            "日本語_REPORT.TXT".into(),
+            PathBuf::from("file"),
+            EntryKind::File,
+            None,
+            None,
+        );
+        assert!(entry.matches_name_key("report"));
+        assert!(entry.matches_name_key("日本語"));
+        assert!(!entry.matches_name_key("other"));
+        assert!(NameMatcher::new("report").matches(&entry));
+    }
 
     #[test]
     fn natural_order() {
