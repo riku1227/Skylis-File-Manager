@@ -445,6 +445,19 @@ mod tests {
             End::Limited(Limit::Frontier)
         );
     }
+    #[cfg(windows)]
+    #[test]
+    fn windows_long_root_and_descendant_paths_are_searchable() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d
+            .path()
+            .join("a".repeat(110))
+            .join("b".repeat(110))
+            .join("c".repeat(110));
+        fs::create_dir_all(root.join("sub")).unwrap();
+        fs::write(root.join("sub/report.txt"), "").unwrap();
+        assert_eq!(run(&root, Limits::default(), false).0.len(), 1);
+    }
     #[test]
     fn downstream_cancellation_stops_delivery_before_terminal() {
         let d = fixture();

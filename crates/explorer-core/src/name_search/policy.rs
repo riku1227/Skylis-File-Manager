@@ -64,7 +64,28 @@ pub(super) fn path_bytes(path: &Path) -> usize {
 #[cfg(windows)]
 fn wide(path: &Path) -> Vec<u16> {
     use std::os::windows::ffi::OsStrExt;
-    path.as_os_str().encode_wide().chain(Some(0)).collect()
+    // std's directory enumeration supports long paths. Keep the explicit Win32
+    // metadata adapter equally capable, including non-Unicode names.
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let native: Vec<u16> = absolute
+        .as_os_str()
+        .encode_wide()
+        .map(|c| if c == b'/' as u16 { b'\\' as u16 } else { c })
+        .collect();
+    let verbatim: Vec<u16> = "\\\\?\\".encode_utf16().collect();
+    let device: Vec<u16> = "\\\\.\\".encode_utf16().collect();
+    let mut output = if native.starts_with(&verbatim) || native.starts_with(&device) {
+        native
+    } else if native.starts_with(&[92, 92]) {
+        "\\\\?\\UNC\\"
+            .encode_utf16()
+            .chain(native.into_iter().skip(2))
+            .collect()
+    } else {
+        verbatim.into_iter().chain(native).collect()
+    };
+    output.push(0);
+    output
 }
 #[cfg(windows)]
 fn resolved_root(path: &Path) -> Option<std::path::PathBuf> {
@@ -187,6 +208,31 @@ pub(super) fn directory(path: &Path) -> io::Result<Option<Identity>> {
 }
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn long_native_paths_preserve_unc_and_non_unicode_names() {
+        use std::{
+            os::windows::ffi::{OsStrExt, OsStringExt},
+            path::Path,
+        };
+        let unc = super::wide(Path::new("\\\\server\\share\\folder"));
+        assert_eq!(
+            String::from_utf16(&unc[..unc.len() - 1]).unwrap(),
+            "\\\\?\\UNC\\server\\share\\folder"
+        );
+        let mut native: Vec<u16> = "C:\\folder\\".encode_utf16().collect();
+        native.push(0xd800);
+        let path = std::ffi::OsString::from_wide(&native);
+        let encoded = super::wide(Path::new(&path));
+        assert_eq!(
+            &encoded[4..encoded.len() - 1],
+            path.encode_wide().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            super::wide(Path::new("C:/folder/../target")),
+            "\\\\?\\C:\\target\0".encode_utf16().collect::<Vec<_>>()
+        );
+    }
     #[cfg(windows)]
     #[test]
     fn local_cloud_allowed_surrogates_unknown_and_recall_rejected() {
