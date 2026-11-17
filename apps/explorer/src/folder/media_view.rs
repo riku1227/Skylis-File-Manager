@@ -12,6 +12,9 @@ impl FolderView {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         if self.is_archive() || self.input_focused(w, cx) {
             return;
         }

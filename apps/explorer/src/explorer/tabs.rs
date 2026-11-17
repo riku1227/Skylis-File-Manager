@@ -196,6 +196,7 @@ impl Explorer {
     ) {
         if let Some(active) = self.tabs.get(self.active) {
             active.update(cx, |tab, cx| {
+                tab.pause_name_search(cx);
                 tab.cancel_scroll_motion();
                 tab.close_preview(cx);
                 tab.close_display_settings(cx);
@@ -287,6 +288,12 @@ impl Explorer {
             );
         }
     }
+    fn detach_menu_tab(&mut self, index: usize, w: &mut Window, cx: &mut Context<Self>) {
+        self.tab_menu = None;
+        if self.tabs.len() > 1 && index < self.tabs.len() {
+            self.detach_at(index, w.bounds().origin + point(px(32.), px(32.)), w, cx);
+        }
+    }
 
     pub(super) fn merge_windows(
         &mut self,
@@ -352,6 +359,9 @@ impl Explorer {
         {
             // Stop the outgoing tab before its index changes, including when a
             // search/address child owns focus and the folder blur hook won't run.
+            if self.tabs[self.active].entity_id() != self.tabs[index].entity_id() {
+                self.tabs[self.active].update(cx, |tab, cx| tab.pause_name_search(cx));
+            }
             self.tabs[self.active].update(cx, |tab, _| tab.cancel_scroll_motion());
             let to = reordered_index(index, slot, self.tabs.len());
             let tab = self.tabs.remove(index);
@@ -469,8 +479,7 @@ impl Explorer {
                         } else if let Some(index) =
                             this.tabs.iter().position(|tab| tab.entity_id() == id)
                         {
-                            this.active = index;
-                            this.detach_tab(&DetachTab, w, cx);
+                            this.detach_menu_tab(index, w, cx);
                         }
                     })),
             );
@@ -815,6 +824,8 @@ mod tests {
                 let first = view.tabs[0].entity_id();
                 view.open_tab_at(Location::Home, w, cx);
                 view.open_tab_at(Location::Home, w, cx);
+                let outgoing = view.tabs[view.active].clone();
+                outgoing.update(cx, |tab, cx| tab.hold_name_search_for_test(cx));
                 view.tab_strip
                     .set(Bounds::new(point(px(10.), px(6.)), size(px(700.), px(28.))));
                 view.dragging_tab = Some(first);
@@ -823,10 +834,28 @@ mod tests {
                 assert_eq!(view.tabs[2].entity_id(), first);
                 assert_eq!(view.active, 2);
                 assert!(view.dragging_tab.is_none());
+                assert!(!outgoing.read(cx).name_search_running_for_test());
             })
             .unwrap();
     }
 
+    #[gpui::test]
+    fn detaching_background_tab_keeps_source_active_search(cx: &mut gpui::TestAppContext) {
+        let window = test_window(cx);
+        window
+            .update(cx, |view, w, cx| {
+                view.open_tab_at(Location::Home, w, cx);
+                view.open_tab_at(Location::Home, w, cx);
+                view.switch(0, w, cx);
+                let active = view.tabs[0].clone();
+                active.update(cx, |tab, cx| tab.hold_name_search_for_test(cx));
+                view.detach_menu_tab(2, w, cx);
+                assert_eq!(view.tabs.len(), 2);
+                assert_eq!(view.tabs[view.active].entity_id(), active.entity_id());
+                assert!(active.read(cx).name_search_running_for_test());
+            })
+            .unwrap();
+    }
     #[gpui::test]
     fn overlapping_front_window_receives_drop_inside_source_tab_strip(
         cx: &mut gpui::TestAppContext,

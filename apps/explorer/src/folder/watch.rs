@@ -246,6 +246,7 @@ impl FolderView {
             }
             return;
         }
+        let anchor = self.capture_search_anchor();
         let selected = self.selected_entry().map(|entry| entry.path.clone());
         self.cancel_scroll_motion();
         let scroll = self.scroll.0.borrow().base_handle.clone();
@@ -274,6 +275,7 @@ impl FolderView {
                 .position(|&index| self.multi_selection.contains(&self.entries[index].path));
         }
         scroll.set_offset(offset);
+        self.restore_search_anchor(anchor);
         self.error = None;
         self.retain_visible_directory_sizes();
         cx.notify();

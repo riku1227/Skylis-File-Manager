@@ -3,6 +3,7 @@ use explorer_core::date_group::{self, DateGroup};
 
 #[derive(Clone, Copy)]
 pub(super) enum DisplayRow {
+    SearchHeader(bool),
     Header(DateGroup, usize),
     Entry(usize),
 }
@@ -22,7 +23,7 @@ impl FolderView {
         self.entry_rows.clear();
         self.entry_rows.resize(self.visible.len(), 0);
         self.gallery_rows.clear();
-        if self.gallery {
+        if self.list_gallery() {
             let mut previous = None;
             for (ix, &i) in self.visible.iter().enumerate() {
                 let group = (self.grouped && self.query.is_empty())
@@ -45,6 +46,9 @@ impl FolderView {
             return;
         }
 
+        if self.recursive_search() {
+            self.display_rows.push(DisplayRow::SearchHeader(true));
+        }
         let mut header = None;
         let mut previous = None;
         for (ix, &i) in self.visible.iter().enumerate() {
@@ -63,6 +67,9 @@ impl FolderView {
             }
             self.entry_rows[ix] = self.display_rows.len();
             self.display_rows.push(DisplayRow::Entry(ix));
+        }
+        if self.recursive_search() {
+            self.display_rows.push(DisplayRow::SearchHeader(false));
         }
     }
     pub(super) fn scroll_to_entry(&mut self, ix: usize, strategy: ScrollStrategy) {

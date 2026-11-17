@@ -153,6 +153,9 @@ impl FolderView {
         w: &Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         if self.input_focused(w, cx)
             || self.is_home()
             || self.preview_open
@@ -189,7 +192,7 @@ impl FolderView {
             return;
         }
         let current = self.selected.unwrap_or(0).min(len - 1);
-        let step = if self.gallery {
+        let step = if self.list_gallery() {
             self.gallery_columns.max(1)
         } else {
             1

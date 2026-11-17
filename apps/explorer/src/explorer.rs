@@ -321,7 +321,11 @@ impl Explorer {
         if index >= self.tabs.len() {
             return;
         }
+        let changing = index != self.active;
         self.tabs[self.active].update(cx, |tab, cx| {
+            if changing {
+                tab.pause_name_search(cx);
+            }
             tab.cancel_address(cx);
             tab.cancel_scroll_motion();
             tab.close_preview(cx);
@@ -350,7 +354,10 @@ impl Explorer {
         }
         self.remember_closed(index, cx);
         let removed = self.tabs.remove(index);
-        removed.update(cx, |tab, _| tab.cancel_scroll_motion());
+        removed.update(cx, |tab, cx| {
+            tab.pause_name_search(cx);
+            tab.cancel_scroll_motion();
+        });
         self.tab_subscriptions.remove(&removed.entity_id());
         self.active = after_close(self.active, index, self.tabs.len());
         self.switch(self.active, window, cx);
@@ -394,10 +401,10 @@ impl Focusable for Explorer {
 }
 impl Render for Explorer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = Theme::resolve(self.mode, window.appearance());
         if self.tabs.is_empty() {
             return div().into_any_element();
         }
+        let t = Theme::resolve(self.mode, window.appearance());
         window.set_window_title(&self.tabs[self.active].read(cx).label());
         if self.settings_presence.sync(
             self.settings_open.then_some(()),
@@ -633,6 +640,7 @@ impl Render for Explorer {
                 if cfg!(target_os = "macos") {
                     this.select_settings_category(4);
                     this.settings_open = true;
+                    this.tabs[this.active].update(cx, |tab, cx| tab.pause_name_search(cx));
                     this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
                     w.focus(&this.settings_focus, cx);
                     cx.notify();
@@ -643,11 +651,13 @@ impl Render for Explorer {
                 if this.settings_open {
                     crate::motion_preferences::refresh(cx);
                     this.tabs[this.active].update(cx, |tab, cx| {
+                        tab.pause_name_search(cx);
                         tab.cancel_scroll_motion();
                         tab.close_display_settings(cx);
                     });
                     w.focus(&this.settings_focus, cx);
                 } else {
+                    this.tabs[this.active].update(cx, |tab, _| tab.activate_name_search());
                     w.focus(&this.tabs[this.active].focus_handle(cx), cx);
                 }
                 cx.notify();
@@ -735,6 +745,47 @@ impl Render for Explorer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[gpui::test]
+    fn closing_background_or_reselecting_active_tab_keeps_search_running(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.background_executor.allow_parking();
+        cx.skip_drawing();
+        let window = cx.add_window(|w, cx| {
+            let preferences = cx.new(|cx| {
+                crate::settings::Preferences::new(
+                    (
+                        Default::default(),
+                        Some("memory-only search test preferences".into()),
+                    ),
+                    cx,
+                )
+            });
+            cx.set_global(crate::settings::SharedPreferences(preferences));
+            let icons = cx.new(ShellIcons::new);
+            let tabs = (0..2)
+                .map(|_| {
+                    cx.new(|cx| {
+                        FolderView::new(Location::Home, ThemeMode::Light, icons.clone(), w, cx)
+                    })
+                })
+                .collect();
+            Explorer::with_tabs(tabs, icons, ThemeMode::Light, false, w, cx)
+        });
+        window
+            .update(cx, |e, w, cx| {
+                let active = e.tabs[e.active].clone();
+                active.update(cx, |t, cx| t.hold_name_search_for_test(cx));
+                e.close(1, w, cx);
+                assert_eq!(e.tabs[e.active].entity_id(), active.entity_id());
+                assert!(active.read(cx).name_search_running_for_test());
+                e.switch(e.active, w, cx);
+                assert!(active.read(cx).name_search_running_for_test());
+                e.new_tab(&NewTab, w, cx);
+                assert!(!active.read(cx).name_search_running_for_test());
+            })
+            .unwrap();
+    }
     #[gpui::test]
     fn reopen_and_duplicate_shortcuts_preserve_display_and_stay_window_local(
         cx: &mut gpui::TestAppContext,

@@ -39,16 +39,16 @@ impl FolderView {
     fn marquee_layout(&self) -> Layout {
         Layout {
             width: f32::from(self.marquee.bounds.get().size.width),
-            row_height: if self.gallery {
+            row_height: if self.list_gallery() {
                 if self.compact { 156. } else { 172. }
             } else if self.compact {
                 24.
             } else {
                 28.
             },
-            top_padding: if self.gallery { 0. } else { 2. },
+            top_padding: if self.list_gallery() { 0. } else { 2. },
             columns: self.gallery_columns,
-            gallery: self.gallery,
+            gallery: self.list_gallery(),
             tile_height: if self.compact { 126. } else { 142. },
         }
     }
@@ -64,7 +64,7 @@ impl FolderView {
     }
     fn marquee_item_rect(&self, ix: usize, layout: Layout) -> Option<Rect> {
         let row = *self.entry_rows.get(ix)?;
-        let col = if self.gallery {
+        let col = if self.list_gallery() {
             self.gallery_rows
                 .get(row)?
                 .1
@@ -100,6 +100,11 @@ impl FolderView {
         self.marquee.gesture.take().is_some()
     }
     fn start_marquee(&mut self, event: &MouseDownEvent, w: &mut Window, cx: &mut Context<Self>) {
+        if self.descendant_area(event.position) {
+            cx.stop_propagation();
+            return;
+        }
+        self.descendants.selected = None;
         if self.preview_open || self.context_menu.is_some() || self.is_home() {
             return;
         }
@@ -148,13 +153,13 @@ impl FolderView {
     }
     // Only candidate virtual rows are visited, including offscreen ones on commit.
     fn marquee_hits(&self, rect: Rect, layout: Layout) -> impl Iterator<Item = usize> + '_ {
-        let count = if self.gallery {
+        let count = if self.list_gallery() {
             self.gallery_rows.len()
         } else {
             self.display_rows.len()
         };
         layout.rows_in(rect, count).flat_map(move |row| {
-            let indices: &[usize] = if self.gallery {
+            let indices: &[usize] = if self.list_gallery() {
                 &self.gallery_rows[row].1
             } else {
                 match &self.display_rows[row] {

@@ -11,6 +11,7 @@ impl Explorer {
     }
     pub(super) fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_open = false;
+        self.tabs[self.active].update(cx, |tab, _| tab.activate_name_search());
         window.focus(&self.tabs[self.active].focus_handle(cx), cx);
         cx.notify();
     }

@@ -12,6 +12,7 @@ mod launch_request;
 mod macos_permissions;
 mod motion;
 mod motion_preferences;
+mod name_search;
 mod native_shell;
 mod search;
 mod session;

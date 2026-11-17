@@ -43,6 +43,9 @@ impl FolderView {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         if self.path().is_none() || self.input_focused(w, cx) {
             return;
         }
@@ -85,6 +88,10 @@ impl FolderView {
         cx: &mut Context<Self>,
     ) {
         cx.stop_propagation();
+        if item.is_none() && self.descendant_area(event.position) {
+            return;
+        }
+        self.descendants.selected = None;
         self.close_display_settings(cx);
         self.cancel_scroll_motion();
         window.focus(&self.menu_focus, cx);
@@ -115,6 +122,9 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         self.close_display_settings(cx);
         if self.input_focused(window, cx) || self.is_home() {
             return;
@@ -243,6 +253,9 @@ impl FolderView {
         commands
     }
     fn execute_menu(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         // A stale or directly dispatched command cannot treat virtual members as disk paths.
         if self.is_archive()
             && !matches!(
