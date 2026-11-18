@@ -502,7 +502,7 @@ impl FolderView {
                         d.key_context("PlaceContextMenu")
                     })
                     .when(live, |d| d.track_focus(&self.menu_focus))
-                    .w(px(300.))
+                    .w(px(if menu.place.is_some() { 160. } else { 300. }))
                     .text_size(px(13.))
                     .p(px(4.))
                     .rounded(px(8.))
@@ -758,6 +758,8 @@ mod tests {
                 .unwrap();
             if selector == "home-card-1" {
                 visual.update(|w, cx| w.draw(cx).clear(cx));
+                let menu = visual.debug_bounds("context-menu").unwrap();
+                assert_eq!(menu.size.width, px(160.));
                 let command = visual.debug_bounds("context-menu-command-0").unwrap();
                 visual.simulate_click(command.center(), gpui::Modifiers::none());
             } else {
