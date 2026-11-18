@@ -254,9 +254,15 @@ impl FolderView {
             if query != this.query {
                 let previous = std::mem::replace(&mut this.query, query);
                 let keep = this.selected_entry().map(|e| e.path.clone());
-                this.rebuild_query_visible(&previous, keep.as_deref());
+                if this.rebase_search_modified_period() {
+                    this.rebuild_visible(keep.as_deref());
+                } else {
+                    this.rebuild_query_visible(&previous, keep.as_deref());
+                }
                 this.scroll.scroll_to_item(0, ScrollStrategy::Top);
                 cx.notify();
+            } else if changed {
+                this.refresh_search_modified_period(cx);
             }
             if changed {
                 this.query_search_changed(composing, cx);
@@ -1032,6 +1038,7 @@ impl FolderView {
         }
         self.permission_observation.retry();
         self.refresh_drives(cx);
+        self.refresh_search_modified_period(cx);
         if self.path().is_some() && !self.loading {
             self.request_refresh(cx);
             self.reset_name_search();

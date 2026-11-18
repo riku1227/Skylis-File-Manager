@@ -515,6 +515,7 @@ impl FolderView {
         {
             return;
         }
+        self.refresh_search_modified_period(cx);
         self.cancel_name_search(true);
         self.descendants.stopped = false;
         if !explicit && self.descendants.locality == Some(Locality::NeedsStart) {

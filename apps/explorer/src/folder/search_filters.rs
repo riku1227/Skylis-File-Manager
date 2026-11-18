@@ -1,8 +1,10 @@
 use super::*;
 use crate::motion;
-use explorer_core::name_search::{Filters, Kind};
+use explorer_core::name_search::{Filters, Kind, ModifiedFilter, ModifiedPeriod};
 use gpui::{Bounds, canvas, deferred};
 use std::{cell::Cell, rc::Rc};
+
+mod modified;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SearchTier {
@@ -46,11 +48,18 @@ const KINDS: [(Kind, &str); 3] = [
     (Kind::Folder, "フォルダー"),
 ];
 
+const MODIFIED_PERIODS: [(Option<ModifiedPeriod>, &str); 4] = [
+    (None, "指定なし"),
+    (Some(ModifiedPeriod::Today), "今日"),
+    (Some(ModifiedPeriod::LastSevenDays), "過去7日間"),
+    (Some(ModifiedPeriod::LastThirtyDays), "過去30日間"),
+];
+
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         gpui::KeyBinding::new("down", gpui::NoAction, Some("SearchConditionsTrigger")),
-        gpui::KeyBinding::new("left", gpui::NoAction, Some("SearchConditionsKind")),
-        gpui::KeyBinding::new("right", gpui::NoAction, Some("SearchConditionsKind")),
+        gpui::KeyBinding::new("left", gpui::NoAction, Some("SearchConditionsOptions")),
+        gpui::KeyBinding::new("right", gpui::NoAction, Some("SearchConditionsOptions")),
         gpui::KeyBinding::new("backspace", gpui::NoAction, Some("SearchConditionsControl")),
     ]);
 }
@@ -65,6 +74,7 @@ pub(super) struct SearchFilters {
     clear_all: FocusHandle,
     trigger: FocusHandle,
     kinds: [FocusHandle; 3],
+    modified: [FocusHandle; 4],
     extension: Entity<TextInput>,
 }
 
@@ -78,8 +88,11 @@ impl SearchFilters {
         cx.observe(&extension, |view, input, cx| {
             let input = input.read(cx);
             if !input.is_composing() {
-                let criteria =
-                    Filters::from_input(view.search_filters.criteria.kind(), &input.content);
+                let criteria = view
+                    .search_filters
+                    .criteria
+                    .clone()
+                    .with_extension(&input.content);
                 view.apply_search_filters(criteria, cx);
             }
         })
@@ -94,14 +107,21 @@ impl SearchFilters {
             clear_all: cx.focus_handle(),
             trigger: cx.focus_handle(),
             kinds: std::array::from_fn(|_| cx.focus_handle()),
+            modified: std::array::from_fn(|_| cx.focus_handle()),
             extension,
         }
     }
 }
 
 impl FolderView {
-    pub(super) fn apply_search_filters(&mut self, criteria: Filters, cx: &mut Context<Self>) {
-        if self.path().is_none() || self.search_filters.criteria == criteria {
+    pub(super) fn apply_search_filters(&mut self, mut criteria: Filters, cx: &mut Context<Self>) {
+        if self.path().is_none() {
+            return;
+        }
+        if let Some(updated) = rebased_modified_filter(&criteria) {
+            criteria = criteria.with_modified(Some(updated));
+        }
+        if self.search_filters.criteria == criteria {
             return;
         }
         self.search_filters.criteria = criteria;
@@ -122,6 +142,38 @@ impl FolderView {
         self.apply_search_filters(self.search_filters.criteria.clone().with_kind(kind), cx);
     }
 
+    fn set_search_modified_period(
+        &mut self,
+        period: Option<ModifiedPeriod>,
+        cx: &mut Context<Self>,
+    ) {
+        let filter = period.and_then(|period| modified::filter_at(period, chrono::Local::now()));
+        if period.is_none() || filter.is_some() {
+            self.apply_search_filters(
+                self.search_filters.criteria.clone().with_modified(filter),
+                cx,
+            );
+        }
+    }
+
+    pub(super) fn rebase_search_modified_period(&mut self) -> bool {
+        let Some(updated) = rebased_modified_filter(&self.search_filters.criteria) else {
+            return false;
+        };
+        self.search_filters.criteria =
+            std::mem::take(&mut self.search_filters.criteria).with_modified(Some(updated));
+        true
+    }
+
+    /// Start a refresh or traversal with the same date range in both sections.
+    pub(super) fn refresh_search_modified_period(&mut self, cx: &mut Context<Self>) {
+        if self.rebase_search_modified_period() {
+            let keep = self.selected_entry().map(|entry| entry.path.clone());
+            self.rebuild_visible(keep.as_deref());
+            cx.notify();
+        }
+    }
+
     pub(super) fn reset_search_filters(&mut self, window: &Window, cx: &mut Context<Self>) {
         self.search_filters.open = false;
         self.search_filters.criteria = Filters::default();
@@ -140,7 +192,11 @@ impl FolderView {
     pub(super) fn filter_popup_focus(&self, window: &Window, cx: &App) -> bool {
         let f = &self.search_filters;
         f.open
-            && (f.kinds.iter().any(|focus| focus.is_focused(window))
+            && (f
+                .kinds
+                .iter()
+                .chain(&f.modified)
+                .any(|focus| focus.is_focused(window))
                 || f.extension.focus_handle(cx).is_focused(window)
                 || f.clear.is_focused(window)
                 || f.clear_all.is_focused(window))
@@ -188,11 +244,11 @@ impl FolderView {
             f.extension.focus_handle(cx),
             f.clear.clone(),
             f.clear_all.clone(),
-            f.kinds[0].clone(),
-            f.kinds[1].clone(),
-            f.kinds[2].clone(),
         ];
-        for handle in handles {
+        for handle in handles
+            .into_iter()
+            .chain(f.kinds.iter().chain(&f.modified).cloned())
+        {
             self._window_subscriptions
                 .push(cx.on_focus(&handle, window, |_, _, cx| cx.notify()));
             self._window_subscriptions
@@ -249,6 +305,9 @@ impl FolderView {
         } else if self.filter_popup_focus(window, cx) {
             if let Some(index) = f.kinds.iter().position(|focus| focus.is_focused(window)) {
                 self.set_search_kind(KINDS[index].0, window, cx);
+            } else if let Some(index) = f.modified.iter().position(|focus| focus.is_focused(window))
+            {
+                self.set_search_modified_period(MODIFIED_PERIODS[index].0, cx);
             } else if f.clear.is_focused(window) {
                 self.clear_search_conditions(window, cx);
             } else if f.clear_all.is_focused(window) {
@@ -286,6 +345,10 @@ impl FolderView {
             f.open.then_some(&f.kinds[1]),
             f.open.then_some(&f.kinds[2]),
             (f.open && f.criteria.kind() != Kind::Folder).then_some(&extension),
+            f.open.then_some(&f.modified[0]),
+            f.open.then_some(&f.modified[1]),
+            f.open.then_some(&f.modified[2]),
+            f.open.then_some(&f.modified[3]),
             (f.open && (!f.criteria.is_empty() || f.clear.is_focused(window))).then_some(&f.clear),
             (f.open && SearchTier::for_window(window) == SearchTier::Narrow)
                 .then_some(&f.clear_all),
@@ -434,7 +497,8 @@ impl FolderView {
         let label = match (tier, chip, count) {
             (SearchTier::Narrow, _, 0) => String::new(),
             (SearchTier::Narrow, _, n) => n.to_string(),
-            (SearchTier::Medium, true, 2) => "条件2件".into(),
+            (SearchTier::Medium, true, n) if n > 1 => format!("条件{n}件"),
+            (SearchTier::Wide, true, 3) => "条件3件".into(),
             (_, true, _) => condition_summary(&f.criteria, 24),
             (SearchTier::Wide, false, n) if n > 0 => format!("条件{n}"),
             _ => "条件".into(),
@@ -548,7 +612,7 @@ impl FolderView {
         let anchor = f.field_anchor.get();
         let width = px(280.).min((viewport.width - px(16.)).max(px(1.)));
         let (position, height, below) =
-            super::display_settings::popover_placement(anchor, width, px(156.), viewport);
+            super::display_settings::popover_placement(anchor, width, px(240.), viewport);
         let mut kinds = div().flex().items_center().gap(px(4.));
         for (index, (kind, label)) in KINDS.into_iter().enumerate() {
             kinds = kinds.child(
@@ -559,29 +623,16 @@ impl FolderView {
                     })
                     .when(live, |d| {
                         d.track_focus(&f.kinds[index])
-                            .key_context("SearchConditionsControl SearchConditionsKind")
+                            .key_context("SearchConditionsControl SearchConditionsOptions")
                             .on_click(cx.listener(move |view, _, w, cx| {
                                 w.focus(&view.search_filters.kinds[index], cx);
                                 view.set_search_kind(kind, w, cx);
                             }))
                             .on_key_down(cx.listener(
                                 move |view, event: &gpui::KeyDownEvent, w, cx| {
-                                    let modifiers = event.keystroke.modifiers;
-                                    if modifiers.control
-                                        || modifiers.platform
-                                        || modifiers.alt
-                                        || modifiers.shift
-                                    {
+                                    let Some(next) = choice_key(event, index, KINDS.len()) else {
                                         return;
-                                    }
-                                    let offset = match event.keystroke.key.as_str() {
-                                        "left" => -1,
-                                        "right" => 1,
-                                        "space" => 0,
-                                        _ => return,
                                     };
-                                    let next =
-                                        index.saturating_add_signed(offset).min(KINDS.len() - 1);
                                     w.focus(&view.search_filters.kinds[next], cx);
                                     view.set_search_kind(KINDS[next].0, w, cx);
                                     cx.stop_propagation();
@@ -590,6 +641,7 @@ impl FolderView {
                     }),
             );
         }
+        let modified = self.render_modified_choices(criteria, live, t, cx);
         let extension_enabled = criteria.kind() != Kind::Folder;
         let extension = div()
             .id("search-extension")
@@ -664,6 +716,7 @@ impl FolderView {
                     .child("拡張子")
                     .child(extension),
             )
+            .child(modified)
             .child(
                 div()
                     .h(px(34.))
@@ -733,6 +786,59 @@ impl FolderView {
         )
     }
 
+    fn render_modified_choices(
+        &self,
+        criteria: &Filters,
+        live: bool,
+        t: Theme,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let selected = criteria.modified().map(ModifiedFilter::period);
+        let mut choices = div().flex().flex_wrap().justify_between().gap(px(4.));
+        for (index, (period, label)) in MODIFIED_PERIODS.into_iter().enumerate() {
+            choices = choices.child(
+                filter_choice(("search-modified", index), label, t)
+                    .debug_selector(move || format!("search-modified-{index}").into())
+                    .w(gpui::relative(0.49))
+                    .min_w_0()
+                    .px(px(4.))
+                    .text_center()
+                    .truncate()
+                    .when(selected == period, |d| {
+                        d.bg(t.c("accent.soft")).text_color(t.c("accent.fg"))
+                    })
+                    .when(live, |d| {
+                        d.track_focus(&self.search_filters.modified[index])
+                            .key_context("SearchConditionsControl SearchConditionsOptions")
+                            .on_click(cx.listener(move |view, _, w, cx| {
+                                w.focus(&view.search_filters.modified[index], cx);
+                                view.set_search_modified_period(period, cx);
+                            }))
+                            .on_key_down(cx.listener(
+                                move |view, event: &gpui::KeyDownEvent, w, cx| {
+                                    let Some(next) =
+                                        choice_key(event, index, MODIFIED_PERIODS.len())
+                                    else {
+                                        return;
+                                    };
+                                    w.focus(&view.search_filters.modified[next], cx);
+                                    view.set_search_modified_period(MODIFIED_PERIODS[next].0, cx);
+                                    cx.stop_propagation();
+                                },
+                            ))
+                    }),
+            );
+        }
+        div()
+            .h(px(84.))
+            .flex()
+            .flex_col()
+            .justify_center()
+            .gap(px(4.))
+            .child("更新日時")
+            .child(choices)
+    }
+
     pub(super) fn theme_search_filters(&self, t: Theme, cx: &mut Context<Self>) {
         if self.search_filters.open {
             self.search_filters
@@ -740,6 +846,25 @@ impl FolderView {
                 .update(cx, |input, _| input.theme = t);
         }
     }
+}
+
+fn rebased_modified_filter(criteria: &Filters) -> Option<ModifiedFilter> {
+    let old = criteria.modified()?;
+    modified::filter_at(old.period(), chrono::Local::now()).filter(|updated| updated != old)
+}
+
+fn choice_key(event: &gpui::KeyDownEvent, index: usize, count: usize) -> Option<usize> {
+    let modifiers = event.keystroke.modifiers;
+    if modifiers.control || modifiers.platform || modifiers.alt || modifiers.shift {
+        return None;
+    }
+    let offset = match event.keystroke.key.as_str() {
+        "left" => -1,
+        "right" => 1,
+        "space" => 0,
+        _ => return None,
+    };
+    Some(index.saturating_add_signed(offset).min(count - 1))
 }
 
 fn filter_choice(
@@ -775,14 +900,25 @@ fn condition_summary(criteria: &Filters, max_chars: usize) -> String {
         Kind::File => "ファイル",
         Kind::Folder => "フォルダー",
     };
-    if criteria.extension().is_empty() {
-        return kind.into();
+    let mut summary = kind.to_owned();
+    if !criteria.extension().is_empty() {
+        if !summary.is_empty() {
+            summary.push('・');
+        }
+        summary.push('.');
+        summary.push_str(&bounded_extension(criteria.extension(), max_chars));
     }
-    let divider = if kind.is_empty() { "" } else { "・" };
-    format!(
-        "{kind}{divider}.{}",
-        bounded_extension(criteria.extension(), max_chars)
-    )
+    if let Some(filter) = criteria.modified() {
+        let (_, label) = MODIFIED_PERIODS
+            .iter()
+            .find(|(period, _)| *period == Some(filter.period()))
+            .expect("every modified preset has a label");
+        if !summary.is_empty() {
+            summary.push('・');
+        }
+        summary.push_str(label);
+    }
+    summary
 }
 
 #[cfg(test)]
@@ -920,6 +1056,105 @@ mod tests {
             .update(&mut visual, |view, _, _| {
                 assert!(!view.recursive_search());
                 assert_eq!(view.visible, [0, 1, 2]);
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn edits_rebase_stale_dates_before_rebuilding_direct_results(cx: &mut gpui::TestAppContext) {
+        let window = super::super::tests::workflow_window(cx);
+        let stale = window
+            .update(cx, |view, _, cx| {
+                let now = std::time::SystemTime::now();
+                let old = now - std::time::Duration::from_secs(9 * 86_400);
+                let stale = Filters::default().with_modified(Some(ModifiedFilter::new(
+                    ModifiedPeriod::LastSevenDays,
+                    old..old + std::time::Duration::from_secs(7 * 86_400),
+                )));
+                let root = view.path().unwrap();
+                view.entries = vec![Entry::virtual_entry(
+                    "report.pdf".into(),
+                    root.join("report.pdf"),
+                    EntryKind::File,
+                    None,
+                    Some(now),
+                )];
+                view.loading = true;
+                view.search_filters.criteria = stale.clone();
+                view.rebuild_visible(None);
+                assert!(view.visible.is_empty());
+                view.apply_search_filters(stale.clone().with_extension("pdf"), cx);
+                assert_eq!(view.visible, [0]);
+                stale
+            })
+            .unwrap();
+        window
+            .update(cx, |view, w, cx| {
+                view.search_filters.criteria = stale;
+                view.query = "rep".into();
+                view.rebuild_visible(None);
+                assert!(view.visible.is_empty());
+                view.search.update(cx, |input, cx| {
+                    input.set_text("report".into(), false, w, cx)
+                });
+            })
+            .unwrap();
+        window
+            .read_with(cx, |view, _| assert_eq!(view.visible, [0]))
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn modified_period_can_filter_without_name_and_survives_extension_changes(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| cx.set_reduce_motion(true));
+        let window = super::super::tests::workflow_window(cx);
+        window
+            .update(cx, |view, w, cx| {
+                let now = std::time::SystemTime::now();
+                let root = view.path().unwrap();
+                view.entries = [
+                    ("recent.pdf", Some(now)),
+                    (
+                        "old.pdf",
+                        Some(now - std::time::Duration::from_secs(9 * 86_400)),
+                    ),
+                    ("recent.txt", Some(now)),
+                    ("unknown.pdf", None),
+                ]
+                .into_iter()
+                .map(|(name, time)| {
+                    Entry::virtual_entry(name.into(), root.join(name), EntryKind::File, None, time)
+                })
+                .collect();
+                view.loading = true;
+                view.rebuild_visible(None);
+                view.toggle_search_filters(w, cx);
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        click(&mut visual, "search-modified-2");
+        window
+            .read_with(&visual, |view, _| {
+                assert!(view.recursive_search());
+                assert!(view.query.is_empty());
+                assert_eq!(view.visible, [0, 2]);
+            })
+            .unwrap();
+        click(&mut visual, "search-extension");
+        visual.simulate_keystrokes("p d f");
+        window
+            .read_with(&visual, |view, _| {
+                assert_eq!(view.visible, [0]);
+                assert_eq!(view.search_filters.criteria.count(), 2);
+            })
+            .unwrap();
+        visual.simulate_keystrokes("tab space");
+        window
+            .read_with(&visual, |view, _| {
+                assert_eq!(view.visible, [0, 1, 3]);
+                assert_eq!(view.search_filters.criteria.extension(), "pdf");
             })
             .unwrap();
     }

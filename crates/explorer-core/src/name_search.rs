@@ -5,9 +5,10 @@ use crate::{CancelToken, EntryKind};
 pub use policy::{Locality, classify};
 use std::{
     fs, io,
+    ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -18,27 +19,57 @@ pub enum Kind {
     Folder,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModifiedPeriod {
+    Today,
+    LastSevenDays,
+    LastThirtyDays,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModifiedFilter {
+    period: ModifiedPeriod,
+    range: Range<SystemTime>,
+}
+
+impl ModifiedFilter {
+    pub fn new(period: ModifiedPeriod, range: Range<SystemTime>) -> Self {
+        Self { period, range }
+    }
+
+    pub fn period(&self) -> ModifiedPeriod {
+        self.period
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Filters {
     kind: Kind,
     extension: String,
+    modified: Option<ModifiedFilter>,
 }
 
 impl Filters {
     pub fn from_input(kind: Kind, extension: &str) -> Self {
-        let extension = fold_extension_width(extension.trim());
         Self {
             kind,
-            extension: if kind == Kind::Folder {
-                String::new()
-            } else {
-                extension
-                    .strip_prefix("*.")
-                    .or_else(|| extension.strip_prefix('.'))
-                    .unwrap_or(&extension)
-                    .to_lowercase()
-            },
+            ..Self::default()
         }
+        .with_extension(extension)
+    }
+
+    pub fn with_extension(mut self, extension: &str) -> Self {
+        if self.kind == Kind::Folder {
+            self.extension.clear();
+            return self;
+        }
+        let extension = fold_extension_width(extension.trim());
+        self.extension = extension
+            .strip_prefix("*.")
+            .or_else(|| extension.strip_prefix('.'))
+            .unwrap_or(&extension)
+            .to_lowercase();
+        self
     }
 
     pub fn kind(&self) -> Kind {
@@ -49,8 +80,19 @@ impl Filters {
         &self.extension
     }
 
+    pub fn modified(&self) -> Option<&ModifiedFilter> {
+        self.modified.as_ref()
+    }
+
+    pub fn with_modified(mut self, modified: Option<ModifiedFilter>) -> Self {
+        self.modified = modified;
+        self
+    }
+
     pub fn count(&self) -> u8 {
-        u8::from(self.kind != Kind::Any) + u8::from(!self.extension.is_empty())
+        u8::from(self.kind != Kind::Any)
+            + u8::from(!self.extension.is_empty())
+            + u8::from(self.modified.is_some())
     }
 
     pub fn with_kind(mut self, kind: Kind) -> Self {
@@ -66,7 +108,7 @@ impl Filters {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.kind == Kind::Any && self.extension.is_empty()
+        self.count() == 0
     }
 
     pub fn matches(&self, entry: &crate::Entry) -> bool {
@@ -74,6 +116,13 @@ impl Filters {
             Kind::File if entry.kind != EntryKind::File => return false,
             Kind::Folder if entry.kind != EntryKind::Dir => return false,
             _ => {}
+        }
+        if let Some(modified) = &self.modified
+            && !entry
+                .modified
+                .is_some_and(|time| modified.range.contains(&time))
+        {
+            return false;
         }
         if self.extension.is_empty() {
             return true;
@@ -443,6 +492,79 @@ mod tests {
             EntryKind::Dir,
             &pdf.with_kind(Kind::Folder)
         ));
+    }
+
+    #[test]
+    fn modified_range_combines_with_kind_and_extension() {
+        let start = std::time::UNIX_EPOCH + Duration::from_secs(100);
+        let end = start + Duration::from_secs(100);
+        let pdf = Filters::from_input(Kind::File, ".pdf")
+            .with_modified(Some(ModifiedFilter::new(ModifiedPeriod::Today, start..end)));
+        let entry = |name: &str, kind, modified| {
+            crate::Entry::virtual_entry(name.into(), PathBuf::new(), kind, None, modified)
+        };
+        assert_eq!(pdf.count(), 3);
+        assert!(pdf.matches(&entry("book.PDF", EntryKind::File, Some(start))));
+        assert!(!pdf.matches(&entry(
+            "book.PDF",
+            EntryKind::File,
+            Some(start - Duration::from_secs(1))
+        )));
+        assert!(!pdf.matches(&entry("book.PDF", EntryKind::File, Some(end))));
+        assert!(!pdf.matches(&entry("book.PDF", EntryKind::File, None)));
+        assert!(!pdf.matches(&entry("book.txt", EntryKind::File, Some(start))));
+        assert!(pdf.clone().with_kind(Kind::Folder).matches(&entry(
+            "folder",
+            EntryKind::Dir,
+            Some(start)
+        )));
+        assert_eq!(
+            pdf.clone().with_extension(".txt").modified(),
+            pdf.modified()
+        );
+        assert!(
+            !Filters::default()
+                .with_modified(pdf.modified().cloned())
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn modified_range_searches_descendants_without_a_name() {
+        let d = fixture();
+        let old = d.path().join("sub/old.pdf");
+        let recent = d.path().join("sub/recent.pdf");
+        let at = std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        for (path, modified) in [(&old, at), (&recent, at + Duration::from_secs(120))] {
+            fs::File::create(path)
+                .unwrap()
+                .set_modified(modified)
+                .unwrap();
+        }
+        let filters =
+            Filters::from_input(Kind::File, "pdf").with_modified(Some(ModifiedFilter::new(
+                ModifiedPeriod::Today,
+                at + Duration::from_secs(60)..at + Duration::from_secs(180),
+            )));
+        let mut hits = Vec::new();
+        search(
+            d.path(),
+            "",
+            &filters,
+            false,
+            &CancelToken::new(),
+            Instant::now() + Duration::from_secs(30),
+            Limits::default(),
+            |event| {
+                if let Event::Batch(batch) = event {
+                    hits.extend(batch);
+                }
+                true
+            },
+        )
+        .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].path, recent);
     }
 
     #[test]
