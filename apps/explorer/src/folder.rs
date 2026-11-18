@@ -26,6 +26,7 @@ mod name_operations;
 mod name_search;
 mod scroll_motion;
 mod scrollbar;
+mod search_filters;
 mod search_presentation;
 mod watch;
 use context_menu::ContextMenu;
@@ -101,6 +102,7 @@ pub struct FolderView {
     pub pane: bool,
     pub compact: bool,
     search: Entity<TextInput>,
+    search_filters: search_filters::SearchFilters,
     query: String,
     icons: Entity<ShellIcons>,
     focus: FocusHandle,
@@ -262,6 +264,7 @@ impl FolderView {
             }
         })
         .detach();
+        let search_filters = search_filters::SearchFilters::new(cx);
         let address = cx.new(|cx| {
             let mut input = TextInput::new(cx);
             input.placeholder = "フォルダーのパスを入力…".into();
@@ -383,6 +386,7 @@ impl FolderView {
             _wsl_task: None,
             wsl: Vec::new(),
             query: String::new(),
+            search_filters,
             icons,
             focus,
             owner_window: window.window_handle(),
@@ -758,8 +762,11 @@ impl FolderView {
         let revealed = self.launch_reveal.as_deref();
         let query = self.query.to_lowercase();
         let matcher = explorer_core::entry::NameMatcher::new(&query);
+        let filters = &self.search_filters.criteria;
         let matches = |e: &Entry| {
-            (show_hidden || !e.hidden || revealed == Some(e.name.as_str())) && matcher.matches(e)
+            (show_hidden || !e.hidden || revealed == Some(e.name.as_str()))
+                && filters.matches(e)
+                && matcher.matches(e)
         };
         let narrow = previous
             .filter(|p| !p.is_empty())
@@ -802,8 +809,22 @@ impl FolderView {
     fn clear_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.cancel_name_search(true);
         self.query.clear();
+        self.reset_search_filters(window, cx);
         self.search.update(cx, |input, cx| input.reset(window, cx));
         window.focus(&self.focus, cx);
+    }
+
+    fn clear_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let rebuild = self.search_active() && !self.is_home();
+        let keep = rebuild
+            .then(|| self.selected_entry().map(|entry| entry.path.clone()))
+            .flatten();
+        self.clear_query(window, cx);
+        if rebuild {
+            self.rebuild_visible(keep.as_deref());
+            self.scroll.scroll_to_item(0, ScrollStrategy::Top);
+        }
+        cx.notify();
     }
 
     fn navigate_to(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
@@ -1198,6 +1219,9 @@ impl FolderView {
         self.move_selection(n, cx);
     }
     fn open_selected(&mut self, _: &OpenSelected, window: &mut Window, cx: &mut Context<Self>) {
+        if self.activate_search_filter(window, cx) {
+            return;
+        }
         if self.address.focus_handle(cx).is_focused(window) {
             self.submit_address(window, cx);
             return;
@@ -1263,6 +1287,7 @@ impl FolderView {
             || self.name_editor.is_some()
             || self.archive_dialog.is_some()
             || self.search.focus_handle(cx).is_focused(window)
+            || self.search_filter_focus(window, cx)
             || self.address.focus_handle(cx).is_focused(window)
     }
     pub fn cancel_address(&mut self, cx: &mut Context<Self>) {
@@ -1661,16 +1686,19 @@ impl FolderView {
                             .text_color(t.c("icon.default")),
                     )
                     .child(self.search.clone())
-                    .when(!self.query.is_empty(), |d| {
+                    .when(self.search_active(), |d| {
                         d.child(
                             icon_button("clear-search", "icons/x.svg", true, t)
                                 .size(px(20.))
                                 .on_click(cx.listener(|this, _, w, cx| {
-                                    this.search.update(cx, |input, cx| input.reset(w, cx));
+                                    this.clear_search(w, cx);
                                 })),
                         )
                     }),
             )
+            .when(self.path().is_some(), |d| {
+                d.child(self.render_search_filter_trigger(t, cx))
+            })
             .child(self.render_display_trigger(t, cx))
             .child(
                 icon_button("settings", "icons/settings.svg", true, t)
@@ -2735,6 +2763,7 @@ impl Render for FolderView {
             .into();
         });
         self.address.update(cx, |input, _| input.theme = t);
+        self.theme_search_filters(t, cx);
         #[cfg(target_os = "macos")]
         {
             if self.preview_open {
@@ -2798,6 +2827,16 @@ impl Render for FolderView {
                 v.extend_key(keyboard::Direction::PageDown, w, cx)
             }))
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
+                let modifiers = event.keystroke.modifiers;
+                if event.keystroke.key == "tab"
+                    && !modifiers.control
+                    && !modifiers.platform
+                    && !modifiers.alt
+                    && this.tab_search_filters(modifiers.shift, w, cx)
+                {
+                    cx.stop_propagation();
+                    return;
+                }
                 if event.keystroke.key == "tab" && !this.input_focused(w, cx) {
                     if event.keystroke.modifiers.shift && !this.pinned.is_empty() {
                         w.focus(&this.pin_remove_focus[this.pinned.len() - 1], cx);
@@ -2900,7 +2939,7 @@ impl Render for FolderView {
                 if this.editing_address {
                     this.cancel_address(cx);
                 } else {
-                    this.search.update(cx, |input, cx| input.reset(w, cx));
+                    this.clear_search(w, cx);
                 }
                 w.focus(&this.focus, cx);
                 cx.notify()
@@ -2931,6 +2970,7 @@ impl Render for FolderView {
                     .flex_shrink_0()
                     .child(self.render_toolbar(t, window, cx)),
             )
+            .children(self.render_search_filter_bar(t, window, cx))
             .child(
                 div()
                     .flex()

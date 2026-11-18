@@ -26,7 +26,7 @@ impl FolderView {
         if self.list_gallery() {
             let mut previous = None;
             for (ix, &i) in self.visible.iter().enumerate() {
-                let group = (self.grouped && self.query.is_empty())
+                let group = (self.grouped && !self.search_active())
                     .then(|| self.group_for(&self.entries[i]));
                 let new_group = group != previous;
                 if new_group
@@ -52,7 +52,7 @@ impl FolderView {
         let mut header = None;
         let mut previous = None;
         for (ix, &i) in self.visible.iter().enumerate() {
-            if self.grouped && self.query.is_empty() {
+            if self.grouped && !self.search_active() {
                 let group = self.group_for(&self.entries[i]);
                 if previous != Some(group) {
                     header = Some(self.display_rows.len());
@@ -78,7 +78,7 @@ impl FolderView {
             .scroll_to_item(self.entry_rows.get(ix).copied().unwrap_or(ix), strategy);
     }
     pub(super) fn apply_grouping(&mut self) {
-        if self.grouped && self.query.is_empty() {
+        if self.grouped && !self.search_active() {
             let entries = &self.entries;
             // Chronological order includes directories; no folder-first partition within a timeline.
             self.visible.sort_by(|&a, &b| {

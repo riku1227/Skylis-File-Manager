@@ -10,6 +10,96 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Kind {
+    #[default]
+    Any,
+    File,
+    Folder,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Filters {
+    kind: Kind,
+    extension: String,
+}
+
+impl Filters {
+    pub fn from_input(kind: Kind, extension: &str) -> Self {
+        let extension = fold_extension_width(extension.trim());
+        Self {
+            kind,
+            extension: if kind == Kind::Folder {
+                String::new()
+            } else {
+                extension
+                    .strip_prefix("*.")
+                    .or_else(|| extension.strip_prefix('.'))
+                    .unwrap_or(&extension)
+                    .to_lowercase()
+            },
+        }
+    }
+
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    pub fn with_kind(mut self, kind: Kind) -> Self {
+        self.kind = kind;
+        if kind == Kind::Folder {
+            self.extension.clear();
+        }
+        self
+    }
+
+    pub fn is_too_long(&self) -> bool {
+        self.extension.len() > 4096
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.kind == Kind::Any && self.extension.is_empty()
+    }
+
+    pub fn matches(&self, entry: &crate::Entry) -> bool {
+        match self.kind {
+            Kind::File if entry.kind != EntryKind::File => return false,
+            Kind::Folder if entry.kind != EntryKind::Dir => return false,
+            _ => {}
+        }
+        if self.extension.is_empty() {
+            return true;
+        }
+        entry.extension().is_some_and(|extension| {
+            if extension.is_ascii() {
+                extension.eq_ignore_ascii_case(&self.extension)
+            } else {
+                // Lowercase the suffix independently so final sigma is judged in
+                // the same context as the extension typed by the user.
+                fold_extension_width(extension).to_lowercase() == self.extension
+            }
+        })
+    }
+}
+
+fn fold_extension_width(extension: &str) -> std::borrow::Cow<'_, str> {
+    const FULLWIDTH_ASCII: std::ops::RangeInclusive<char> = '\u{ff01}'..='\u{ff5e}';
+    if !extension.chars().any(|c| FULLWIDTH_ASCII.contains(&c)) {
+        return extension.into();
+    }
+    extension
+        .chars()
+        .map(|c| {
+            if FULLWIDTH_ASCII.contains(&c) {
+                char::from_u32(c as u32 - 0xfee0).unwrap()
+            } else {
+                c
+            }
+        })
+        .collect::<String>()
+        .into()
+}
+
 #[derive(Clone, Debug)]
 pub struct Hit {
     pub path: PathBuf,
@@ -79,6 +169,7 @@ impl Default for Limits {
 pub fn search(
     root: &Path,
     query: &str,
+    filters: &Filters,
     hidden: bool,
     cancel: &CancelToken,
     deadline: Instant,
@@ -89,8 +180,10 @@ pub fn search(
     if stopped() {
         return Ok(());
     }
-    if query.is_empty()
-        || query.to_lowercase().len() > 4096
+    let key = query.to_lowercase();
+    if (key.is_empty() && filters.is_empty())
+        || key.len() > 4096
+        || filters.is_too_long()
         || policy::path_bytes(root) > limits.path_bytes
     {
         return Err(io::Error::new(
@@ -125,7 +218,6 @@ pub fn search(
     let mut last_batch = Instant::now();
     let mut last_progress = Instant::now();
     let mut limit = None;
-    let key = query.to_lowercase();
     let matcher = crate::entry::NameMatcher::new(&key);
     while !stack.is_empty() {
         if cancel.is_cancelled() {
@@ -173,7 +265,7 @@ pub fn search(
         if !hidden && entry.hidden {
             continue;
         }
-        if depth >= 2 && matcher.matches(&entry) {
+        if depth >= 2 && filters.matches(&entry) && matcher.matches(&entry) {
             let hit = Arc::new(Hit {
                 parent: path
                     .parent()
@@ -294,6 +386,7 @@ mod tests {
         search(
             root,
             "report",
+            &Filters::default(),
             hidden,
             &CancelToken::new(),
             Instant::now() + Duration::from_secs(30),
@@ -311,6 +404,79 @@ mod tests {
         let (p, s) = end.unwrap();
         (hits, p, s)
     }
+    #[test]
+    fn extension_matches_the_final_suffix_and_kind_without_resolving_links() {
+        let matches = |name: &str, kind, filter: &Filters| {
+            filter.matches(&crate::Entry::virtual_entry(
+                name.into(),
+                PathBuf::new(),
+                kind,
+                None,
+                None,
+            ))
+        };
+        let pdf = Filters::from_input(Kind::Any, " .pDf ");
+        for equivalent in ["pdf", ".PDF", "*.pdf", "．ｐｄｆ", "＊．ＰＤＦ"] {
+            assert_eq!(Filters::from_input(Kind::Any, equivalent), pdf);
+        }
+        assert!(matches("book.PDF", EntryKind::File, &pdf));
+        assert!(matches("book.ＰＤＦ", EntryKind::File, &pdf));
+        assert!(!matches("book.PDF.bak", EntryKind::File, &pdf));
+        assert!(!matches(".pdf", EntryKind::File, &pdf));
+        assert!(!matches("book.pdf", EntryKind::Dir, &pdf));
+        assert!(!matches("book.pdf", EntryKind::Symlink, &pdf));
+        assert!(matches(
+            "book.Σ",
+            EntryKind::File,
+            &Filters::from_input(Kind::File, ".σ")
+        ));
+        assert!(matches(
+            "book.pdf",
+            EntryKind::Dir,
+            &pdf.with_kind(Kind::Folder)
+        ));
+    }
+
+    #[test]
+    fn filters_apply_before_the_hit_cap_and_can_search_without_a_name() {
+        let d = fixture();
+        fs::create_dir(d.path().join("sub/report.pdf")).unwrap();
+        fs::write(d.path().join("sub/deeper/REPORT.PDF"), "").unwrap();
+        fs::write(d.path().join("sub/deeper/other.PDF"), "").unwrap();
+        let filters = Filters::from_input(Kind::Any, " .Pdf ");
+        for (name, expected) in [("report", 1), ("", 2)] {
+            let mut hits = Vec::new();
+            let mut end = None;
+            search(
+                d.path(),
+                name,
+                &filters,
+                false,
+                &CancelToken::new(),
+                Instant::now() + Duration::from_secs(30),
+                Limits {
+                    hits: 3,
+                    ..Limits::default()
+                },
+                |event| {
+                    match event {
+                        Event::Batch(batch) => hits.extend(batch),
+                        Event::Done(_, result) => end = Some(result),
+                        _ => {}
+                    }
+                    true
+                },
+            )
+            .unwrap();
+            assert_eq!(hits.len(), expected);
+            assert_eq!(end, Some(End::Complete));
+            assert!(
+                hits.iter()
+                    .all(|hit| hit.kind == EntryKind::File && hit.name.ends_with(".PDF"))
+            );
+        }
+    }
+
     #[test]
     fn descendants_only_case_insensitive_and_relative_parent() {
         let d = fixture();
@@ -365,6 +531,7 @@ mod tests {
         search(
             d.path(),
             "x",
+            &Filters::default(),
             false,
             &c,
             Instant::now() + Duration::from_secs(1),
@@ -375,6 +542,7 @@ mod tests {
         search(
             d.path(),
             "x",
+            &Filters::default(),
             false,
             &CancelToken::new(),
             Instant::now(),
@@ -466,6 +634,7 @@ mod tests {
         search(
             d.path(),
             "report",
+            &Filters::default(),
             true,
             &c,
             Instant::now() + Duration::from_secs(30),
@@ -495,6 +664,7 @@ mod tests {
             search(
                 &d.path().join("sub/loop"),
                 "report",
+                &Filters::default(),
                 true,
                 &CancelToken::new(),
                 Instant::now() + Duration::from_secs(30),

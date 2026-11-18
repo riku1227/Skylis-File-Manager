@@ -125,6 +125,50 @@ mod tests {
         .unwrap();
     }
     #[gpui::test]
+    fn changing_a_filter_invalidates_the_old_request_without_editing_the_name(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use explorer_core::name_search::{Filters, Kind};
+
+        let w = fixture(cx);
+        w.update(cx, |view, _, cx| {
+            view.apply_search_filters(Filters::from_input(Kind::Any, ".txt"), cx);
+            let key = view.search_key(cx);
+            let (ticket, tx) = service::test_ticket(key);
+            view.descendants.ticket = Some(ticket);
+            view.descendants.active = true;
+            view.descendants.hits.push(hit(view));
+
+            view.apply_search_filters(Filters::from_input(Kind::Any, "＊．ＴＸＴ"), cx);
+            assert!(!tx.is_closed());
+
+            view.apply_search_filters(Filters::from_input(Kind::Any, "pdf"), cx);
+            assert_eq!(view.query, "report");
+            assert!(tx.is_closed());
+            assert!(view.descendants.hits.is_empty());
+            assert!(view.descendants.debounce.is_some());
+            assert!(!view.drain_name_search(key, cx));
+        })
+        .unwrap();
+    }
+    #[gpui::test]
+    fn stopping_search_in_visible_tab_still_allows_new_conditions(cx: &mut gpui::TestAppContext) {
+        let w = fixture(cx);
+        w.update(cx, |view, _, cx| {
+            let key = view.search_key(cx);
+            let (ticket, tx) = service::test_ticket(key);
+            view.descendants.ticket = Some(ticket);
+            view.descendants.active = true;
+            view.stop_name_search(cx);
+            assert!(tx.is_closed());
+            assert!(view.descendants.visible);
+            assert!(!view.drain_name_search(key, cx));
+            view.query_search_changed(false, cx);
+            assert!(view.descendants.debounce.is_some());
+        })
+        .unwrap();
+    }
+    #[gpui::test]
     fn hidden_tab_listing_completion_does_not_restart_search(cx: &mut gpui::TestAppContext) {
         let w = fixture(cx);
         w.update(cx, |v, _, cx| {
@@ -364,8 +408,11 @@ impl FolderView {
         bounds.contains(&position)
             && (y < height || y >= self.display_rows.len().saturating_sub(1) as f32 * height)
     }
+    pub(super) fn search_active(&self) -> bool {
+        !self.query.is_empty() || !self.search_filters.criteria.is_empty()
+    }
     pub(super) fn recursive_search(&self) -> bool {
-        !self.query.is_empty() && matches!(self.history.current(), Location::Folder(_))
+        self.search_active() && matches!(self.history.current(), Location::Folder(_))
     }
     pub(super) fn list_gallery(&self) -> bool {
         self.gallery && !self.recursive_search()
@@ -389,6 +436,12 @@ impl FolderView {
             self.descendants.status = "停止中 · タブを戻しても自動では再開しません".into();
             cx.notify();
         }
+    }
+    fn stop_name_search(&mut self, cx: &mut Context<Self>) {
+        self.cancel_name_search(false);
+        self.descendants.stopped = true;
+        self.descendants.status = "停止中 · 再検索で更新します".into();
+        cx.notify();
     }
     pub(super) fn cancel_name_search(&mut self, clear: bool) {
         self.descendants.generation = self.descendants.generation.wrapping_add(1);
@@ -432,8 +485,8 @@ impl FolderView {
             self.descendants.status = "変換の確定後に配下を検索します".into();
             return;
         }
-        if self.query.to_lowercase().len() > 4096 {
-            self.descendants.status = "検索語が長すぎるため、直下のみ表示しています".into();
+        if self.query.to_lowercase().len() > 4096 || self.search_filters.criteria.is_too_long() {
+            self.descendants.status = "検索条件が長すぎるため、直下のみ表示しています".into();
             return;
         }
         if self.loading {
@@ -458,6 +511,7 @@ impl FolderView {
             || !self.recursive_search()
             || self.descendants.composing
             || self.query.to_lowercase().len() > 4096
+            || self.search_filters.criteria.is_too_long()
         {
             return;
         }
@@ -479,7 +533,14 @@ impl FolderView {
         } else {
             Mode::Classify
         };
-        match service::request(key, root, self.query.clone(), self.show_hidden, mode) {
+        match service::request(
+            key,
+            root,
+            self.query.clone(),
+            self.search_filters.criteria.clone(),
+            self.show_hidden,
+            mode,
+        ) {
             Err(e) => {
                 self.descendants.status = e;
                 self.descendants.stopped = true;
@@ -849,7 +910,7 @@ impl FolderView {
                     })
                     .on_click(cx.listener(|v, _, _, cx| {
                         if v.descendants.active {
-                            v.pause_name_search(cx);
+                            v.stop_name_search(cx);
                         } else {
                             v.begin_name_search(
                                 v.descendants.locality != Some(Locality::Local),

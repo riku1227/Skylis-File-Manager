@@ -31,6 +31,7 @@ struct Request {
     key: Key,
     root: PathBuf,
     query: String,
+    filters: core::Filters,
     hidden: bool,
     mode: Mode,
     cancel: CancelToken,
@@ -149,6 +150,7 @@ impl Service {
                         let result = core::search(
                             &request.root,
                             &request.query,
+                            &request.filters,
                             request.hidden,
                             &request.cancel,
                             request.deadline,
@@ -209,6 +211,7 @@ pub fn request(
     key: Key,
     root: PathBuf,
     query: String,
+    filters: core::Filters,
     hidden: bool,
     mode: Mode,
 ) -> Result<Ticket, String> {
@@ -218,13 +221,14 @@ pub fn request(
         .as_ref()
         .map_err(Clone::clone)?
         .clone();
-    submit(service, key, root, query, hidden, mode)
+    submit(service, key, root, query, filters, hidden, mode)
 }
 fn submit(
     service: Arc<Service>,
     key: Key,
     root: PathBuf,
     query: String,
+    filters: core::Filters,
     hidden: bool,
     mode: Mode,
 ) -> Result<Ticket, String> {
@@ -245,6 +249,7 @@ fn submit(
         key,
         root,
         query,
+        filters,
         hidden,
         mode,
         cancel: cancel.clone(),
@@ -345,6 +350,7 @@ mod tests {
             },
             root.path().into(),
             "report".into(),
+            core::Filters::default(),
             true,
             Mode::Local,
         )
@@ -398,8 +404,18 @@ mod tests {
             epoch: 1,
             generation,
         };
-        let submit_test =
-            |k, mode| submit(service.clone(), k, PathBuf::new(), "x".into(), false, mode).unwrap();
+        let submit_test = |k, mode| {
+            submit(
+                service.clone(),
+                k,
+                PathBuf::new(),
+                "x".into(),
+                core::Filters::default(),
+                false,
+                mode,
+            )
+            .unwrap()
+        };
         let old = submit_test(key(1, 0), Mode::Explicit);
         assert_eq!(
             entered_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
@@ -452,6 +468,7 @@ mod tests {
             },
             root: PathBuf::new(),
             query: "x".into(),
+            filters: core::Filters::default(),
             hidden: false,
             mode: Mode::Local,
             cancel: CancelToken::new(),
