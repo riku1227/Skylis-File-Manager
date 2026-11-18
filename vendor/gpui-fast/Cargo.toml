@@ -103,6 +103,11 @@ name = "frame_rate_limit"
 path = "tests/frame_rate_limit.rs"
 required-features = ["test-support"]
 
+[[test]]
+name = "search_highlights"
+path = "tests/search_highlights.rs"
+required-features = ["test-support"]
+
 [dependencies.accesskit]
 version = "0.24.0"
 features = ["enumn"]

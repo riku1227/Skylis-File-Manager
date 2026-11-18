@@ -172,7 +172,7 @@
   --ex-border-statusbar: rgba(15, 23, 42, 0.06);
   --ex-border-dialog: rgba(15, 23, 42, 0.075);
   --ex-match-bg: rgba(251, 191, 36, 0.38);
-  --ex-match-fg: currentColor;
+  --ex-match-fg: #0f172a;
   --ex-meter-fill: #3b82f6;
   --ex-meter-warn: #f59e0b;
   --ex-meter-track: rgba(148, 163, 184, 0.22);

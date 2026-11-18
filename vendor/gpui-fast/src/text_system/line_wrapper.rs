@@ -609,6 +609,19 @@ pub(crate) fn update_runs_after_truncation(
                 if run.len <= truncate_at {
                     truncate_at -= run.len;
                 } else {
+                    // The inserted ellipsis is not part of the highlighted
+                    // source text. Keep the visible prefix decoration, but do
+                    // not mark a match hidden past the cut as a visible one.
+                    if run.background_color.is_some() && !ellipsis.is_empty() {
+                        let mut affix = run.clone();
+                        affix.len = ellipsis.len();
+                        affix.background_color = None;
+                        run.len = truncate_at;
+                        let keep = run_index + usize::from(truncate_at != 0);
+                        runs.truncate(keep);
+                        runs.push(affix);
+                        break;
+                    }
                     run.len = truncate_at + ellipsis.len();
                     runs.truncate(run_index + 1);
                     break;

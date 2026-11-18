@@ -53,7 +53,7 @@ impl FolderView {
     }
 
     pub(super) fn check_motion_layout(&mut self) {
-        let layout = (self.gallery, self.compact, self.gallery_columns);
+        let layout = (self.list_gallery(), self.compact, self.gallery_columns);
         if self
             .motion
             .layout

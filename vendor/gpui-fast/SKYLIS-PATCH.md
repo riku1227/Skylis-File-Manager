@@ -16,6 +16,15 @@ required by the published manifest.
 
 Local changes:
 
+- End truncation separates an inserted ellipsis from a source run with a background
+  highlight. The visible prefix keeps its marker; the ellipsis receives no marker,
+  including when the match starts beyond the visible cut. Font, foreground and
+  ordinary runs are unchanged. `tests/search_highlights.rs` exercises the public
+  production line wrapper without the unavailable upstream lib-test assets.
+  Run `cargo test -p gpui-fast -p explorer --test search_highlights` (selecting
+  explorer enables its test-support dependency feature; the patched dependency
+  is not a workspace member that accepts root-level `--features` selection).
+
 - Native `FileDropEvent` entry, motion and release sample platform modifier state
   and propagate it into the translated mouse events. Windows OLE drag loops can
   consume key messages, so cached keyboard state is insufficient for Ctrl/Shift

@@ -11,6 +11,7 @@ impl Explorer {
     }
     pub(super) fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_open = false;
+        self.tabs[self.active].update(cx, |tab, _| tab.activate_name_search());
         window.focus(&self.tabs[self.active].focus_handle(cx), cx);
         cx.notify();
     }
@@ -26,9 +27,13 @@ impl Explorer {
             .shown()
             .map_or((1., true), |shown| (shown.progress, shown.live));
         let narrow = window.viewport_size().width < px(560.);
+        let session_error = crate::session::error(cx);
         let p = self.preferences.read(cx);
         let value = p.value.clone();
-        let error = p.error.clone();
+        let error = match (p.error.clone(), session_error) {
+            (Some(a), Some(b)) => Some(format!("{a}\n{b}")),
+            (a, b) => a.or(b),
+        };
         let integration = p.folder_integration.clone();
         let integration_busy = p.integration_busy;
         let integration_error = p.integration_error.clone();
@@ -121,6 +126,17 @@ impl Explorer {
             ),
         ];
 
+        let mut rows = rows.to_vec();
+        rows.push((
+            "前回のタブを復元",
+            "起動時に前回のウィンドウとタブを開きます。サイズと位置は常に記憶します",
+            value.restore_tabs,
+            if value.restore_tabs {
+                "有効"
+            } else {
+                "無効"
+            },
+        ));
         let mut categories = vec![
             ("外観と表示", "icons/desktop.svg", 0..2),
             ("フォルダーと一覧", "icons/folder-outline.svg", 2..5),
@@ -133,6 +149,7 @@ impl Explorer {
         if cfg!(target_os = "macos") {
             categories.push(("macOSアクセス権限", "icons/link.svg", 8..8));
         }
+        categories.push(("起動", "icons/desktop.svg", 8..9));
         let category_count = categories.len();
         let setting_count = rows.len();
         let numbered_page = !categories[self.settings_category].2.is_empty();
@@ -551,7 +568,8 @@ impl Explorer {
                                 4 => "settings-row-sizes",
                                 5 => "settings-row-high-refresh",
                                 6 => "settings-row-smooth-scroll",
-                                _ => "settings-row-performance",
+                                7 => "settings-row-performance",
+                                _ => "settings-row-restore-tabs",
                             }
                             .into()
                         })
@@ -651,11 +669,23 @@ impl Explorer {
             0..=1 => 0,
             2..=4 => 1,
             5..=6 => 2,
-            _ => 3,
+            7 => 3,
+            _ => {
+                if cfg!(any(windows, target_os = "macos")) {
+                    5
+                } else {
+                    4
+                }
+            }
         };
         self.select_settings_category(category);
-        let first = [0, 2, 5, 7][self.settings_category];
-        let error_row = usize::from(self.preferences.read(cx).error.is_some());
+        let first = if index == 8 {
+            8
+        } else {
+            [0, 2, 5, 7][self.settings_category]
+        };
+        let session_error = crate::session::error(cx).is_some();
+        let error_row = usize::from(self.preferences.read(cx).error.is_some() || session_error);
         self.settings_scroll
             .scroll_to_item(1 + error_row + index - first);
         cx.notify();
@@ -670,6 +700,7 @@ impl Explorer {
                     5 => s.high_refresh_rate = !s.high_refresh_rate,
                     6 => s.smooth_scroll = !s.smooth_scroll,
                     7 => s.performance_overlay = !s.performance_overlay,
+                    8 => s.restore_tabs = !s.restore_tabs,
                     _ => (),
                 },
                 cx,

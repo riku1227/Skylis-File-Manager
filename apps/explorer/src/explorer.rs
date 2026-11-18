@@ -5,9 +5,12 @@ use crate::{
     theme::{Theme, ThemeMode},
 };
 use explorer_core::location::Location;
-use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, img, prelude::*, px, svg};
+use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, prelude::*, px, svg};
 mod settings_panel;
+mod tab_motion;
+mod tab_workflows;
 mod tabs;
+pub(crate) use tab_workflows::bind_keys as bind_workflow_keys;
 use tabs::TabDrag;
 
 fn operations_pending(cx: &App) -> bool {
@@ -35,6 +38,7 @@ pub(crate) fn request_quit(cx: &mut App) {
 
 /// Each tab owns its entity and asynchronous listing. Switching never redirects a pending batch.
 pub struct Explorer {
+    closed_tabs: std::collections::VecDeque<tab_workflows::ClosedTab>,
     tabs: Vec<Entity<FolderView>>,
     active: usize,
     mode: ThemeMode,
@@ -51,6 +55,7 @@ pub struct Explorer {
     last_saved_theme: crate::settings_data::ThemePreference,
     tab_subscriptions: std::collections::HashMap<gpui::EntityId, Vec<gpui::Subscription>>,
     tab_scroll: gpui::ScrollHandle,
+    tab_motion: tab_motion::TabStripMotion,
     tab_strip: std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>,
     dragging_tab: Option<gpui::EntityId>,
     drop_slot: Option<usize>,
@@ -61,6 +66,96 @@ pub struct Explorer {
     diagnostics: Entity<crate::diagnostics::PerformanceDisplay>,
 }
 impl Explorer {
+    pub(crate) fn session_snapshot(
+        &self,
+        window: &Window,
+        cx: &App,
+    ) -> crate::session_data::SavedWindow {
+        let bounds = window.window_bounds();
+        let mut rect = bounds.get_bounds();
+        let display = window.display(cx);
+        #[cfg(not(target_os = "macos"))]
+        if let Some(display) = &display {
+            rect.origin -= display.bounds().origin;
+        }
+        crate::session_data::SavedWindow {
+            pane: self.pane,
+            tab_display: self
+                .tabs
+                .iter()
+                .take(crate::session_data::MAX_TABS)
+                .map(|t| t.read(cx).session_display())
+                .collect(),
+            display: display.and_then(|d| d.uuid().ok()).map(|id| id.to_string()),
+            rect: [
+                rect.origin.x.into(),
+                rect.origin.y.into(),
+                rect.size.width.into(),
+                rect.size.height.into(),
+            ],
+            maximized: matches!(bounds, gpui::WindowBounds::Maximized(_)),
+            tabs: self
+                .tabs
+                .iter()
+                .take(crate::session_data::MAX_TABS)
+                .map(|t| t.read(cx).session_path())
+                .collect(),
+            active: self.active.min(
+                self.tabs
+                    .len()
+                    .min(crate::session_data::MAX_TABS)
+                    .saturating_sub(1),
+            ),
+        }
+    }
+
+    pub(crate) fn restore(
+        saved: crate::session_data::SavedWindow,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let preferences = cx.global::<crate::settings::SharedPreferences>().0.read(cx);
+        let mode = match crate::launch_request::current().theme {
+            Some(crate::launch_request::ThemeArgument::Light) => ThemeMode::Light,
+            Some(crate::launch_request::ThemeArgument::Dark) => ThemeMode::Dark,
+            Some(crate::launch_request::ThemeArgument::System) => ThemeMode::System,
+            None => preferences.value.theme.into(),
+        };
+        let compact = preferences.value.compact;
+        let icons = cx.new(ShellIcons::new);
+        let displays = saved.tab_display;
+        let tabs = saved
+            .tabs
+            .into_iter()
+            .take(crate::session_data::MAX_TABS)
+            .enumerate()
+            .map(|(index, path)| {
+                cx.new(|cx| {
+                    let mut folder = FolderView::new_deferred(
+                        path.map(Location::Folder).unwrap_or(Location::Home),
+                        mode,
+                        icons.clone(),
+                        window,
+                        cx,
+                    );
+                    folder
+                        .restore_session_display(displays.get(index).copied().unwrap_or_default());
+                    folder
+                })
+            })
+            .collect();
+        Self::with_tabs_active(
+            tabs,
+            icons,
+            mode,
+            compact,
+            saved.active,
+            saved.pane,
+            window,
+            cx,
+        )
+    }
+
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let request = crate::launch_request::current();
         let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
@@ -101,8 +196,21 @@ impl Explorer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::with_tabs_active(tabs, icons, mode, compact, 0, true, window, cx)
+    }
+
+    fn with_tabs_active(
+        tabs: Vec<Entity<FolderView>>,
+        icons: Entity<ShellIcons>,
+        mode: ThemeMode,
+        compact: bool,
+        active: usize,
+        pane: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let weak = cx.entity().downgrade();
-        window.on_window_should_close(cx, move |_, cx| {
+        window.on_window_should_close(cx, move |w, cx| {
             let last_properties_owner = crate::native_shell::properties_active()
                 && cx.windows().iter().filter(|handle| handle.downcast::<Explorer>().is_some()).count() <= 1;
             if operations_pending(cx) || last_properties_owner {
@@ -113,7 +221,12 @@ impl Explorer {
                     cx.notify();
                 });
                 false
-            } else { true }
+            } else {
+                let _ = weak.update(cx, |this, cx| {
+                    crate::session::closing(this.session_snapshot(w, cx), w.window_handle().window_id(), cx);
+                });
+                true
+            }
         });
         let preferences = cx.global::<crate::settings::SharedPreferences>().0.clone();
         apply_frame_limit(window, preferences.read(cx).value.high_refresh_rate);
@@ -174,11 +287,13 @@ impl Explorer {
             });
         });
         let mut this = Self {
+            closed_tabs: Default::default(),
+            tab_motion: tab_motion::TabStripMotion::new(tabs.iter().map(Entity::entity_id)),
             tabs,
             active: 0,
             mode,
             compact,
-            pane: true,
+            pane,
             icons,
             last_saved_theme: preferences.read(cx).value.theme,
             preferences,
@@ -202,38 +317,47 @@ impl Explorer {
         for tab in this.tabs.clone() {
             this.watch_tab(&tab, window, cx);
         }
-        this.switch(0, window, cx);
+        this.switch(active.min(this.tabs.len() - 1), window, cx);
         this
     }
     fn switch(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if index >= self.tabs.len() {
             return;
         }
+        let changing = index != self.active;
         self.tabs[self.active].update(cx, |tab, cx| {
+            if changing {
+                tab.pause_name_search(cx);
+            }
             tab.cancel_address(cx);
             tab.cancel_scroll_motion();
             tab.close_preview(cx);
             tab.close_display_settings(cx);
+            tab.close_search_filters(cx);
         });
         self.active = index;
+        self.tabs[index].update(cx, |tab, cx| {
+            tab.compact = self.compact;
+            tab.activate_session(cx);
+        });
         window.focus(&self.tabs[index].focus_handle(cx), cx);
         cx.notify();
     }
     fn new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
-        let folder =
-            cx.new(|cx| FolderView::new(Location::Home, self.mode, self.icons.clone(), window, cx));
-        self.watch_tab(&folder, window, cx);
-        folder.update(cx, |folder, _| folder.compact = self.compact);
-        self.tabs.push(folder);
-        self.settings_open = false;
-        self.switch(self.tabs.len() - 1, window, cx);
+        self.open_tab_at(Location::Home, window, cx);
     }
     fn close(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if self.tabs.len() == 1 || index >= self.tabs.len() {
             return;
         }
+        self.remember_closed(index, cx);
+        self.tab_motion
+            .close(self.tabs[index].entity_id(), cx.reduce_motion());
         let removed = self.tabs.remove(index);
-        removed.update(cx, |tab, _| tab.cancel_scroll_motion());
+        removed.update(cx, |tab, cx| {
+            tab.pause_name_search(cx);
+            tab.cancel_scroll_motion();
+        });
         self.tab_subscriptions.remove(&removed.entity_id());
         self.active = after_close(self.active, index, self.tabs.len());
         self.switch(self.active, window, cx);
@@ -277,10 +401,10 @@ impl Focusable for Explorer {
 }
 impl Render for Explorer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = Theme::resolve(self.mode, window.appearance());
         if self.tabs.is_empty() {
             return div().into_any_element();
         }
+        let t = Theme::resolve(self.mode, window.appearance());
         window.set_window_title(&self.tabs[self.active].read(cx).label());
         if self.settings_presence.sync(
             self.settings_open.then_some(()),
@@ -290,164 +414,7 @@ impl Render for Explorer {
         ) {
             window.request_animation_frame();
         }
-        let mut tabs = div()
-            .id("tabs")
-            .relative()
-            .flex()
-            .items_center()
-            .gap(px(4.))
-            .min_w_0()
-            .w(px(self.tabs.len() as f32 * 184.))
-            .max_w_full()
-            .overflow_x_scroll()
-            .track_scroll(&self.tab_scroll)
-            .child(
-                gpui::canvas(
-                    {
-                        let bounds = self.tab_strip.clone();
-                        let scroll = self.tab_scroll.clone();
-                        move |rect, _, _| {
-                            bounds.set(gpui::Bounds::new(rect.origin - scroll.offset(), rect.size))
-                        }
-                    },
-                    |_, _, _, _| {},
-                )
-                .absolute()
-                .size_full(),
-            );
-        for (i, tab) in self.tabs.iter().enumerate() {
-            let id = tab.entity_id();
-            let owner = cx.weak_entity();
-            let drag = TabDrag {
-                id,
-                label: tab.read(cx).label(),
-                mode: self.mode,
-            };
-            let current = i == self.active;
-            let archive = tab.read(cx).is_archive();
-            let path = tab.read(cx).path().map(std::path::Path::to_path_buf);
-            let image = path.as_ref().and_then(|path| {
-                self.icons.update(cx, |icons, cx| {
-                    icons.get_navigation(
-                        path,
-                        true,
-                        (14. * window.scale_factor()).ceil() as u32,
-                        cx,
-                    )
-                })
-            });
-            tabs = tabs.child(
-                div()
-                    .id(("tab", id))
-                    .on_drag(drag, move |drag, _, _, cx| {
-                        let _ = owner.update(cx, |this, cx| {
-                            this.dragging_tab = Some(drag.id);
-                            this.tab_menu = None;
-                            cx.notify();
-                        });
-                        cx.new(|_| drag.clone())
-                    })
-                    .on_mouse_down(
-                        gpui::MouseButton::Middle,
-                        cx.listener(move |this, _, w, cx| {
-                            cx.stop_propagation();
-                            if let Some(index) =
-                                this.tabs.iter().position(|tab| tab.entity_id() == id)
-                            {
-                                this.close(index, w, cx);
-                            }
-                        }),
-                    )
-                    .on_mouse_down(
-                        gpui::MouseButton::Right,
-                        cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
-                            cx.stop_propagation();
-                            this.tab_menu = Some((id, event.position));
-                            cx.notify();
-                        }),
-                    )
-                    .h(px(28.))
-                    .w(px(180.))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .px(px(10.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(t.c(if current {
-                        "tab.active.border"
-                    } else {
-                        "tab.border"
-                    }))
-                    .bg(t.c(if current { "tab.active.bg" } else { "tab.bg" }))
-                    .text_color(t.c(if current { "text.primary" } else { "tab.fg" }))
-                    .when(current, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
-                    .when(!current, |d| d.hover(|s| s.bg(t.c("tab.hover.bg"))))
-                    .cursor_pointer()
-                    .child(
-                        div()
-                            .size(px(14.))
-                            .flex_shrink_0()
-                            .when_some(image, |d, image| d.child(img(image).size_full()))
-                            .when(path.is_none(), |d| {
-                                d.child(
-                                    svg()
-                                        .path(if archive {
-                                            "icons/file.svg"
-                                        } else {
-                                            "icons/home.svg"
-                                        })
-                                        .size_full()
-                                        .text_color(t.c("icon.default")),
-                                )
-                            }),
-                    )
-                    .child(div().flex_1().truncate().child(tab.read(cx).label()))
-                    .child(
-                        div()
-                            .id(("close-tab", id))
-                            .size(px(18.))
-                            .flex_shrink_0()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(4.))
-                            .hover(|s| s.bg(t.c("state.pressed")))
-                            .child(
-                                svg()
-                                    .path("icons/x.svg")
-                                    .size(px(12.))
-                                    .text_color(t.c("text.secondary")),
-                            )
-                            .on_click(cx.listener(move |this, _, w, cx| {
-                                cx.stop_propagation();
-                                if let Some(index) =
-                                    this.tabs.iter().position(|tab| tab.entity_id() == id)
-                                {
-                                    this.close(index, w, cx)
-                                }
-                            })),
-                    )
-                    .on_click(cx.listener(move |this, _, w, cx| {
-                        if let Some(index) = this.tabs.iter().position(|tab| tab.entity_id() == id)
-                        {
-                            this.switch(index, w, cx)
-                        }
-                    })),
-            );
-        }
-        if let Some(slot) = self.drop_slot {
-            tabs = tabs.child(
-                div()
-                    .absolute()
-                    .left(px(slot as f32 * 184.))
-                    .top(px(2.))
-                    .w(px(2.))
-                    .h(px(24.))
-                    .bg(t.c("focus.ring")),
-            );
-        }
+        let tabs = self.render_tab_strip(t, window, cx);
         div()
             .id("explorer")
             .relative()
@@ -516,6 +483,7 @@ impl Render for Explorer {
                 if cfg!(target_os = "macos") {
                     this.select_settings_category(4);
                     this.settings_open = true;
+                    this.tabs[this.active].update(cx, |tab, cx| tab.pause_name_search(cx));
                     this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
                     w.focus(&this.settings_focus, cx);
                     cx.notify();
@@ -526,11 +494,14 @@ impl Render for Explorer {
                 if this.settings_open {
                     crate::motion_preferences::refresh(cx);
                     this.tabs[this.active].update(cx, |tab, cx| {
+                        tab.pause_name_search(cx);
                         tab.cancel_scroll_motion();
                         tab.close_display_settings(cx);
+                        tab.close_search_filters(cx);
                     });
                     w.focus(&this.settings_focus, cx);
                 } else {
+                    this.tabs[this.active].update(cx, |tab, _| tab.activate_name_search());
                     w.focus(&this.tabs[this.active].focus_handle(cx), cx);
                 }
                 cx.notify();
@@ -541,6 +512,14 @@ impl Render for Explorer {
                 }
             }))
             .on_action(cx.listener(Self::new_window))
+            .on_action(
+                cx.listener(|this, _: &tab_workflows::ReopenClosedTab, w, cx| {
+                    this.reopen_closed_tab(w, cx)
+                }),
+            )
+            .on_action(cx.listener(|this, _: &tab_workflows::DuplicateTab, w, cx| {
+                this.duplicate_tab_at(this.active, w, cx)
+            }))
             .on_action(cx.listener(|this, action, w, cx| {
                 if !this.settings_open {
                     this.close_tab(action, w, cx);
@@ -610,6 +589,168 @@ impl Render for Explorer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[gpui::test]
+    fn closing_background_or_reselecting_active_tab_keeps_search_running(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.background_executor.allow_parking();
+        cx.skip_drawing();
+        let window = cx.add_window(|w, cx| {
+            let preferences = cx.new(|cx| {
+                crate::settings::Preferences::new(
+                    (
+                        Default::default(),
+                        Some("memory-only search test preferences".into()),
+                    ),
+                    cx,
+                )
+            });
+            cx.set_global(crate::settings::SharedPreferences(preferences));
+            let icons = cx.new(ShellIcons::new);
+            let tabs = (0..2)
+                .map(|_| {
+                    cx.new(|cx| {
+                        FolderView::new(Location::Home, ThemeMode::Light, icons.clone(), w, cx)
+                    })
+                })
+                .collect();
+            Explorer::with_tabs(tabs, icons, ThemeMode::Light, false, w, cx)
+        });
+        window
+            .update(cx, |e, w, cx| {
+                let active = e.tabs[e.active].clone();
+                active.update(cx, |t, cx| t.hold_name_search_for_test(cx));
+                e.close(1, w, cx);
+                assert_eq!(e.tabs[e.active].entity_id(), active.entity_id());
+                assert!(active.read(cx).name_search_running_for_test());
+                e.switch(e.active, w, cx);
+                assert!(active.read(cx).name_search_running_for_test());
+                e.new_tab(&NewTab, w, cx);
+                assert!(!active.read(cx).name_search_running_for_test());
+            })
+            .unwrap();
+    }
+    #[gpui::test]
+    fn reopen_and_duplicate_shortcuts_preserve_display_and_stay_window_local(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(bind_workflow_keys);
+        let window = settings_key_window(cx);
+        let other = settings_key_window(cx);
+        window
+            .update(cx, |probe, w, cx| {
+                probe.explorer.update(cx, |v, cx| {
+                    v.settings_open = false;
+                    v.new_tab(&NewTab, w, cx);
+                    v.tabs[1].update(cx, |t, _| {
+                        t.restore_session_display(crate::session_data::SavedDisplay {
+                            gallery: Some(true),
+                            ..Default::default()
+                        })
+                    });
+                    v.close(1, w, cx);
+                })
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        visual.simulate_keystrokes("ctrl-shift-t ctrl-shift-k");
+        window
+            .read_with(&visual, |probe, cx| {
+                let view = probe.explorer.read(cx);
+                assert_eq!(view.tabs.len(), 3);
+                assert_eq!(view.active, 2);
+                assert_eq!(view.tabs[2].read(cx).session_display().gallery, Some(true));
+            })
+            .unwrap();
+        other
+            .read_with(&visual, |probe, cx| {
+                let view = probe.explorer.read(cx);
+                assert_eq!(view.tabs.len(), 1);
+                assert!(view.closed_tabs.is_empty());
+            })
+            .unwrap();
+    }
+    #[gpui::test]
+    fn closed_tabs_reopen_in_place_as_new_entities_and_duplicate_to_the_right(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let window = settings_key_window(cx);
+        window
+            .update(cx, |probe, w, cx| {
+                probe.explorer.update(cx, |view, cx| {
+                    view.settings_open = false;
+                    view.new_tab(&NewTab, w, cx);
+                    let old = view.tabs[1].entity_id();
+                    view.close(1, w, cx);
+                    assert_eq!(view.closed_tabs.len(), 1);
+                    view.reopen_closed_tab(w, cx);
+                    assert_eq!(view.tabs.len(), 2);
+                    assert_eq!(view.active, 1);
+                    assert_ne!(view.tabs[1].entity_id(), old);
+                    assert!(view.closed_tabs.is_empty());
+                    view.duplicate_tab_at(0, w, cx);
+                    assert_eq!(view.tabs.len(), 3);
+                    assert_eq!(view.active, 1);
+                    assert_ne!(view.tabs[0].entity_id(), view.tabs[1].entity_id());
+                });
+            })
+            .unwrap();
+    }
+    #[gpui::test]
+    fn closed_tab_history_is_bounded_and_last_tab_stays_open(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        window
+            .update(cx, |probe, w, cx| {
+                probe.explorer.update(cx, |view, cx| {
+                    view.settings_open = false;
+                    view.new_tab(&NewTab, w, cx);
+                    for _ in 0..25 {
+                        view.remember_closed(1, cx);
+                    }
+                    assert_eq!(view.closed_tabs.len(), 20);
+                    view.close(1, w, cx);
+                    let count = view.closed_tabs.len();
+                    view.close(0, w, cx);
+                    assert_eq!(view.tabs.len(), 1);
+                    assert_eq!(view.closed_tabs.len(), count);
+                });
+            })
+            .unwrap();
+    }
+    #[gpui::test]
+    fn restores_window_pane_and_each_tabs_display_before_loading(cx: &mut gpui::TestAppContext) {
+        use crate::session_data::{SavedDisplay, SavedSort, SavedWindow};
+        let _probe = settings_key_window(cx);
+        let displays = vec![
+            SavedDisplay {
+                gallery: Some(true),
+                sort: SavedSort::Size,
+                ascending: false,
+                manual_sort: false,
+            },
+            SavedDisplay::default(),
+        ];
+        let saved = SavedWindow {
+            pane: false,
+            tabs: vec![None, None],
+            tab_display: displays.clone(),
+            active: 1,
+            ..Default::default()
+        };
+        let window = cx.add_window(|w, cx| Explorer::restore(saved, w, cx));
+        window
+            .update(cx, |view, w, cx| {
+                assert!(!view.pane);
+                for tab in &view.tabs {
+                    assert!(!tab.read(cx).pane);
+                }
+                assert_eq!(view.session_snapshot(w, cx).tab_display, displays);
+                view.switch(0, w, cx);
+                assert_eq!(view.session_snapshot(w, cx).tab_display[0], displays[0]);
+            })
+            .unwrap();
+    }
 
     #[gpui::test]
     fn pane_is_shared_by_window_tabs_and_inherited_on_attach(cx: &mut gpui::TestAppContext) {
@@ -842,7 +983,7 @@ mod tests {
             .unwrap();
         cx.simulate_keystrokes(
             window.into(),
-            "alt-f4 ctrl-1 alt-2 shift-3 cmd-4 ctrl-5 ctrl-escape 9 x",
+            "alt-f4 ctrl-1 alt-2 shift-3 cmd-4 ctrl-5 ctrl-escape 0 x",
         );
         cx.dispatch_keystroke(
             window.into(),
@@ -870,7 +1011,7 @@ mod tests {
                     .collect();
                 assert_eq!(
                     keys,
-                    ["f4", "1", "2", "3", "4", "5", "escape", "9", "x", "5"]
+                    ["f4", "1", "2", "3", "4", "5", "escape", "0", "x", "5"]
                 );
                 assert!(probe.bubbled_keys[0].modifiers.alt);
                 assert!(probe.bubbled_keys[9].modifiers.function);
@@ -994,9 +1135,9 @@ mod tests {
             })
             .unwrap();
         let last_category = if cfg!(any(windows, target_os = "macos")) {
-            4
+            5
         } else {
-            3
+            4
         };
         for (key, category) in [("up", last_category), ("down", 0), ("down", 1)] {
             cx.simulate_keystrokes(window.into(), key);
@@ -1010,6 +1151,7 @@ mod tests {
                 .unwrap();
         }
         for (key, category, selector) in [
+            ("9", last_category, "settings-row-restore-tabs"),
             ("8", 3, "settings-row-performance"),
             ("7", 2, "settings-row-smooth-scroll"),
             ("6", 2, "settings-row-high-refresh"),
@@ -1045,12 +1187,32 @@ mod tests {
                 assert_eq!(value.high_refresh_rate, !before.high_refresh_rate);
                 assert_eq!(value.smooth_scroll, !before.smooth_scroll);
                 assert_eq!(value.performance_overlay, !before.performance_overlay);
+                assert_eq!(value.restore_tabs, !before.restore_tabs);
                 assert_eq!(
                     ThemeMode::from(value.theme),
                     ThemeMode::from(before.theme).next()
                 );
             })
             .unwrap();
+    }
+
+    #[gpui::test]
+    fn startup_setting_scroll_accounts_for_session_error(cx: &mut gpui::TestAppContext) {
+        let window = settings_key_window(cx);
+        window
+            .update(cx, |p, _, cx| {
+                let preferences = p.explorer.read(cx).preferences.clone();
+                preferences.update(cx, |p, _| p.error = None);
+                crate::session::init((Default::default(), Some("session test error".into())), cx);
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(px(640.), px(360.)));
+        cx.simulate_keystrokes(window.into(), "9");
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let body = visual.debug_bounds("settings-body").unwrap();
+        let row = visual.debug_bounds("settings-row-restore-tabs").unwrap();
+        assert!(row.top() >= body.top() && row.top() < body.bottom());
     }
 
     #[gpui::test]
@@ -1170,6 +1332,118 @@ mod tests {
                 .advance_clock(std::time::Duration::from_millis(16));
         }
         panic!("motion never settled");
+    }
+
+    #[gpui::test]
+    fn opening_and_closing_a_tab_changes_the_strip_width_over_frames(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| cx.set_reduce_motion(false));
+        let window = settings_key_window(cx);
+        window
+            .update(cx, |probe, w, cx| {
+                probe
+                    .explorer
+                    .update(cx, |view, cx| view.close_settings(w, cx));
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(px(1200.), px(700.)));
+        let width = |visual: &mut gpui::VisualTestContext| {
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            window
+                .read_with(visual, |probe, cx| {
+                    probe.explorer.read(cx).tab_strip.get().size.width
+                })
+                .unwrap()
+        };
+        let one = width(&mut visual);
+        let sidebar = visual.debug_bounds("sidebar-home").unwrap();
+        window
+            .update(&mut visual, |probe, w, cx| {
+                probe
+                    .explorer
+                    .update(cx, |view, cx| view.new_tab(&NewTab, w, cx));
+            })
+            .unwrap();
+        assert_eq!(width(&mut visual), one);
+        assert_eq!(visual.debug_bounds("sidebar-home"), Some(sidebar));
+        assert!(settle_frames(&mut visual) > 1);
+        let two = width(&mut visual);
+        assert_eq!(two - one, px(184.));
+        window
+            .update(&mut visual, |probe, w, cx| {
+                probe.explorer.update(cx, |view, cx| {
+                    view.close(0, w, cx);
+                    assert_eq!(view.tabs.len(), 1);
+                });
+            })
+            .unwrap();
+        assert_eq!(width(&mut visual), two);
+        assert!(visual.debug_bounds("closing-tab-face").is_some());
+        assert!(settle_frames(&mut visual) > 1);
+        assert_eq!(width(&mut visual), one);
+        assert!(visual.debug_bounds("closing-tab-face").is_none());
+    }
+
+    #[gpui::test]
+    fn opening_tabs_reveals_the_active_tab_in_a_scrollable_strip(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| cx.set_reduce_motion(true));
+        let window = settings_key_window(cx);
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(px(640.), px(560.)));
+        window
+            .update(&mut visual, |probe, w, cx| {
+                probe
+                    .explorer
+                    .update(cx, |view, cx| view.close_settings(w, cx));
+            })
+            .unwrap();
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let strip = visual.debug_bounds("tab-strip").unwrap();
+        let start = gpui::point(strip.left() + px(30.), strip.center().y);
+        let button = gpui::MouseButton::Left;
+        visual.simulate_mouse_down(start, button, gpui::Modifiers::none());
+        visual.simulate_mouse_move(
+            start + gpui::point(px(28.), px(0.)),
+            Some(button),
+            gpui::Modifiers::none(),
+        );
+        let last = window
+            .update(&mut visual, |probe, w, cx| {
+                assert!(cx.has_active_drag());
+                probe.explorer.update(cx, |view, cx| {
+                    for _ in 0..3 {
+                        view.new_tab(&NewTab, w, cx);
+                    }
+                    view.tabs[view.active].entity_id()
+                })
+            })
+            .unwrap();
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        window
+            .update(&mut visual, |probe, w, cx| {
+                assert_eq!(probe.explorer.read(cx).tab_scroll.offset().x, px(0.));
+                assert!(cx.stop_active_drag(w));
+                probe.explorer.update(cx, |view, cx| {
+                    view.dragging_tab = None;
+                    cx.notify();
+                });
+            })
+            .unwrap();
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        window
+            .read_with(&visual, |probe, cx| {
+                let view = probe.explorer.read(cx);
+                assert_eq!(view.tabs[view.active].entity_id(), last);
+                let strip = view.tab_scroll.bounds();
+                let offset = view.tab_scroll.offset().x;
+                let last_bounds = view.tab_scroll.bounds_for_item(4).unwrap();
+                assert!(offset < px(0.));
+                assert!(last_bounds.right() + offset <= strip.right());
+            })
+            .unwrap();
+        assert_eq!(visual.update(|w, cx| w.simulate_next_frame(cx)), 0);
     }
 
     #[gpui::test]

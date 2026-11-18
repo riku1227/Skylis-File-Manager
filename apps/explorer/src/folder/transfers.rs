@@ -326,8 +326,15 @@ impl FolderView {
         };
         let external_destination = destination.clone();
         let hover_destination = destination.clone();
+        let view = cx.weak_entity();
         element
-            .can_drop(move |drag, _, _| {
+            .can_drop(move |drag, window, cx| {
+                if view
+                    .upgrade()
+                    .is_none_or(|v| v.read(cx).descendant_area(window.mouse_position()))
+                {
+                    return false;
+                }
                 if let Some(drag) = drag.downcast_ref::<FileDrag>() {
                     valid_drop_paths(&drag.payload().paths, &hover_destination)
                 } else if let Some(drag) = drag.downcast_ref::<gpui::ExternalPaths>() {
@@ -338,6 +345,9 @@ impl FolderView {
             })
             .on_drop(cx.listener(move |this, drag: &FileDrag, window, cx| {
                 cx.stop_propagation();
+                if this.descendant_area(window.mouse_position()) {
+                    return;
+                }
                 let modifiers = window.modifiers();
                 let kind = TransferKind::from_drop_modifiers(modifiers.control, modifiers.shift);
                 this.receive_files(drag.paths(cx), destination.clone(), kind, window, cx);
@@ -345,6 +355,9 @@ impl FolderView {
             .on_drop(
                 cx.listener(move |this, drag: &gpui::ExternalPaths, window, cx| {
                     cx.stop_propagation();
+                    if this.descendant_area(window.mouse_position()) {
+                        return;
+                    }
                     let modifiers = window.modifiers();
                     #[cfg(windows)]
                     let same_process =
@@ -402,6 +415,9 @@ impl FolderView {
     }
 
     pub(super) fn selected_paths(&self) -> Vec<PathBuf> {
+        if self.descendants.selected.is_some() {
+            return Vec::new();
+        }
         self.visible
             .iter()
             .map(|&index| &self.entries[index].path)
@@ -417,6 +433,8 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.descendants.selected = None;
+        self.typeahead = Default::default();
         let Some(&index) = self.visible.get(ix) else {
             return;
         };
@@ -472,6 +490,9 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         if self.input_focused(window, cx) || self.is_home() || self.marquee_in_progress() {
             return;
         }
@@ -651,6 +672,9 @@ impl FolderView {
     }
 
     fn clipboard_write(&mut self, kind: TransferKind, window: &mut Window, cx: &mut Context<Self>) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         if self.path().is_none() || self.input_focused(window, cx) {
             return;
         }
@@ -703,6 +727,9 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         if self.path().is_none() {
             return;
         }

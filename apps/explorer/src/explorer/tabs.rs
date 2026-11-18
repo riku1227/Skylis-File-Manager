@@ -4,7 +4,7 @@ use gpui::{Bounds, Pixels, Point, WindowHandle, point, size};
 #[derive(Clone)]
 pub(super) struct TabDrag {
     pub id: gpui::EntityId,
-    pub label: String,
+    pub label: gpui::SharedString,
     pub mode: ThemeMode,
 }
 
@@ -31,10 +31,6 @@ fn reordered_index(from: usize, slot: usize, len: usize) -> usize {
         .min(len.saturating_sub(1))
 }
 
-fn insertion_slot(x: f32, origin: f32, scroll: f32, len: usize) -> usize {
-    (((x - origin - scroll) / 184. + 0.5).floor().max(0.) as usize).min(len)
-}
-
 fn screen_scale(window: &Window) -> f32 {
     if cfg!(windows) {
         window.scale_factor()
@@ -49,6 +45,10 @@ fn screen_position(position: Point<Pixels>, window: &Window) -> Point<Pixels> {
 
 impl Explorer {
     pub(super) fn new_window(&mut self, _: &NewWindow, w: &mut Window, cx: &mut Context<Self>) {
+        self.open_window_at(Location::Home, w, cx);
+    }
+
+    fn open_window_at(&mut self, location: Location, w: &mut Window, cx: &mut Context<Self>) {
         let icons = self.icons.clone();
         let mode = self.mode;
         let compact = self.compact;
@@ -57,8 +57,7 @@ impl Explorer {
             crate::window_chrome::window_options(bounds, "Skylis"),
             move |w, cx| {
                 cx.new(|cx| {
-                    let folder =
-                        cx.new(|cx| FolderView::new(Location::Home, mode, icons.clone(), w, cx));
+                    let folder = cx.new(|cx| FolderView::new(location, mode, icons.clone(), w, cx));
                     Self::with_tabs(vec![folder], icons, mode, compact, w, cx)
                 })
             },
@@ -75,11 +74,9 @@ impl Explorer {
             && position.x >= strip.origin.x
             && position.x < right
         {
-            Some(insertion_slot(
-                position.x.into(),
-                strip.origin.x.into(),
-                self.tab_scroll.offset().x.into(),
-                self.tabs.len(),
+            Some(self.tab_motion.drop_slot(
+                position.x - strip.origin.x - self.tab_scroll.offset().x,
+                window,
             ))
         } else {
             None
@@ -146,8 +143,11 @@ impl Explorer {
             tab,
             window,
             |this, _, event: &crate::folder::FolderEvent, w, cx| match event {
-                crate::folder::FolderEvent::OpenInTab(path) => {
-                    this.open_tab_at(Location::Folder(path.clone()), w, cx)
+                crate::folder::FolderEvent::OpenInTab(location) => {
+                    this.open_tab_at(location.clone(), w, cx)
+                }
+                crate::folder::FolderEvent::OpenInWindow(location) => {
+                    this.open_window_at(location.clone(), w, cx)
                 }
                 crate::folder::FolderEvent::SetPane(enabled) => {
                     this.pane = *enabled;
@@ -165,10 +165,17 @@ impl Explorer {
             .insert(tab.entity_id(), vec![observer, events]);
     }
 
-    fn open_tab_at(&mut self, location: Location, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_tab_at(
+        &mut self,
+        location: Location,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let tab = cx.new(|cx| FolderView::new(location, self.mode, self.icons.clone(), window, cx));
         tab.update(cx, |tab, _| tab.compact = self.compact);
         self.watch_tab(&tab, window, cx);
+        self.tab_motion
+            .open(self.tabs.len(), tab.entity_id(), cx.reduce_motion());
         self.tabs.push(tab);
         self.settings_open = false;
         self.switch(self.tabs.len() - 1, window, cx);
@@ -176,6 +183,7 @@ impl Explorer {
 
     fn remove_moved_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let tab = self.tabs.remove(index);
+        self.tab_motion.remove(tab.entity_id());
         self.tab_subscriptions.remove(&tab.entity_id());
         self.dragging_tab = None;
         self.tab_menu = None;
@@ -196,6 +204,7 @@ impl Explorer {
     ) {
         if let Some(active) = self.tabs.get(self.active) {
             active.update(cx, |tab, cx| {
+                tab.pause_name_search(cx);
                 tab.cancel_scroll_motion();
                 tab.close_preview(cx);
                 tab.close_display_settings(cx);
@@ -208,6 +217,7 @@ impl Explorer {
         });
         self.watch_tab(&tab, w, cx);
         let slot = slot.min(self.tabs.len());
+        self.tab_motion.insert(slot, tab.entity_id());
         self.tabs.insert(slot, tab);
         self.settings_open = false;
         self.active = slot;
@@ -287,6 +297,12 @@ impl Explorer {
             );
         }
     }
+    fn detach_menu_tab(&mut self, index: usize, w: &mut Window, cx: &mut Context<Self>) {
+        self.tab_menu = None;
+        if self.tabs.len() > 1 && index < self.tabs.len() {
+            self.detach_at(index, w.bounds().origin + point(px(32.), px(32.)), w, cx);
+        }
+    }
 
     pub(super) fn merge_windows(
         &mut self,
@@ -352,9 +368,14 @@ impl Explorer {
         {
             // Stop the outgoing tab before its index changes, including when a
             // search/address child owns focus and the folder blur hook won't run.
+            if self.tabs[self.active].entity_id() != self.tabs[index].entity_id() {
+                self.tabs[self.active].update(cx, |tab, cx| tab.pause_name_search(cx));
+            }
             self.tabs[self.active].update(cx, |tab, _| tab.cancel_scroll_motion());
             let to = reordered_index(index, slot, self.tabs.len());
             let tab = self.tabs.remove(index);
+            self.tab_motion.remove(id);
+            self.tab_motion.insert(to, id);
             self.tabs.insert(to, tab);
             self.active = to;
             self.switch(to, w, cx);
@@ -427,6 +448,12 @@ impl Explorer {
                 cx.notify();
             }));
         for (name, label, enabled) in [
+            ("duplicate-tab", "タブを複製", true),
+            (
+                "reopen-closed-tab",
+                "閉じたタブを開き直す",
+                !self.closed_tabs.is_empty(),
+            ),
             ("detach-tab", "別のウィンドウに移動", self.tabs.len() > 1),
             (
                 "merge-tabs",
@@ -450,13 +477,20 @@ impl Explorer {
                         if !enabled {
                             return;
                         }
-                        if name == "merge-tabs" {
+                        if name == "reopen-closed-tab" {
+                            this.reopen_closed_tab(w, cx);
+                        } else if name == "duplicate-tab" {
+                            if let Some(index) =
+                                this.tabs.iter().position(|tab| tab.entity_id() == id)
+                            {
+                                this.duplicate_tab_at(index, w, cx);
+                            }
+                        } else if name == "merge-tabs" {
                             this.merge_windows(&MergeWindowTabs, w, cx);
                         } else if let Some(index) =
                             this.tabs.iter().position(|tab| tab.entity_id() == id)
                         {
-                            this.active = index;
-                            this.detach_tab(&DetachTab, w, cx);
+                            this.detach_menu_tab(index, w, cx);
                         }
                     })),
             );
@@ -546,14 +580,6 @@ mod tests {
         assert_eq!(reordered_index(1, 2, 3), 1);
         assert_eq!(reordered_index(0, 1, 1), 0);
     }
-    #[test]
-    fn tab_drop_slots_respect_horizontal_scroll_and_midpoints() {
-        assert_eq!(insertion_slot(100., 10., 0., 5), 0);
-        assert_eq!(insertion_slot(104., 10., 0., 5), 1);
-        assert_eq!(insertion_slot(10., 10., -368., 5), 2);
-        assert_eq!(insertion_slot(5000., 10., 0., 5), 5);
-    }
-
     fn test_window(cx: &mut gpui::TestAppContext) -> WindowHandle<Explorer> {
         cx.background_executor.allow_parking();
         cx.skip_drawing();
@@ -801,6 +827,8 @@ mod tests {
                 let first = view.tabs[0].entity_id();
                 view.open_tab_at(Location::Home, w, cx);
                 view.open_tab_at(Location::Home, w, cx);
+                let outgoing = view.tabs[view.active].clone();
+                outgoing.update(cx, |tab, cx| tab.hold_name_search_for_test(cx));
                 view.tab_strip
                     .set(Bounds::new(point(px(10.), px(6.)), size(px(700.), px(28.))));
                 view.dragging_tab = Some(first);
@@ -809,10 +837,28 @@ mod tests {
                 assert_eq!(view.tabs[2].entity_id(), first);
                 assert_eq!(view.active, 2);
                 assert!(view.dragging_tab.is_none());
+                assert!(!outgoing.read(cx).name_search_running_for_test());
             })
             .unwrap();
     }
 
+    #[gpui::test]
+    fn detaching_background_tab_keeps_source_active_search(cx: &mut gpui::TestAppContext) {
+        let window = test_window(cx);
+        window
+            .update(cx, |view, w, cx| {
+                view.open_tab_at(Location::Home, w, cx);
+                view.open_tab_at(Location::Home, w, cx);
+                view.switch(0, w, cx);
+                let active = view.tabs[0].clone();
+                active.update(cx, |tab, cx| tab.hold_name_search_for_test(cx));
+                view.detach_menu_tab(2, w, cx);
+                assert_eq!(view.tabs.len(), 2);
+                assert_eq!(view.tabs[view.active].entity_id(), active.entity_id());
+                assert!(active.read(cx).name_search_running_for_test());
+            })
+            .unwrap();
+    }
     #[gpui::test]
     fn overlapping_front_window_receives_drop_inside_source_tab_strip(
         cx: &mut gpui::TestAppContext,
@@ -900,6 +946,42 @@ mod tests {
     }
 
     #[gpui::test]
+    fn open_in_window_creates_a_separate_window_at_the_requested_place(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let source = test_window(cx);
+        let location = Location::Folder(env!("CARGO_MANIFEST_DIR").into());
+        source
+            .update(cx, |view, _, cx| {
+                view.tabs[0].update(cx, |_, cx| {
+                    cx.emit(crate::folder::FolderEvent::OpenInWindow(location.clone()));
+                });
+            })
+            .unwrap();
+        cx.update(|cx| {
+            let other_windows: Vec<_> = cx
+                .windows()
+                .into_iter()
+                .filter_map(|handle| handle.downcast::<Explorer>())
+                .filter(|handle| *handle != source)
+                .collect();
+            assert_eq!(other_windows.len(), 1);
+            other_windows[0]
+                .read_with(cx, |view, cx| {
+                    assert_eq!(view.tabs.len(), 1);
+                    assert_eq!(view.tabs[0].read(cx).tab_location(), &location);
+                })
+                .unwrap();
+        });
+        source
+            .read_with(cx, |view, cx| {
+                assert_eq!(view.tabs.len(), 1);
+                assert_eq!(view.tabs[0].read(cx).tab_location(), &Location::Home);
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
     fn moved_folder_open_in_tab_event_reaches_only_its_current_window(
         cx: &mut gpui::TestAppContext,
     ) {
@@ -914,7 +996,9 @@ mod tests {
         target
             .update(cx, |view, _, cx| {
                 view.tabs[0].update(cx, |_, cx| {
-                    cx.emit(crate::folder::FolderEvent::OpenInTab(std::env::temp_dir()))
+                    cx.emit(crate::folder::FolderEvent::OpenInTab(Location::Folder(
+                        std::env::temp_dir(),
+                    )))
                 });
             })
             .unwrap();

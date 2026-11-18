@@ -321,6 +321,9 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         if self.path().is_none() {
             return;
         }

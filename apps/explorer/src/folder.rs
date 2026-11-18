@@ -4,6 +4,7 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 mod home;
+pub(crate) mod keyboard;
 mod marquee;
 mod selection_geometry;
 mod transfers;
@@ -17,13 +18,16 @@ mod preview_window;
 mod wsl;
 use crate::media::{MediaCache, MediaScope};
 mod archives;
-mod context_menu;
+pub(crate) mod context_menu;
 mod delete;
 pub(crate) mod display_settings;
 mod name_editor;
 mod name_operations;
+mod name_search;
 mod scroll_motion;
 mod scrollbar;
+pub(crate) mod search_filters;
+mod search_presentation;
 mod watch;
 use context_menu::ContextMenu;
 use explorer_core::history::breadcrumbs;
@@ -53,12 +57,18 @@ const COL_SIZE: Pixels = px(92.);
 const SIDEBAR_WIDTH: Pixels = px(200.);
 
 pub enum FolderEvent {
-    OpenInTab(PathBuf),
+    OpenInTab(Location),
+    OpenInWindow(Location),
     SetPane(bool),
 }
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
 
 pub struct FolderView {
+    descendants: name_search::SearchState,
+    pending_select_path: Option<PathBuf>,
+    typeahead: keyboard::Typeahead,
+    restored_display: Option<crate::session_data::SavedDisplay>,
+    session_deferred: bool,
     display_settings: display_settings::DisplaySettings,
     marquee: marquee::MarqueeState,
     motion: scroll_motion::FolderMotion,
@@ -93,6 +103,7 @@ pub struct FolderView {
     pub pane: bool,
     pub compact: bool,
     search: Entity<TextInput>,
+    search_filters: search_filters::SearchFilters,
     query: String,
     icons: Entity<ShellIcons>,
     focus: FocusHandle,
@@ -149,6 +160,53 @@ pub struct FolderView {
 }
 
 impl FolderView {
+    pub(crate) fn tab_location(&self) -> &Location {
+        self.history.current()
+    }
+    pub(crate) fn tab_workflow_blocked(&self) -> bool {
+        self.name_editor.is_some()
+            || self.archive_dialog.is_some()
+            || self.context_menu.is_some()
+            || self.display_settings.open
+            || !self.typeahead.composition.is_empty()
+    }
+    pub(crate) fn session_display(&self) -> crate::session_data::SavedDisplay {
+        use crate::session_data::{SavedDisplay, SavedSort};
+        self.restored_display.unwrap_or_else(|| SavedDisplay {
+            gallery: self.gallery_override,
+            sort: match self.sort.key {
+                SortKey::Name => SavedSort::Name,
+                SortKey::Modified => SavedSort::Modified,
+                SortKey::Kind => SavedSort::Kind,
+                SortKey::Size => SavedSort::Size,
+            },
+            ascending: self.sort.ascending,
+            manual_sort: self.is_downloads() && !self.grouped,
+        })
+    }
+
+    pub(crate) fn restore_session_display(&mut self, saved: crate::session_data::SavedDisplay) {
+        use crate::session_data::SavedSort;
+        self.gallery_override = saved.gallery;
+        self.sort = SortOrder {
+            key: match saved.sort {
+                SavedSort::Name => SortKey::Name,
+                SavedSort::Modified => SortKey::Modified,
+                SavedSort::Kind => SortKey::Kind,
+                SavedSort::Size => SortKey::Size,
+            },
+            ascending: saved.ascending,
+        };
+        self.restored_display = Some(saved);
+    }
+    pub(crate) fn session_path(&self) -> Option<PathBuf> {
+        let path = match self.history.current() {
+            Location::Home => return None,
+            Location::Folder(path) => path.as_path(),
+            Location::Archive { archive, .. } => archive.parent()?,
+        };
+        crate::session_data::valid_path(path).then(|| path.to_path_buf())
+    }
     pub fn new(
         start: Location,
         mode: ThemeMode,
@@ -156,21 +214,64 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::create(start, mode, icons, window, cx, false)
+    }
+
+    pub(crate) fn new_deferred(
+        start: Location,
+        mode: ThemeMode,
+        icons: Entity<ShellIcons>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::create(start, mode, icons, window, cx, true)
+    }
+
+    pub(crate) fn activate_session(&mut self, cx: &mut Context<Self>) {
+        self.activate_name_search();
+        if std::mem::take(&mut self.session_deferred) {
+            self.refresh_drives(cx);
+            self.discover_wsl(cx);
+            self.load(self.history.current().clone(), None, cx);
+        }
+    }
+
+    fn create(
+        start: Location,
+        mode: ThemeMode,
+        icons: Entity<ShellIcons>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        deferred: bool,
+    ) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
 
         let search = cx.new(TextInput::new);
         cx.observe(&search, |this, search, cx| {
             let query = search.read(cx).content.to_string();
+            let composing = search.read(cx).is_composing();
+            let changed = query != this.query || composing != this.descendants.composing;
             if query != this.query {
-                this.query = query;
+                let previous = std::mem::replace(&mut this.query, query);
                 let keep = this.selected_entry().map(|e| e.path.clone());
-                this.rebuild_visible(keep.as_deref());
+                if this.rebase_search_modified_period() {
+                    this.rebuild_visible(keep.as_deref());
+                } else {
+                    this.rebuild_query_visible(&previous, keep.as_deref());
+                }
                 this.scroll.scroll_to_item(0, ScrollStrategy::Top);
+                cx.notify();
+            } else if changed {
+                this.refresh_search_modified_period(cx);
+            }
+            if changed {
+                this.query_search_changed(composing, cx);
                 cx.notify();
             }
         })
         .detach();
+        let search_filters = search_filters::SearchFilters::new(cx);
         let address = cx.new(|cx| {
             let mut input = TextInput::new(cx);
             input.placeholder = "フォルダーのパスを入力…".into();
@@ -244,6 +345,11 @@ impl FolderView {
         cx.observe(&transfer_progress, |_, _, cx| cx.notify())
             .detach();
         let mut this = Self {
+            descendants: name_search::SearchState::new(!deferred),
+            pending_select_path: None,
+            typeahead: Default::default(),
+            restored_display: None,
+            session_deferred: deferred,
             display_settings: display_settings::DisplaySettings::new(cx),
             marquee: Default::default(),
             motion: Default::default(),
@@ -287,6 +393,7 @@ impl FolderView {
             _wsl_task: None,
             wsl: Vec::new(),
             query: String::new(),
+            search_filters,
             icons,
             focus,
             owner_window: window.window_handle(),
@@ -329,23 +436,40 @@ impl FolderView {
         this.attach_window(window, cx);
         this.observe_file_transfers(cx);
         this.observe_archive_jobs(cx);
-        this.refresh_drives(cx);
-        this.discover_wsl(cx);
-        this.load(start, None, cx);
+        if !deferred {
+            this.refresh_drives(cx);
+            this.discover_wsl(cx);
+            this.load(start, None, cx);
+        }
         this
     }
 
     pub fn attach_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.close_display_settings(cx);
+        self.close_search_filters(cx);
         if self.owner_window != window.window_handle() {
             self.owner_window = window.window_handle();
             self.attach_name_editor_window(window, cx);
         }
         self.attach_motion_window(window);
         self._window_subscriptions.clear();
+        self.observe_search_filter_focus(window, cx);
+        self._window_subscriptions
+            .push(cx.on_blur(&self.menu_focus, window, |view, _, cx| {
+                if view.place_context_menu_open() {
+                    view.context_menu = None;
+                    cx.notify();
+                }
+            }));
         self._window_subscriptions
             .push(cx.observe_window_activation(window, |this, w, cx| {
                 if !w.is_window_active() {
+                    this.typeahead = Default::default();
+                    if this.filter_popup_focus(w, cx) {
+                        this.dismiss_search_filters(w, cx);
+                    } else {
+                        this.close_search_filters(cx);
+                    }
                     this.cancel_scroll_motion();
                     cx.notify();
                 }
@@ -369,6 +493,7 @@ impl FolderView {
             }));
         self._window_subscriptions
             .push(cx.on_blur(&self.focus, window, |this, _, cx| {
+                this.typeahead = Default::default();
                 this.cancel_scroll_motion();
                 cx.notify();
             }));
@@ -475,6 +600,11 @@ impl FolderView {
     }
 
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
+        self.reset_name_search();
+        self.pending_select_path = None;
+        self.typeahead = Default::default();
+        self.session_deferred = false;
+        let restored_display = self.restored_display.take();
         self.close_display_settings(cx);
         self.archive_dialog = None;
         self.startup_handoff = None;
@@ -497,7 +627,9 @@ impl FolderView {
         self.cancel = CancelToken::new();
         self._listing = None;
 
-        self.grouped = self.group_downloads && self.is_downloads();
+        self.grouped = self.group_downloads
+            && self.is_downloads()
+            && !restored_display.is_some_and(|s| s.manual_sort);
         self.group_date = chrono::Local::now().date_naive();
         self.display_rows.clear();
         self.entry_rows.clear();
@@ -576,11 +708,24 @@ impl FolderView {
     fn on_listing_event(&mut self, ev: ListingEvent, cx: &mut Context<Self>) {
         match ev {
             ListingEvent::Batch(mut batch) => {
+                let anchor = self.capture_search_anchor();
                 let selected_path = self.selected_entry().map(|e| e.path.clone());
                 let sort = self.sort;
                 batch.sort_unstable_by(|a, b| sort.compare(a, b));
                 self.entries = merge_sorted(std::mem::take(&mut self.entries), batch, sort);
                 self.rebuild_visible(selected_path.as_deref());
+                self.restore_search_anchor(anchor);
+
+                if let Some(path) = &self.pending_select_path {
+                    if let Some(ix) = self
+                        .visible
+                        .iter()
+                        .position(|&i| &self.entries[i].path == path)
+                    {
+                        self.select(ix, cx);
+                        self.pending_select_path = None;
+                    }
+                }
 
                 if let Some(name) = &self.pending_select {
                     if let Some(ix) = self
@@ -605,6 +750,8 @@ impl FolderView {
                     self.startup_handoff = None;
                 }
                 self.pending_select = None;
+                self.pending_select_path = None;
+                self.query_search_changed(self.search.read(cx).is_composing(), cx);
             }
             ListingEvent::Failed(kind, msg) => {
                 self.permission_observation.record(Err(kind), false);
@@ -624,19 +771,37 @@ impl FolderView {
 
     /// visible を作り直し、選択を同じパスの項目に合わせ直す
     fn rebuild_visible(&mut self, keep: Option<&Path>) {
+        self.rebuild_filtered(keep, None);
+    }
+
+    fn rebuild_query_visible(&mut self, previous: &str, keep: Option<&Path>) {
+        self.rebuild_filtered(keep, Some(previous));
+    }
+
+    fn rebuild_filtered(&mut self, keep: Option<&Path>, previous: Option<&str>) {
         let show_hidden = self.show_hidden;
         let revealed = self.launch_reveal.as_deref();
         let query = self.query.to_lowercase();
-        self.visible = self
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| {
-                (show_hidden || !e.hidden || revealed == Some(e.name.as_str()))
-                    && e.name.to_lowercase().contains(&query)
-            })
-            .map(|(i, _)| i)
-            .collect();
+        let matcher = explorer_core::entry::NameMatcher::new(&query);
+        let filters = &self.search_filters.criteria;
+        let matches = |e: &Entry| {
+            (show_hidden || !e.hidden || revealed == Some(e.name.as_str()))
+                && filters.matches(e)
+                && matcher.matches(e)
+        };
+        let narrow = previous
+            .filter(|p| !p.is_empty())
+            .is_some_and(|p| query.starts_with(&p.to_lowercase()));
+        if narrow {
+            self.visible.retain(|&i| matches(&self.entries[i]));
+        } else {
+            self.visible = self
+                .entries
+                .iter()
+                .enumerate()
+                .filter_map(|(i, e)| matches(e).then_some(i))
+                .collect();
+        }
         self.apply_grouping();
         self.selected =
             keep.and_then(|p| self.visible.iter().position(|&i| self.entries[i].path == p));
@@ -663,9 +828,24 @@ impl FolderView {
     // ───────────── ナビゲーション ─────────────
 
     fn clear_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.cancel_name_search(true);
         self.query.clear();
+        self.reset_search_filters(window, cx);
         self.search.update(cx, |input, cx| input.reset(window, cx));
         window.focus(&self.focus, cx);
+    }
+
+    fn clear_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let rebuild = self.search_active() && !self.is_home();
+        let keep = rebuild
+            .then(|| self.selected_entry().map(|entry| entry.path.clone()))
+            .flatten();
+        self.clear_query(window, cx);
+        if rebuild {
+            self.rebuild_visible(keep.as_deref());
+            self.scroll.scroll_to_item(0, ScrollStrategy::Top);
+        }
+        cx.notify();
     }
 
     fn navigate_to(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
@@ -717,7 +897,16 @@ impl FolderView {
             }
             return;
         }
-        if entry.kind == EntryKind::File && explorer_core::archive::detect_format(&path).is_some() {
+        self.open_filesystem_target(path, entry.kind, window, cx);
+    }
+    fn open_filesystem_target(
+        &mut self,
+        path: PathBuf,
+        kind: EntryKind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if kind == EntryKind::File && explorer_core::archive::detect_format(&path).is_some() {
             self.navigate(
                 Location::Archive {
                     archive: path,
@@ -728,18 +917,14 @@ impl FolderView {
             );
             return;
         }
-        if entry.kind == EntryKind::Dir {
+        if kind == EntryKind::Dir {
             self.navigate_to(path, window, cx);
         } else {
             if self._open_request.is_some() {
                 return;
             }
-            let generation = self.cancel.clone();
-            match crate::file_open::request(
-                path,
-                entry.kind == EntryKind::Symlink,
-                generation.clone(),
-            ) {
+            let generation = self.filesystem_open_cancel();
+            match crate::file_open::request(path, kind == EntryKind::Symlink, generation.clone()) {
                 Ok(receiver) => {
                     self.observe_open_request(receiver, generation, cx);
                 }
@@ -764,6 +949,7 @@ impl FolderView {
                     return;
                 }
                 view._open_request = None;
+                view.descendants.open_pending = false;
                 match result {
                     Ok(Ok(crate::file_open::OpenOutcome::Directory(path))) => {
                         let focused = view.focus.contains_focused(window, cx);
@@ -786,6 +972,9 @@ impl FolderView {
     }
 
     fn go_back(&mut self, _: &GoBack, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.typeahead.composition.is_empty() {
+            return;
+        }
         if let Some((path, sel)) = self.history.go_back(self.selected_name()) {
             self.gallery_override = None;
             self.clear_query(window, cx);
@@ -794,6 +983,9 @@ impl FolderView {
     }
 
     fn go_forward(&mut self, _: &GoForward, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.typeahead.composition.is_empty() {
+            return;
+        }
         if let Some((path, sel)) = self.history.go_forward(self.selected_name()) {
             self.gallery_override = None;
             self.clear_query(window, cx);
@@ -802,6 +994,9 @@ impl FolderView {
     }
 
     fn go_up(&mut self, _: &GoUp, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.typeahead.composition.is_empty() {
+            return;
+        }
         if let Location::Archive { archive, prefix } = self.history.current().clone() {
             if prefix.is_empty() {
                 let parent = archive
@@ -851,8 +1046,11 @@ impl FolderView {
         }
         self.permission_observation.retry();
         self.refresh_drives(cx);
+        self.refresh_search_modified_period(cx);
         if self.path().is_some() && !self.loading {
             self.request_refresh(cx);
+            self.reset_name_search();
+            self.query_search_changed(self.search.read(cx).is_composing(), cx);
             return;
         }
         let location = self.history.current().clone();
@@ -881,6 +1079,7 @@ impl FolderView {
         self.show_hidden = enabled;
         let keep = self.selected_entry().map(|e| e.path.clone());
         self.rebuild_visible(keep.as_deref());
+        self.query_search_changed(self.search.read(cx).is_composing(), cx);
         cx.notify();
     }
 
@@ -907,6 +1106,23 @@ impl FolderView {
     // ───────────── 選択移動 ─────────────
 
     fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
+        if self.recursive_search() && !self.descendants.hits.is_empty() {
+            let len = self.visible.len() + self.descendants.hits.len();
+            let current = self
+                .descendants
+                .selected
+                .map(|i| self.visible.len() + i)
+                .or(self.selected);
+            let next = current
+                .map(|i| (i as isize + delta).clamp(0, len as isize - 1) as usize)
+                .unwrap_or(if delta >= 0 { 0 } else { len - 1 });
+            if next >= self.visible.len() {
+                self.select_descendant(next - self.visible.len(), cx);
+            } else {
+                self.select(next, cx);
+            }
+            return;
+        }
         let len = self.item_count();
         if len == 0 {
             return;
@@ -925,9 +1141,11 @@ impl FolderView {
     }
 
     fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
+        self.descendants.selected = None;
         if self.marquee_in_progress() {
             return;
         }
+        self.typeahead = Default::default();
         self.preview_scope.cancel();
         self.multi_selection.clear();
         if let Some(&i) = self.visible.get(ix) {
@@ -943,7 +1161,7 @@ impl FolderView {
 
     fn page_rows(&self) -> isize {
         let h = self.scroll.0.borrow().base_handle.bounds().size.height;
-        let row_height = if self.gallery {
+        let row_height = if self.list_gallery() {
             if self.compact { 156. } else { 172. }
         } else if self.compact {
             24.
@@ -951,7 +1169,7 @@ impl FolderView {
             28.
         };
         ((h / px(row_height)).floor() as isize - 1).max(1)
-            * if self.gallery {
+            * if self.list_gallery() {
                 self.gallery_columns as isize
             } else {
                 1
@@ -963,7 +1181,7 @@ impl FolderView {
             return;
         }
         self.move_selection(
-            if self.gallery && !self.preview_open {
+            if self.list_gallery() && !self.preview_open {
                 -(self.gallery_columns as isize)
             } else {
                 -1
@@ -976,7 +1194,7 @@ impl FolderView {
             return;
         }
         self.move_selection(
-            if self.gallery && !self.preview_open {
+            if self.list_gallery() && !self.preview_open {
                 self.gallery_columns as isize
             } else {
                 1
@@ -988,12 +1206,20 @@ impl FolderView {
         if self.input_focused(window, cx) {
             return;
         }
+        if self.recursive_search() && self.visible.is_empty() && !self.descendants.hits.is_empty() {
+            self.select_descendant(0, cx);
+            return;
+        }
         if self.item_count() > 0 {
             self.select(0, cx);
         }
     }
     fn select_last(&mut self, _: &SelectLast, window: &mut Window, cx: &mut Context<Self>) {
         if self.input_focused(window, cx) {
+            return;
+        }
+        if self.recursive_search() && !self.descendants.hits.is_empty() {
+            self.select_descendant(self.descendants.hits.len() - 1, cx);
             return;
         }
         if self.item_count() > 0 {
@@ -1015,6 +1241,9 @@ impl FolderView {
         self.move_selection(n, cx);
     }
     fn open_selected(&mut self, _: &OpenSelected, window: &mut Window, cx: &mut Context<Self>) {
+        if self.activate_search_filter(window, cx) {
+            return;
+        }
         if self.address.focus_handle(cx).is_focused(window) {
             self.submit_address(window, cx);
             return;
@@ -1022,6 +1251,10 @@ impl FolderView {
         if self.search.focus_handle(cx).is_focused(window) {
             window.focus(&self.focus, cx);
             cx.notify();
+            return;
+        }
+        if self.descendants.selected.is_some() {
+            self.open_descendant(window, cx);
             return;
         }
         if let Some(ix) = self.selected {
@@ -1069,10 +1302,15 @@ impl FolderView {
         }
     }
     fn input_focused(&self, window: &Window, cx: &App) -> bool {
+        if !self.typeahead.composition.is_empty() {
+            return true;
+        }
         self.display_settings.open
+            || (self.place_context_menu_open() && self.menu_focus.is_focused(window))
             || self.name_editor.is_some()
             || self.archive_dialog.is_some()
             || self.search.focus_handle(cx).is_focused(window)
+            || self.search_filter_focus(window, cx)
             || self.address.focus_handle(cx).is_focused(window)
     }
     pub fn cancel_address(&mut self, cx: &mut Context<Self>) {
@@ -1432,55 +1670,7 @@ impl FolderView {
                     ),
             )
             .child(address)
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(if window.viewport_size().width < px(560.) {
-                        3.
-                    } else {
-                        8.
-                    }))
-                    .w(px(if window.viewport_size().width < px(560.) {
-                        76.
-                    } else if window.viewport_size().width < px(1150.) {
-                        190.
-                    } else {
-                        256.
-                    }))
-                    .flex_shrink_0()
-                    .h(px(36.))
-                    .px(px(if window.viewport_size().width < px(560.) {
-                        4.
-                    } else {
-                        12.
-                    }))
-                    .rounded(px(18.))
-                    .bg(t.c("surface.field"))
-                    .border_1()
-                    .border_color(if self.search.focus_handle(cx).is_focused(window) {
-                        t.c("focus.ring")
-                    } else {
-                        t.c("border.subtle")
-                    })
-                    .child(
-                        svg()
-                            .path("icons/search.svg")
-                            .size(px(14.))
-                            .flex_shrink_0()
-                            .text_color(t.c("icon.default")),
-                    )
-                    .child(self.search.clone())
-                    .when(!self.query.is_empty(), |d| {
-                        d.child(
-                            icon_button("clear-search", "icons/x.svg", true, t)
-                                .size(px(20.))
-                                .on_click(cx.listener(|this, _, w, cx| {
-                                    this.search.update(cx, |input, cx| input.reset(w, cx));
-                                })),
-                        )
-                    }),
-            )
+            .child(self.render_name_search_field(t, window, cx))
             .child(self.render_display_trigger(t, cx))
             .child(
                 icon_button("settings", "icons/settings.svg", true, t)
@@ -1509,6 +1699,7 @@ impl FolderView {
         panel = panel.child(
             div()
                 .id("home-place")
+                .debug_selector(|| "sidebar-home".into())
                 .flex()
                 .items_center()
                 .gap(px(10.))
@@ -1536,6 +1727,7 @@ impl FolderView {
                     },
                 )))
                 .child("ホーム")
+                .map(|d| Self::place_menu_target(d, Location::Home, cx))
                 .on_click(cx.listener(|this, _, w, cx| {
                     w.focus(&this.focus, cx);
                     this.navigate(Location::Home, w, cx);
@@ -1563,6 +1755,13 @@ impl FolderView {
                 let unpin_path = path.clone();
                 let active = self.path() == Some(path.as_path());
                 let drive = title == "ストレージ";
+                let section = if drive {
+                    "drive"
+                } else if title == "ピン留め" {
+                    "pin"
+                } else {
+                    "fav"
+                };
                 let space = self.drive_space.get(&path);
                 let mut label =
                     div()
@@ -1640,16 +1839,8 @@ impl FolderView {
                 }
                 panel = panel.child(
                     div()
-                        .id((
-                            if drive {
-                                "drive"
-                            } else if title == "ピン留め" {
-                                "pin"
-                            } else {
-                                "fav"
-                            },
-                            i,
-                        ))
+                        .id((section, i))
+                        .debug_selector(move || format!("sidebar-{section}-{i}"))
                         .group("sidebar-place")
                         .flex()
                         .items_start()
@@ -1764,6 +1955,7 @@ impl FolderView {
                             )
                         })
                         .map(|d| Self::file_drop_target(d, Some(path.clone()), t, cx))
+                        .map(|d| Self::place_menu_target(d, Location::Folder(path.clone()), cx))
                         .on_click(cx.listener(move |this, _, w, cx| {
                             this.navigate_to(path.clone(), w, cx);
                             if title == "ピン留め" {
@@ -1873,9 +2065,23 @@ impl FolderView {
         let t = self.theme(window);
         let focused = self.focus.is_focused(window);
         let narrow = self.narrow(window);
+        let query_key = self.query.to_lowercase();
+        let name_matcher = explorer_core::entry::NameMatcher::new(&query_key);
         range
             .filter_map(|row_ix| {
                 // Keep a reachable blank starting area even in a full folder.
+                if self.recursive_search()
+                    && row_ix >= self.display_rows.len()
+                    && row_ix < self.search_row_count()
+                {
+                    return Some(self.render_descendant(
+                        row_ix - self.display_rows.len(),
+                        t,
+                        &name_matcher,
+                        window,
+                        cx,
+                    ));
+                }
                 if row_ix >= self.display_rows.len() {
                     return Some(
                         div()
@@ -1885,6 +2091,19 @@ impl FolderView {
                     );
                 }
                 let ix = match *self.display_rows.get(row_ix)? {
+                    DisplayRow::SearchHeader(direct) => {
+                        return Some(self.render_search_header(
+                            if direct {
+                                format!("このフォルダー · {}", self.visible.len())
+                            } else {
+                                format!(
+                                    "サブフォルダー内 · {} · スナップショット",
+                                    self.descendants.hits.len()
+                                )
+                            },
+                            t,
+                        ));
+                    }
                     DisplayRow::Entry(ix) => ix,
                     DisplayRow::Header(group, count) => {
                         return Some(
@@ -1937,11 +2156,17 @@ impl FolderView {
                             ))
                             .child(self.render_inline_name(&e.path, t, cx).unwrap_or_else(|| {
                                 div()
+                                    .id(("entry-name", ix))
+                                    .debug_selector(move || format!("entry-name-{ix}").into())
                                     .truncate()
                                     .text_color(name_color)
                                     .when(selected, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
                                     .when(e.hidden, |d| d.opacity(0.55))
-                                    .child(e.name.clone())
+                                    .child(search_presentation::name_text(
+                                        &e.name,
+                                        name_matcher.ranges(&e),
+                                        t,
+                                    ))
                                     .into_any_element()
                             })),
                     )
@@ -2065,7 +2290,7 @@ impl FolderView {
                 )
                 .into_any_element();
         }
-        if self.visible.is_empty() {
+        if self.visible.is_empty() && !self.recursive_search() {
             return self
                 .selection_surface(
                     empty_state(
@@ -2086,7 +2311,7 @@ impl FolderView {
         }
         let list = uniform_list(
             "entries",
-            self.display_rows.len() + 2,
+            self.search_row_count() + 2,
             cx.processor(Self::render_rows),
         )
         .flex_1()
@@ -2451,6 +2676,7 @@ impl FolderView {
 }
 impl Drop for FolderView {
     fn drop(&mut self) {
+        self.descendants.open_cancel.cancel();
         self.media_scope.cancel();
         self.preview_scope.cancel();
         self.cancel.cancel();
@@ -2485,7 +2711,14 @@ impl FolderView {
             now,
             reduce,
         );
-        if menu || popup {
+        let filters = &mut self.search_filters;
+        let search_popup = filters.presence.sync(
+            filters.open.then(|| filters.criteria.clone()),
+            crate::motion::POPUP,
+            now,
+            reduce,
+        );
+        if menu || popup || search_popup {
             window.request_animation_frame();
         }
     }
@@ -2493,6 +2726,7 @@ impl FolderView {
 
 impl Render for FolderView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.reset_blocked_typeahead(window, cx);
         self.flush_directory_refresh(cx);
         let t = self.theme(window);
         self.sync_presence(window, cx);
@@ -2502,12 +2736,15 @@ impl Render for FolderView {
             input.theme = t;
             input.placeholder = if self.is_home() {
                 "ホーム内を検索…"
+            } else if self.is_archive() {
+                "書庫内を検索…"
             } else {
-                "このフォルダーを検索…"
+                "このフォルダー以下を名前で検索…"
             }
             .into();
         });
         self.address.update(cx, |input, _| input.theme = t);
+        self.theme_search_filters(t, cx);
         #[cfg(target_os = "macos")]
         {
             if self.preview_open {
@@ -2543,8 +2780,44 @@ impl Render for FolderView {
         }
         div()
             .key_context("Explorer")
+            .relative()
             .track_focus(&self.focus)
+            .child(self.typeahead_input(window, cx))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendUp, w, cx| {
+                v.extend_key(keyboard::Direction::Up, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendDown, w, cx| {
+                v.extend_key(keyboard::Direction::Down, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendLeft, w, cx| {
+                v.extend_key(keyboard::Direction::Left, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendRight, w, cx| {
+                v.extend_key(keyboard::Direction::Right, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendHome, w, cx| {
+                v.extend_key(keyboard::Direction::Home, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendEnd, w, cx| {
+                v.extend_key(keyboard::Direction::End, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendPageUp, w, cx| {
+                v.extend_key(keyboard::Direction::PageUp, w, cx)
+            }))
+            .on_action(cx.listener(|v, _: &keyboard::ExtendPageDown, w, cx| {
+                v.extend_key(keyboard::Direction::PageDown, w, cx)
+            }))
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
+                let modifiers = event.keystroke.modifiers;
+                if event.keystroke.key == "tab"
+                    && !modifiers.control
+                    && !modifiers.platform
+                    && !modifiers.alt
+                    && this.tab_search_filters(modifiers.shift, w, cx)
+                {
+                    cx.stop_propagation();
+                    return;
+                }
                 if event.keystroke.key == "tab" && !this.input_focused(w, cx) {
                     if event.keystroke.modifiers.shift && !this.pinned.is_empty() {
                         w.focus(&this.pin_remove_focus[this.pinned.len() - 1], cx);
@@ -2588,6 +2861,10 @@ impl Render for FolderView {
             }))
             .on_action(cx.listener(|this, _: &CopySelectedPaths, w, cx| {
                 if !this.input_focused(w, cx) && this.path().is_some() {
+                    if let Some(hit) = this.descendant() {
+                        this.copy_path_list(&[hit.path.clone()], cx);
+                        return;
+                    }
                     let paths = this.selected_paths();
                     this.copy_path_list(&paths, cx);
                 }
@@ -2622,10 +2899,24 @@ impl Render for FolderView {
             .on_action(cx.listener(Self::toggle_hidden))
             .on_action(cx.listener(|this, _: &FocusSearch, w, cx| {
                 this.close_display_settings(cx);
+                this.close_search_filters(cx);
                 w.focus(&this.search.focus_handle(cx), cx);
                 cx.notify()
             }))
             .on_action(cx.listener(|this, _: &ClearSearch, w, cx| {
+                if !this.typeahead.composition.is_empty() {
+                    this.typeahead = Default::default();
+                    w.notify_text_input_changed(&this.focus);
+                    cx.notify();
+                    return;
+                }
+                if this.search_input_composing(w, cx) {
+                    return;
+                }
+                if this.search_filters.open {
+                    this.dismiss_search_filters(w, cx);
+                    return;
+                }
                 if this.cancel_marquee() {
                     cx.notify();
                     return;
@@ -2637,7 +2928,7 @@ impl Render for FolderView {
                 if this.editing_address {
                     this.cancel_address(cx);
                 } else {
-                    this.search.update(cx, |input, cx| input.reset(w, cx));
+                    this.clear_search(w, cx);
                 }
                 w.focus(&this.focus, cx);
                 cx.notify()
@@ -2700,11 +2991,11 @@ impl Render for FolderView {
                                         this.open_context_menu(None, event, w, cx)
                                     }),
                                 )
-                                .when(!self.gallery, |d| {
+                                .when(!self.list_gallery(), |d| {
                                     d.child(self.render_header(t, self.narrow(window), cx))
                                 })
                                 .child(
-                                    if self.gallery && !self.visible.is_empty() {
+                                    if self.list_gallery() && !self.visible.is_empty() {
                                         self.render_gallery(t, cx)
                                     } else {
                                         self.render_list(t, cx)
@@ -2713,7 +3004,11 @@ impl Render for FolderView {
                             }),
                     )
                     .when(self.pane && !self.is_home(), |d| {
-                        d.child(self.render_inspector(t, window, cx))
+                        d.child(if self.descendants.selected.is_some() {
+                            self.render_descendant_inspector(t, cx)
+                        } else {
+                            self.render_inspector(t, window, cx).into_any_element()
+                        })
                     }),
             )
             .when(self.address_pending || self.address_error.is_some(), |d| {
@@ -2734,6 +3029,9 @@ impl Render for FolderView {
                 cfg!(target_os = "macos") && self.permission_observation.visible(),
                 |d| d.child(self.render_permission_notice(t, cx)),
             )
+            .when(self.recursive_search(), |d| {
+                d.child(self.render_search_bar(t, cx))
+            })
             .child(self.render_status(t, cx))
             .when_some(
                 self.transfer_progress.read(cx).latest.clone(),
@@ -2783,6 +3081,7 @@ impl Render for FolderView {
             .when(self.menu_presence.mounted(), |d| {
                 d.child(self.render_context_menu(t, cx))
             })
+            .children(self.render_search_filter_popover(t, window, cx))
             .when(self.display_settings.presence.mounted(), |d| {
                 d.child(self.render_display_settings(t, window, cx))
             })
@@ -2865,9 +3164,10 @@ fn icon_button_with_color(
                         "pane" => "詳細ペイン",
                         "close-pane" => "詳細ペインを閉じる",
                         "unpin" => "ピン留めを外す",
-                        "clear-search" => "検索をクリア（Esc）",
+                        "clear-search" => "検索をすべて解除",
                         "new-tab" => "新しいタブ（Ctrl+T）",
                         "display-settings-trigger" => "表示設定",
+                        "clear-search-conditions" => "条件を解除",
                         "settings" => "設定（Ctrl+,）",
                         "close-settings" => "設定を閉じる（Esc）",
                         _ => "テーマ切替",

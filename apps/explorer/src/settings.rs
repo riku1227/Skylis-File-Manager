@@ -8,14 +8,21 @@ use std::{
     path::{Path, PathBuf},
 };
 
+struct SaveSettings {
+    value: Settings,
+    revision: u64,
+    done: Option<async_channel::Sender<()>>,
+}
 pub struct Preferences {
     pub value: Settings,
-    /// Shared by all windows for this run only; deliberately excluded from Settings encoding.
+    /// Shared by all windows; mirrors the persisted setting for existing UI readers.
     pub show_hidden: bool,
     pub error: Option<String>,
     writable: bool,
-    writer: async_channel::Sender<Settings>,
-    pending: async_channel::Receiver<Settings>,
+    revision: u64,
+    saved_revision: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    writer: async_channel::Sender<SaveSettings>,
+    pending: async_channel::Receiver<SaveSettings>,
     _result: Task<()>,
     pub folder_integration: Option<crate::folder_integration::Status>,
     pub integration_busy: bool,
@@ -31,6 +38,31 @@ pub struct Preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::AppContext;
+    #[gpui::test]
+    fn quitting_immediately_after_disabling_tabs_flushes_latest_preference(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.background_executor.allow_parking();
+        cx.background_executor
+            .set_block_on_ticks(1_000_000..=1_000_000);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.conf");
+        cx.update(|cx| {
+            let preferences =
+                cx.new(|cx| Preferences::new_at((Settings::default(), None), path.clone(), cx));
+            preferences.update(cx, |p, cx| {
+                p.change(|s| s.restore_tabs = false, cx);
+                p.set_show_hidden(true, cx);
+                assert!(p.value.show_hidden && p.show_hidden);
+            });
+            cx.set_global(SharedPreferences(preferences));
+            cx.shutdown();
+        });
+        let saved = Settings::decode(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert!(!saved.restore_tabs);
+        assert!(saved.show_hidden);
+    }
     #[test]
     fn atomic_save_replaces_prior_settings() {
         let directory = std::env::temp_dir().join(format!(
@@ -53,6 +85,28 @@ mod tests {
         assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1);
         std::fs::remove_file(path).unwrap();
         std::fs::remove_dir(directory).unwrap();
+    }
+    #[gpui::test]
+    fn unchanged_preferences_do_not_rewrite_another_process_settings(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.conf");
+        let newer = Settings {
+            restore_tabs: false,
+            ..Default::default()
+        };
+        save(&path, &newer).unwrap();
+        cx.update(|cx| {
+            let preferences =
+                cx.new(|cx| Preferences::new_at((Settings::default(), None), path.clone(), cx));
+            cx.set_global(SharedPreferences(preferences));
+            cx.shutdown();
+        });
+        assert_eq!(
+            Settings::decode(&std::fs::read_to_string(path).unwrap()).unwrap(),
+            newer
+        );
     }
 }
 #[derive(Clone)]
@@ -78,7 +132,7 @@ impl From<ThemeMode> for ThemePreference {
     }
 }
 
-fn settings_path() -> PathBuf {
+pub(crate) fn settings_path() -> PathBuf {
     #[cfg(windows)]
     let root = std::env::var_os("APPDATA")
         .map(PathBuf::from)
@@ -150,28 +204,65 @@ fn save(path: &Path, value: &Settings) -> std::io::Result<()> {
 
 impl Preferences {
     pub fn new(initial: (Settings, Option<String>), cx: &mut Context<Self>) -> Self {
-        let (tx, rx) = async_channel::bounded::<Settings>(1);
+        Self::new_at(initial, settings_path(), cx)
+    }
+
+    fn new_at(initial: (Settings, Option<String>), path: PathBuf, cx: &mut Context<Self>) -> Self {
+        let (tx, rx) = async_channel::bounded::<SaveSettings>(1);
         let pending = rx.clone();
         let (result_tx, result_rx) = async_channel::bounded(1);
+        let result_pending = result_rx.clone();
+        let saved_revision = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let completed = saved_revision.clone();
         let spawned = std::thread::Builder::new()
             .name("settings-writer".into())
             .spawn(move || {
-                let path = settings_path();
                 while let Ok(mut value) = rx.recv_blocking() {
-                    std::thread::sleep(std::time::Duration::from_millis(300));
                     while let Ok(latest) = rx.try_recv() {
                         value = latest;
                     }
-                    let error = save(&path, &value)
+                    let error = save(&path, &value.value)
                         .err()
                         .map(|e| format!("設定を保存できません: {e}"));
-                    if result_tx.send_blocking(error).is_err() {
-                        break;
+                    if error.is_none() {
+                        completed.store(value.revision, std::sync::atomic::Ordering::Release);
+                    }
+                    let _ = result_pending.try_recv();
+                    let _ = result_tx.try_send(error);
+                    if let Some(done) = value.done {
+                        let _ = done.try_send(());
                     }
                 }
             });
         let error = initial.1.or_else(|| spawned.err().map(|e| e.to_string()));
         let writable = error.is_none();
+        cx.on_app_quit(|this, _| {
+            let writer = this.writer.clone();
+            let value = this.value.clone();
+            let writable = this.writable
+                && this
+                    .saved_revision
+                    .load(std::sync::atomic::Ordering::Acquire)
+                    < this.revision;
+            let revision = this.revision;
+            async move {
+                if writable {
+                    let (done, received) = async_channel::bounded(1);
+                    if writer
+                        .send(SaveSettings {
+                            value,
+                            revision,
+                            done: Some(done),
+                        })
+                        .await
+                        .is_ok()
+                    {
+                        let _ = received.recv().await;
+                    }
+                }
+            }
+        })
+        .detach();
         let result = cx.spawn(async move |this, cx| {
             while let Ok(error) = result_rx.recv().await {
                 if this
@@ -228,11 +319,14 @@ impl Preferences {
             }
         });
         // Keep a receiver only to replace the pending snapshot without growing the queue.
+        let show_hidden = initial.0.show_hidden;
         Self {
             value: initial.0,
-            show_hidden: false,
+            show_hidden,
             error,
             writable,
+            revision: 0,
+            saved_revision,
             writer: tx,
             pending,
             _result: result,
@@ -299,19 +393,29 @@ impl Preferences {
         cx.notify();
     }
     pub fn set_show_hidden(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        if self.show_hidden != enabled {
-            self.show_hidden = enabled;
-            cx.notify();
-        }
+        self.change(|s| s.show_hidden = enabled, cx);
     }
 
     pub fn change(&mut self, edit: impl FnOnce(&mut Settings), cx: &mut Context<Self>) {
+        let before = self.value.clone();
         edit(&mut self.value);
+        self.show_hidden = self.value.show_hidden;
+        if self.value == before {
+            return;
+        }
+        self.revision += 1;
+        if before.restore_tabs && !self.value.restore_tabs {
+            crate::session::restoration_disabled(cx);
+        }
         if self.writable {
             if self.writer.is_full() {
                 let _ = self.pending.try_recv();
             }
-            if let Err(e) = self.writer.try_send(self.value.clone()) {
+            if let Err(e) = self.writer.try_send(SaveSettings {
+                value: self.value.clone(),
+                revision: self.revision,
+                done: None,
+            }) {
                 self.error = Some(format!("設定を保存できません: {e}"));
             }
         }

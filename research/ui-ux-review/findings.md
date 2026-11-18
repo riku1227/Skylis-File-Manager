@@ -1,5 +1,7 @@
 # Skylis File Manager UI/UX・アニメーション調査報告
 
+> **2026-11-17追記：この報告は改善前の調査とモック案の履歴を含みます。未着手一覧ではありません。** 表示設定、Windows連携、パンくず、ピン留め等の改善とモーション第1段は実装済みです。現在地は[ロードマップ](../../docs/implementation/daily-driver-roadmap.md)、現行仕様は[表示設定](../../docs/implementation/display-settings.md)・[設定画面](../../docs/implementation/settings-navigation.md)・[UI仕上げ](../../docs/implementation/ui-polish.md)・[モーション](../../docs/implementation/motion.md)を参照してください。以下の行番号・不具合・未実装記述は調査時点のものです。
+
 - **対象リポジトリ**: `E:\github_projects\Skylis-File-Manager`
 - **調査範囲（ソースコード／トークン／設計文書）**:
   - 表示設定ポップアップ: [display_settings.rs](file:///E:/github_projects/Skylis-File-Manager/apps/explorer/src/folder/display_settings.rs)

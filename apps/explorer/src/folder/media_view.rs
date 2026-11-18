@@ -12,6 +12,9 @@ impl FolderView {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         if self.is_archive() || self.input_focused(w, cx) {
             return;
         }
@@ -164,6 +167,8 @@ impl FolderView {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let t = self.theme(w);
+        let query_key = self.query.to_lowercase();
+        let name_matcher = explorer_core::entry::NameMatcher::new(&query_key);
         range
             .filter_map(|row| {
                 let (label, indices) = self.gallery_rows.get(row)?.clone();
@@ -219,7 +224,11 @@ impl FolderView {
                                         .mt(px(4.))
                                         .h(px(18.))
                                         .truncate()
-                                        .child(entry.name.clone())
+                                        .child(search_presentation::name_text(
+                                            &entry.name,
+                                            name_matcher.ranges(&entry),
+                                            t,
+                                        ))
                                         .into_any_element()
                                 },
                             ))

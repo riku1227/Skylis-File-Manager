@@ -41,6 +41,7 @@ impl FolderView {
                 let active = self.path().is_some_and(|p| p.starts_with(&path));
                 div()
                     .id(("wsl", ix))
+                    .debug_selector(move || format!("sidebar-wsl-{ix}"))
                     .mx(px(8.))
                     .px(px(10.))
                     .h(px(32.))
@@ -60,6 +61,7 @@ impl FolderView {
                     )
                     .child(div().truncate().child(distro.name.clone()))
                     .map(|d| Self::file_drop_target(d, Some(path.clone()), t, cx))
+                    .map(|d| Self::place_menu_target(d, Location::Folder(path.clone()), cx))
                     .on_click(
                         cx.listener(move |this, _, w, cx| this.navigate_to(path.clone(), w, cx)),
                     )

@@ -11,7 +11,7 @@ use gpui::{
 };
 use unicode_segmentation::*;
 
-fn utf16_to_utf8(text: &str, offset: usize) -> usize {
+pub(crate) fn utf16_to_utf8(text: &str, offset: usize) -> usize {
     let (mut bytes, mut units) = (0, 0);
     for ch in text.chars() {
         if units >= offset {
@@ -23,7 +23,7 @@ fn utf16_to_utf8(text: &str, offset: usize) -> usize {
     bytes
 }
 
-fn utf8_to_utf16(text: &str, offset: usize) -> usize {
+pub(crate) fn utf8_to_utf16(text: &str, offset: usize) -> usize {
     let (mut bytes, mut units) = (0, 0);
     for ch in text.chars() {
         if bytes >= offset {

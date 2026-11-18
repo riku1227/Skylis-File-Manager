@@ -2,6 +2,171 @@ use super::*;
 use std::{cell::Cell, rc::Rc};
 
 #[gpui::test]
+fn query_extension_narrows_but_listing_rebuild_finds_new_matches(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |v, _, _| {
+            v.entries = workflow_entries(&["file_open.rs", "file_operations.rs", "folder.rs"]);
+            v.query = "fi".into();
+            v.rebuild_visible(None);
+            assert_eq!(v.visible, vec![0, 1]);
+            v.query = "file_o".into();
+            v.rebuild_query_visible("fi", None);
+            assert_eq!(v.visible, vec![0, 1]);
+            v.query = "folder".into();
+            v.rebuild_query_visible("file_o", None);
+            assert_eq!(v.visible, vec![2]);
+            v.entries.push(Entry::virtual_entry(
+                "folder_new".into(),
+                PathBuf::from("new"),
+                EntryKind::File,
+                None,
+                None,
+            ));
+            v.rebuild_visible(None);
+            assert_eq!(v.visible, vec![2, 3]);
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+#[ignore = "manual release-mode direct projection diagnostic; no timing assertion"]
+fn direct_filter_100k_diagnostic(cx: &mut gpui::TestAppContext) {
+    let window = workflow_window(cx);
+    window
+        .update(cx, |v, _, _| {
+            v.entries = (0..100_000)
+                .map(|i| {
+                    let name = if i % 10 == 0 {
+                        format!("日本語の報告書_Project_{i:06}.txt")
+                    } else {
+                        format!("Project_report_and_documents_{i:06}.txt")
+                    };
+                    Entry::virtual_entry(
+                        name.clone(),
+                        PathBuf::from("C:/fixture").join(name),
+                        EntryKind::File,
+                        None,
+                        None,
+                    )
+                })
+                .collect();
+            v.gallery = false;
+            v.grouped = false;
+            for query in [
+                "project",
+                "project_report_and_documents_09",
+                "日本語",
+                "no-match",
+            ] {
+                let mut times = Vec::new();
+                for _ in 0..41 {
+                    v.query.clear();
+                    v.rebuild_visible(None);
+                    v.query = query.into();
+                    let start = std::time::Instant::now();
+                    v.rebuild_query_visible("", None);
+                    times.push(start.elapsed().as_secs_f64() * 1000.);
+                    std::hint::black_box(&v.visible);
+                }
+                times.sort_by(f64::total_cmp);
+                println!(
+                    "direct-model query={query:?} count={} p50_ms={:.3} p95_ms={:.3} max_ms={:.3}",
+                    v.visible.len(),
+                    times[20],
+                    times[38],
+                    times[40]
+                );
+            }
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn restored_display_applies_before_listing_and_keeps_download_sort_choice(
+    cx: &mut gpui::TestAppContext,
+) {
+    use crate::session_data::{SavedDisplay, SavedSort};
+    cx.background_executor.allow_parking();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("Downloads");
+    let window = cx.add_window(|w, cx| {
+        let icons = cx.new(ShellIcons::new);
+        FolderView::new_deferred(
+            Location::Folder(path.clone()),
+            ThemeMode::Light,
+            icons,
+            w,
+            cx,
+        )
+    });
+    window
+        .update(cx, |tab, _, cx| {
+            tab.favorites.push(platform::Place {
+                label: "Downloads".into(),
+                path: path.clone(),
+                icon: platform::PlaceIcon::Downloads,
+            });
+            assert!(tab.is_downloads());
+            let display = SavedDisplay {
+                gallery: Some(false),
+                sort: SavedSort::Size,
+                ascending: false,
+                manual_sort: true,
+            };
+            tab.restore_session_display(display);
+            assert_eq!(tab.session_display(), display);
+            tab.activate_session(cx);
+            assert_eq!(
+                tab.sort,
+                SortOrder {
+                    key: SortKey::Size,
+                    ascending: false
+                }
+            );
+            assert_eq!(tab.gallery_override, Some(false));
+            assert!(!tab.grouped);
+            assert!(tab.session_display().manual_sort);
+            tab.grouped = true;
+            assert!(
+                !tab.session_display().manual_sort,
+                "active date grouping must win over the previous sort key"
+            );
+            tab.restore_session_display(SavedDisplay {
+                manual_sort: false,
+                ..display
+            });
+            tab.load(Location::Folder(path.clone()), None, cx);
+            assert!(tab.grouped);
+            assert!(tab.restored_display.is_none());
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn restored_tab_defers_listing_until_selected(cx: &mut gpui::TestAppContext) {
+    cx.background_executor.allow_parking();
+    let dir = tempfile::tempdir().unwrap();
+    let start = Location::Folder(dir.path().join("not-present"));
+    let window = cx.add_window(|w, cx| {
+        let icons = cx.new(ShellIcons::new);
+        FolderView::new_deferred(start.clone(), ThemeMode::Light, icons, w, cx)
+    });
+    window
+        .update(cx, |tab, _, cx| {
+            assert!(tab.session_deferred);
+            assert!(tab._listing.is_none());
+            assert!(!tab.loading);
+            assert_eq!(tab.history.current(), &start);
+            tab.activate_session(cx);
+            assert!(!tab.session_deferred);
+            assert!(tab._listing.is_some());
+            assert!(tab.loading);
+        })
+        .unwrap();
+}
+
+#[gpui::test]
 fn deep_breadcrumbs_expose_omission_only_when_collapsed(cx: &mut gpui::TestAppContext) {
     let window = workflow_window(cx);
     let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
@@ -678,7 +843,7 @@ fn cancelling_pending_address_cannot_navigate_later(cx: &mut gpui::TestAppContex
 
 // Read real entries without creating files: Entry's private sort key must agree
 // with its name. These tests replace enumeration with controlled listing batches.
-fn workflow_entries(names: &[&str]) -> Vec<Entry> {
+pub(super) fn workflow_entries(names: &[&str]) -> Vec<Entry> {
     let mut entries = Vec::new();
     list_dir(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
@@ -702,7 +867,7 @@ fn workflow_entries(names: &[&str]) -> Vec<Entry> {
         .collect()
 }
 
-fn workflow_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderView> {
+pub(super) fn workflow_window(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<FolderView> {
     // Keep headless layout/paint enabled: real input dispatch needs its focus
     // and hit-test trees. The state-only home fixture intentionally skips them.
     cx.background_executor.allow_parking();
@@ -1365,7 +1530,7 @@ fn context_menu_keeps_its_target_when_listing_inserts_an_earlier_folder(
             );
             view.on_listing_event(ListingEvent::Batch(workflow_entries(&["explorer"])), cx);
             cx.subscribe(&cx.entity(), move |_, _, event: &FolderEvent, _| {
-                let FolderEvent::OpenInTab(path) = event else {
+                let FolderEvent::OpenInTab(Location::Folder(path)) = event else {
                     return;
                 };
                 captured.borrow_mut().push(path.clone());

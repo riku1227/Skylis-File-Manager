@@ -12,6 +12,8 @@ pub enum ThemePreference {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
+    pub show_hidden: bool,
+    pub restore_tabs: bool,
     pub theme: ThemePreference,
     pub compact: bool,
     pub group_downloads: bool,
@@ -25,6 +27,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            show_hidden: false,
+            restore_tabs: true,
             theme: ThemePreference::System,
             compact: false,
             group_downloads: true,
@@ -52,6 +56,8 @@ impl Settings {
                 _ => Err("設定値が不正です"),
             };
             match key {
+                "show_hidden" => settings.show_hidden = boolean()?,
+                "restore_tabs" => settings.restore_tabs = boolean()?,
                 "version" if value == "1" => version = true,
                 "version" => return Err("未対応の設定バージョンです".into()),
                 "theme" => {
@@ -102,6 +108,8 @@ impl Settings {
             self.smooth_scroll,
             self.performance_overlay
         );
+        text.push_str(&format!("restore_tabs={}\n", self.restore_tabs));
+        text.push_str(&format!("show_hidden={}\n", self.show_hidden));
         for path in &self.pinned_folders {
             text.push_str("pin=");
             for byte in path.to_string_lossy().as_bytes() {
@@ -168,6 +176,22 @@ fn decode_pin(value: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hidden_visibility_migrates_off_and_persists_independently_of_tab_restore() {
+        let mut value = Settings::decode("version=1\nrestore_tabs=false\n").unwrap();
+        assert!(!value.show_hidden);
+        value.show_hidden = true;
+        assert_eq!(Settings::decode(&value.encode()).unwrap(), value);
+        assert!(Settings::decode("version=1\nshow_hidden=maybe\n").is_err());
+    }
+    #[test]
+    fn tab_restore_migrates_defaults_and_can_be_disabled() {
+        let mut value = Settings::decode("version=1\ncompact=true\n").unwrap();
+        assert!(value.restore_tabs);
+        value.restore_tabs = false;
+        assert_eq!(Settings::decode(&value.encode()).unwrap(), value);
+        assert!(Settings::decode("version=1\nrestore_tabs=maybe\n").is_err());
+    }
     #[test]
     fn pins_round_trip_unicode_and_separators_without_injection() {
         let root = if cfg!(windows) {

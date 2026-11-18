@@ -455,6 +455,9 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         let (source, members, cached) =
             if let Location::Archive { archive, .. } = self.history.current() {
                 let members = if selected {
@@ -494,6 +497,9 @@ impl FolderView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
         let Some(parent) = self.path() else {
             return;
         };
