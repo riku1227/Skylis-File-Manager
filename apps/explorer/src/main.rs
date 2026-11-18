@@ -164,6 +164,7 @@ fn main() {
             folder::keyboard::bind_keys(cx);
             explorer::bind_workflow_keys(cx);
             folder::display_settings::bind_keys(cx);
+            folder::search_filters::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| explorer::request_quit(cx));
             if startup.is_empty() {
                 let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);

@@ -45,6 +45,14 @@ impl Filters {
         self.kind
     }
 
+    pub fn extension(&self) -> &str {
+        &self.extension
+    }
+
+    pub fn count(&self) -> u8 {
+        u8::from(self.kind != Kind::Any) + u8::from(!self.extension.is_empty())
+    }
+
     pub fn with_kind(mut self, kind: Kind) -> Self {
         self.kind = kind;
         if kind == Kind::Folder {

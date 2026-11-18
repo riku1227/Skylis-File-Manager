@@ -330,6 +330,7 @@ impl Explorer {
             tab.cancel_scroll_motion();
             tab.close_preview(cx);
             tab.close_display_settings(cx);
+            tab.close_search_filters(cx);
         });
         self.active = index;
         self.tabs[index].update(cx, |tab, cx| {
@@ -654,6 +655,7 @@ impl Render for Explorer {
                         tab.pause_name_search(cx);
                         tab.cancel_scroll_motion();
                         tab.close_display_settings(cx);
+                        tab.close_search_filters(cx);
                     });
                     w.focus(&this.settings_focus, cx);
                 } else {

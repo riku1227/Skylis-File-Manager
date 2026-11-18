@@ -26,7 +26,7 @@ mod name_operations;
 mod name_search;
 mod scroll_motion;
 mod scrollbar;
-mod search_filters;
+pub(crate) mod search_filters;
 mod search_presentation;
 mod watch;
 use context_menu::ContextMenu;
@@ -439,16 +439,23 @@ impl FolderView {
 
     pub fn attach_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.close_display_settings(cx);
+        self.close_search_filters(cx);
         if self.owner_window != window.window_handle() {
             self.owner_window = window.window_handle();
             self.attach_name_editor_window(window, cx);
         }
         self.attach_motion_window(window);
         self._window_subscriptions.clear();
+        self.observe_search_filter_focus(window, cx);
         self._window_subscriptions
             .push(cx.observe_window_activation(window, |this, w, cx| {
                 if !w.is_window_active() {
                     this.typeahead = Default::default();
+                    if this.filter_popup_focus(w, cx) {
+                        this.dismiss_search_filters(w, cx);
+                    } else {
+                        this.close_search_filters(cx);
+                    }
                     this.cancel_scroll_motion();
                     cx.notify();
                 }
@@ -1647,58 +1654,7 @@ impl FolderView {
                     ),
             )
             .child(address)
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(if window.viewport_size().width < px(560.) {
-                        3.
-                    } else {
-                        8.
-                    }))
-                    .w(px(if window.viewport_size().width < px(560.) {
-                        76.
-                    } else if window.viewport_size().width < px(1150.) {
-                        190.
-                    } else {
-                        256.
-                    }))
-                    .flex_shrink_0()
-                    .h(px(36.))
-                    .px(px(if window.viewport_size().width < px(560.) {
-                        4.
-                    } else {
-                        12.
-                    }))
-                    .rounded(px(18.))
-                    .bg(t.c("surface.field"))
-                    .border_1()
-                    .border_color(if self.search.focus_handle(cx).is_focused(window) {
-                        t.c("focus.ring")
-                    } else {
-                        t.c("border.subtle")
-                    })
-                    .child(
-                        svg()
-                            .path("icons/search.svg")
-                            .size(px(14.))
-                            .flex_shrink_0()
-                            .text_color(t.c("icon.default")),
-                    )
-                    .child(self.search.clone())
-                    .when(self.search_active(), |d| {
-                        d.child(
-                            icon_button("clear-search", "icons/x.svg", true, t)
-                                .size(px(20.))
-                                .on_click(cx.listener(|this, _, w, cx| {
-                                    this.clear_search(w, cx);
-                                })),
-                        )
-                    }),
-            )
-            .when(self.path().is_some(), |d| {
-                d.child(self.render_search_filter_trigger(t, cx))
-            })
+            .child(self.render_name_search_field(t, window, cx))
             .child(self.render_display_trigger(t, cx))
             .child(
                 icon_button("settings", "icons/settings.svg", true, t)
@@ -2737,7 +2693,14 @@ impl FolderView {
             now,
             reduce,
         );
-        if menu || popup {
+        let filters = &mut self.search_filters;
+        let search_popup = filters.presence.sync(
+            filters.open.then(|| filters.criteria.clone()),
+            crate::motion::POPUP,
+            now,
+            reduce,
+        );
+        if menu || popup || search_popup {
             window.request_animation_frame();
         }
     }
@@ -2918,6 +2881,7 @@ impl Render for FolderView {
             .on_action(cx.listener(Self::toggle_hidden))
             .on_action(cx.listener(|this, _: &FocusSearch, w, cx| {
                 this.close_display_settings(cx);
+                this.close_search_filters(cx);
                 w.focus(&this.search.focus_handle(cx), cx);
                 cx.notify()
             }))
@@ -2926,6 +2890,13 @@ impl Render for FolderView {
                     this.typeahead = Default::default();
                     w.notify_text_input_changed(&this.focus);
                     cx.notify();
+                    return;
+                }
+                if this.search_input_composing(w, cx) {
+                    return;
+                }
+                if this.search_filters.open {
+                    this.dismiss_search_filters(w, cx);
                     return;
                 }
                 if this.cancel_marquee() {
@@ -2970,7 +2941,6 @@ impl Render for FolderView {
                     .flex_shrink_0()
                     .child(self.render_toolbar(t, window, cx)),
             )
-            .children(self.render_search_filter_bar(t, window, cx))
             .child(
                 div()
                     .flex()
@@ -3093,6 +3063,7 @@ impl Render for FolderView {
             .when(self.menu_presence.mounted(), |d| {
                 d.child(self.render_context_menu(t, cx))
             })
+            .children(self.render_search_filter_popover(t, window, cx))
             .when(self.display_settings.presence.mounted(), |d| {
                 d.child(self.render_display_settings(t, window, cx))
             })
@@ -3175,9 +3146,10 @@ fn icon_button_with_color(
                         "pane" => "詳細ペイン",
                         "close-pane" => "詳細ペインを閉じる",
                         "unpin" => "ピン留めを外す",
-                        "clear-search" => "検索をクリア（Esc）",
+                        "clear-search" => "検索をすべて解除",
                         "new-tab" => "新しいタブ（Ctrl+T）",
                         "display-settings-trigger" => "表示設定",
+                        "clear-search-conditions" => "条件を解除",
                         "settings" => "設定（Ctrl+,）",
                         "close-settings" => "設定を閉じる（Esc）",
                         _ => "テーマ切替",

@@ -417,7 +417,7 @@ impl FolderView {
     pub(super) fn list_gallery(&self) -> bool {
         self.gallery && !self.recursive_search()
     }
-    fn search_key(&self, cx: &Context<Self>) -> Key {
+    pub(super) fn search_key(&self, cx: &Context<Self>) -> Key {
         Key {
             owner: cx.entity_id().as_u64(),
             epoch: self.descendants.epoch,

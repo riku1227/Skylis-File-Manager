@@ -1,7 +1,7 @@
 use super::*;
 use crate::motion;
 use gpui::{AnimationExt, SpringAnimation, relative};
-use gpui::{Bounds, KeyDownEvent, Point, anchored, canvas, deferred, point};
+use gpui::{Bounds, KeyDownEvent, anchored, canvas, deferred, point};
 use std::{cell::Cell, rc::Rc};
 
 const KEYS: [SortKey; 4] = [
@@ -80,6 +80,7 @@ impl FolderView {
 
     pub(crate) fn open_display_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.display_settings.keyboard_mode = false;
+        self.close_search_filters(cx);
         self.cancel_scroll_motion();
         self.context_menu = None;
         self.display_settings.open = true;
@@ -465,8 +466,6 @@ impl FolderView {
         let anchor = self.display_settings.anchor.get();
         let viewport = w.viewport_size();
         let width = px(306.).min((viewport.width - px(16.)).max(px(1.)));
-        let below = (viewport.height - anchor.bottom() - px(14.)).max(px(0.));
-        let above = (anchor.origin.y - px(14.)).max(px(0.));
         // Header + body padding + segment rows + switches + group separators + border.
         let rows = self.display_rows();
         let separators = rows
@@ -481,17 +480,8 @@ impl FolderView {
                 .map(|row| if *row == 3 || *row == 4 { 42. } else { 74. })
                 .sum::<f32>()
             + separators as f32 * 13.;
-        let height = px(natural_height)
-            .min(below.max(above).max(px(80.)))
-            .min((viewport.height - px(16.)).max(px(1.)));
-        let x =
-            (anchor.right() - width).clamp(px(8.), (viewport.width - width - px(8.)).max(px(8.)));
-        let y = if below >= above {
-            anchor.bottom() + px(6.)
-        } else {
-            anchor.origin.y - height - px(6.)
-        }
-        .clamp(px(8.), (viewport.height - height - px(8.)).max(px(8.)));
+        let (position, height, below) =
+            popover_placement(anchor, width, px(natural_height), viewport);
         let mut body = div()
             .id("display-settings-scroll")
             .track_scroll(&self.display_settings.scroll)
@@ -656,80 +646,99 @@ impl FolderView {
             );
         }
         deferred(
-            anchored()
-                .position(Point::new(x, y))
-                .snap_to_window()
-                .child(
-                    div()
-                        .id("display-settings-panel")
-                        .debug_selector(|| "display-settings-panel".into())
-                        .key_context("DisplaySettings")
-                        .when(live, |d| d.track_focus(&self.display_settings.focus))
-                        .occlude()
-                        .w(width)
-                        .h(height)
-                        .flex()
-                        .flex_col()
-                        .overflow_hidden()
-                        .rounded(px(8.))
-                        .bg(t.c("surface.raised"))
-                        .border_1()
-                        .border_color(t.c("border.dialog"))
-                        .shadow_lg()
-                        .text_color(t.c("text.primary"))
-                        .text_size(px(12.))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, _, cx| {
-                                this.display_settings.keyboard_mode = false;
-                                cx.stop_propagation();
-                                cx.notify();
-                            }),
-                        )
-                        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-                        .on_mouse_down_out(cx.listener(|this, event: &MouseDownEvent, w, cx| {
-                            // The trigger handles its own toggle; don't close on down then reopen on click.
-                            // A ghost is already closed and must not move focus again.
-                            if this.display_settings.open
-                                && !this.display_settings.anchor.get().contains(&event.position)
-                            {
-                                this.close_display_settings(cx);
-                                // Give blank areas a live dispatch path. A clicked input can
-                                // still take focus in its own subsequent mouse-down handler.
-                                w.focus(&this.focus, cx);
-                            }
-                        }))
-                        .on_mouse_move(cx.listener(|this, _, _, cx| {
-                            if this.display_settings.keyboard_mode {
-                                this.display_settings.keyboard_mode = false;
-                                cx.notify();
-                            }
-                        }))
-                        .on_key_down(cx.listener(Self::display_key))
-                        .child(
-                            div()
-                                .h(px(38.))
-                                .flex_shrink_0()
-                                .px(px(12.))
-                                .flex()
-                                .items_center()
-                                .justify_between()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .child("表示設定"),
-                        )
-                        .child(body)
-                        .when(!live, |d| d.child(motion::ghost_shield()))
-                        // Arrives from, and leaves toward, the trigger's side.
-                        .opacity(progress)
-                        .relative()
-                        .top(px(if below >= above {
-                            -motion::POPUP_OFFSET
-                        } else {
-                            motion::POPUP_OFFSET
-                        } * (1. - progress))),
-                ),
+            anchored().position(position).snap_to_window().child(
+                div()
+                    .id("display-settings-panel")
+                    .debug_selector(|| "display-settings-panel".into())
+                    .key_context("DisplaySettings")
+                    .when(live, |d| d.track_focus(&self.display_settings.focus))
+                    .occlude()
+                    .w(width)
+                    .h(height)
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    .rounded(px(8.))
+                    .bg(t.c("surface.raised"))
+                    .border_1()
+                    .border_color(t.c("border.dialog"))
+                    .shadow_lg()
+                    .text_color(t.c("text.primary"))
+                    .text_size(px(12.))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.display_settings.keyboard_mode = false;
+                            cx.stop_propagation();
+                            cx.notify();
+                        }),
+                    )
+                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down_out(cx.listener(|this, event: &MouseDownEvent, w, cx| {
+                        // The trigger handles its own toggle; don't close on down then reopen on click.
+                        // A ghost is already closed and must not move focus again.
+                        if this.display_settings.open
+                            && !this.display_settings.anchor.get().contains(&event.position)
+                        {
+                            this.close_display_settings(cx);
+                            // Give blank areas a live dispatch path. A clicked input can
+                            // still take focus in its own subsequent mouse-down handler.
+                            w.focus(&this.focus, cx);
+                        }
+                    }))
+                    .on_mouse_move(cx.listener(|this, _, _, cx| {
+                        if this.display_settings.keyboard_mode {
+                            this.display_settings.keyboard_mode = false;
+                            cx.notify();
+                        }
+                    }))
+                    .on_key_down(cx.listener(Self::display_key))
+                    .child(
+                        div()
+                            .h(px(38.))
+                            .flex_shrink_0()
+                            .px(px(12.))
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child("表示設定"),
+                    )
+                    .child(body)
+                    .when(!live, |d| d.child(motion::ghost_shield()))
+                    // Arrives from, and leaves toward, the trigger's side.
+                    .opacity(progress)
+                    .relative()
+                    .top(px(if below {
+                        -motion::POPUP_OFFSET
+                    } else {
+                        motion::POPUP_OFFSET
+                    } * (1. - progress))),
+            ),
         )
         .with_priority(2)
         .into_any_element()
     }
+}
+
+pub(super) fn popover_placement(
+    anchor: gpui::Bounds<Pixels>,
+    width: Pixels,
+    natural_height: Pixels,
+    viewport: gpui::Size<Pixels>,
+) -> (gpui::Point<Pixels>, Pixels, bool) {
+    let below = (viewport.height - anchor.bottom() - px(14.)).max(px(0.));
+    let above = (anchor.top() - px(14.)).max(px(0.));
+    let opens_below = below >= above;
+    let height = natural_height
+        .min(below.max(above).max(px(80.)))
+        .min((viewport.height - px(16.)).max(px(1.)));
+    let x = (anchor.right() - width).clamp(px(8.), (viewport.width - width - px(8.)).max(px(8.)));
+    let y = if opens_below {
+        anchor.bottom() + px(6.)
+    } else {
+        anchor.top() - height - px(6.)
+    }
+    .clamp(px(8.), (viewport.height - height - px(8.)).max(px(8.)));
+    (gpui::point(x, y), height, opens_below)
 }
