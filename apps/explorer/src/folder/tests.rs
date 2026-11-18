@@ -1530,7 +1530,7 @@ fn context_menu_keeps_its_target_when_listing_inserts_an_earlier_folder(
             );
             view.on_listing_event(ListingEvent::Batch(workflow_entries(&["explorer"])), cx);
             cx.subscribe(&cx.entity(), move |_, _, event: &FolderEvent, _| {
-                let FolderEvent::OpenInTab(path) = event else {
+                let FolderEvent::OpenInTab(Location::Folder(path)) = event else {
                     return;
                 };
                 captured.borrow_mut().push(path.clone());

@@ -18,7 +18,7 @@ mod preview_window;
 mod wsl;
 use crate::media::{MediaCache, MediaScope};
 mod archives;
-mod context_menu;
+pub(crate) mod context_menu;
 mod delete;
 pub(crate) mod display_settings;
 mod name_editor;
@@ -57,7 +57,8 @@ const COL_SIZE: Pixels = px(92.);
 const SIDEBAR_WIDTH: Pixels = px(200.);
 
 pub enum FolderEvent {
-    OpenInTab(PathBuf),
+    OpenInTab(Location),
+    OpenInWindow(Location),
     SetPane(bool),
 }
 impl gpui::EventEmitter<FolderEvent> for FolderView {}
@@ -453,6 +454,13 @@ impl FolderView {
         self.attach_motion_window(window);
         self._window_subscriptions.clear();
         self.observe_search_filter_focus(window, cx);
+        self._window_subscriptions
+            .push(cx.on_blur(&self.menu_focus, window, |view, _, cx| {
+                if view.place_context_menu_open() {
+                    view.context_menu = None;
+                    cx.notify();
+                }
+            }));
         self._window_subscriptions
             .push(cx.observe_window_activation(window, |this, w, cx| {
                 if !w.is_window_active() {
@@ -1298,6 +1306,7 @@ impl FolderView {
             return true;
         }
         self.display_settings.open
+            || (self.place_context_menu_open() && self.menu_focus.is_focused(window))
             || self.name_editor.is_some()
             || self.archive_dialog.is_some()
             || self.search.focus_handle(cx).is_focused(window)
@@ -1690,6 +1699,7 @@ impl FolderView {
         panel = panel.child(
             div()
                 .id("home-place")
+                .debug_selector(|| "sidebar-home".into())
                 .flex()
                 .items_center()
                 .gap(px(10.))
@@ -1717,6 +1727,7 @@ impl FolderView {
                     },
                 )))
                 .child("ホーム")
+                .map(|d| Self::place_menu_target(d, Location::Home, cx))
                 .on_click(cx.listener(|this, _, w, cx| {
                     w.focus(&this.focus, cx);
                     this.navigate(Location::Home, w, cx);
@@ -1744,6 +1755,13 @@ impl FolderView {
                 let unpin_path = path.clone();
                 let active = self.path() == Some(path.as_path());
                 let drive = title == "ストレージ";
+                let section = if drive {
+                    "drive"
+                } else if title == "ピン留め" {
+                    "pin"
+                } else {
+                    "fav"
+                };
                 let space = self.drive_space.get(&path);
                 let mut label =
                     div()
@@ -1821,16 +1839,8 @@ impl FolderView {
                 }
                 panel = panel.child(
                     div()
-                        .id((
-                            if drive {
-                                "drive"
-                            } else if title == "ピン留め" {
-                                "pin"
-                            } else {
-                                "fav"
-                            },
-                            i,
-                        ))
+                        .id((section, i))
+                        .debug_selector(move || format!("sidebar-{section}-{i}"))
                         .group("sidebar-place")
                         .flex()
                         .items_start()
@@ -1945,6 +1955,7 @@ impl FolderView {
                             )
                         })
                         .map(|d| Self::file_drop_target(d, Some(path.clone()), t, cx))
+                        .map(|d| Self::place_menu_target(d, Location::Folder(path.clone()), cx))
                         .on_click(cx.listener(move |this, _, w, cx| {
                             this.navigate_to(path.clone(), w, cx);
                             if title == "ピン留め" {

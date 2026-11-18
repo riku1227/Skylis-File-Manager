@@ -180,6 +180,7 @@ impl FolderView {
                 cards = cards.child(
                     div()
                         .id(("home-card", index))
+                        .debug_selector(move || format!("home-card-{index}"))
                         .w(width)
                         .h(px(if drive { 92. } else { 72. }))
                         .flex()
@@ -210,6 +211,9 @@ impl FolderView {
                             cx,
                         ))
                         .child(info)
+                        .map(|d| {
+                            Self::place_menu_target(d, Location::Folder(place.path.clone()), cx)
+                        })
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |this, _, w, cx| {

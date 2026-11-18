@@ -7,12 +7,14 @@ pub(super) struct ContextMenu {
     position: Point<Pixels>,
     item: Option<usize>,
     target: Option<PathBuf>,
+    place: Option<Location>,
     active: usize,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Command {
     Open,
     NewTab,
+    NewWindow,
     Preview,
     Copy,
     Cut,
@@ -36,7 +38,62 @@ pub(super) enum Command {
     Services,
 }
 
+pub(crate) fn bind_keys(cx: &mut App) {
+    // Let the popup's keyboard handler own these keys instead of the file list.
+    cx.bind_keys(
+        [
+            "up",
+            "down",
+            "home",
+            "end",
+            "enter",
+            "space",
+            "escape",
+            "tab",
+            "shift-tab",
+            "backspace",
+            "alt-left",
+            "alt-right",
+            "alt-up",
+            "f5",
+            "ctrl-r",
+        ]
+        .map(|key| gpui::KeyBinding::new(key, gpui::NoAction, Some("PlaceContextMenu"))),
+    );
+}
+
 impl FolderView {
+    pub(super) fn place_context_menu_open(&self) -> bool {
+        self.context_menu
+            .as_ref()
+            .is_some_and(|menu| menu.place.is_some())
+    }
+
+    pub(super) fn place_menu_target(
+        target: gpui::Stateful<gpui::Div>,
+        location: Location,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        target.on_mouse_down(
+            MouseButton::Right,
+            cx.listener(move |view, event: &MouseDownEvent, w, cx| {
+                cx.stop_propagation();
+                view.close_display_settings(cx);
+                view.close_search_filters(cx);
+                view.cancel_scroll_motion();
+                view.context_menu = Some(ContextMenu {
+                    position: event.position,
+                    item: None,
+                    target: None,
+                    place: Some(location.clone()),
+                    active: 0,
+                });
+                w.focus(&view.menu_focus, cx);
+                cx.notify();
+            }),
+        )
+    }
+
     pub(super) fn show_properties(
         &mut self,
         _: &ShowProperties,
@@ -109,6 +166,7 @@ impl FolderView {
             position: event.position,
             target: item.map(|ix| self.entries[self.visible[ix]].path.clone()),
             item,
+            place: None,
             active: 0,
         });
         if event.modifiers.shift && cfg!(windows) && self.path().is_some() {
@@ -134,6 +192,7 @@ impl FolderView {
             position: self.menu_anchor(),
             target: self.selected_entry().map(|e| e.path.clone()),
             item: self.selected,
+            place: None,
             active: 0,
         });
         window.focus(&self.menu_focus, cx);
@@ -158,6 +217,12 @@ impl FolderView {
         bounds.origin + gpui::point(px(24.), y)
     }
     pub(super) fn menu_commands(&self) -> Vec<(&'static str, Command)> {
+        if self.place_context_menu_open() {
+            return vec![
+                ("新しいタブで開く", Command::NewTab),
+                ("新しいウィンドウで開く", Command::NewWindow),
+            ];
+        }
         let mut commands = Vec::new();
         let item = self.context_menu.as_ref().is_some_and(|m| m.item.is_some());
         let single = item && self.multi_selection.len() <= 1;
@@ -253,6 +318,22 @@ impl FolderView {
         commands
     }
     fn execute_menu(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(location) = self
+            .context_menu
+            .as_ref()
+            .and_then(|menu| menu.place.clone())
+        {
+            let event = match command {
+                Command::NewTab => FolderEvent::OpenInTab(location),
+                Command::NewWindow => FolderEvent::OpenInWindow(location),
+                _ => return,
+            };
+            self.context_menu = None;
+            window.focus(&self.focus, cx);
+            cx.emit(event);
+            cx.notify();
+            return;
+        }
         if self.descendants.selected.is_some() {
             return;
         }
@@ -289,9 +370,10 @@ impl FolderView {
             }
             Command::NewTab => {
                 if let Some(path) = path {
-                    cx.emit(FolderEvent::OpenInTab(path));
+                    cx.emit(FolderEvent::OpenInTab(Location::Folder(path)));
                 }
             }
+            Command::NewWindow => (),
             Command::Preview => self.toggle_preview(&QuickPreview, window, cx),
             Command::Copy => self.copy_files(&CopyFiles, window, cx),
             Command::Cut => self.cut_files(&CutFiles, window, cx),
@@ -416,6 +498,9 @@ impl FolderView {
                     .id("context-menu")
                     .debug_selector(|| "context-menu".into())
                     .occlude()
+                    .when(live && menu.place.is_some(), |d| {
+                        d.key_context("PlaceContextMenu")
+                    })
                     .when(live, |d| d.track_focus(&self.menu_focus))
                     .w(px(300.))
                     .text_size(px(13.))
@@ -479,6 +564,9 @@ impl FolderView {
                                     .child(
                                         div()
                                             .id(("menu-command", ix))
+                                            .debug_selector(move || {
+                                                format!("context-menu-command-{ix}")
+                                            })
                                             .h(px(if self.compact { 28. } else { 30. }))
                                             .px(px(10.))
                                             .flex()
@@ -531,7 +619,12 @@ impl FolderView {
 impl Command {
     fn group(self) -> u8 {
         match self {
-            Self::Open | Self::NewTab | Self::Preview | Self::NewFolder | Self::NewText => 0,
+            Self::Open
+            | Self::NewTab
+            | Self::NewWindow
+            | Self::Preview
+            | Self::NewFolder
+            | Self::NewText => 0,
             Self::Copy | Self::Cut | Self::Paste | Self::Rename | Self::Delete => 1,
             Self::Pin | Self::CopyPath | Self::Refresh => 2,
             _ => 3,
@@ -576,6 +669,168 @@ impl Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{cell::RefCell, rc::Rc};
+
+    #[gpui::test]
+    fn navigable_cards_and_sidebar_places_offer_only_open_commands(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            cx.set_reduce_motion(true);
+            cx.bind_keys([
+                gpui::KeyBinding::new("enter", OpenSelected, Some("Explorer")),
+                gpui::KeyBinding::new("down", SelectNext, Some("Explorer")),
+                gpui::KeyBinding::new("escape", ClearSearch, Some("Explorer")),
+            ]);
+            bind_keys(cx);
+        });
+        let window = super::super::tests::workflow_window(cx);
+        let opened = Rc::new(RefCell::new(Vec::new()));
+        let drive = std::env::temp_dir();
+        let pin = drive.join("Fixture pin");
+        let favorite = drive.join("Fixture favorite");
+        let distro = explorer_core::WslDistribution::from_name("SkylisFixture").unwrap();
+        let captured = opened.clone();
+        let _events = window
+            .update(cx, |view, _, cx| {
+                view.history = History::new(Location::Home);
+                view.pinned = vec![Place {
+                    label: "Test pin".into(),
+                    path: pin.clone(),
+                    icon: platform::PlaceIcon::Documents,
+                }];
+                view.favorites = vec![Place {
+                    label: "Test favorite".into(),
+                    path: favorite.clone(),
+                    icon: platform::PlaceIcon::Documents,
+                }];
+                view.drives = vec![Place {
+                    label: "Test drive".into(),
+                    path: drive.clone(),
+                    icon: platform::PlaceIcon::Drive,
+                }];
+                view.wsl = vec![distro.clone()];
+                cx.notify();
+                cx.subscribe(
+                    &cx.entity(),
+                    move |_, _, event: &FolderEvent, _| match event {
+                        FolderEvent::OpenInTab(location) => {
+                            captured.borrow_mut().push((false, location.clone()))
+                        }
+                        FolderEvent::OpenInWindow(location) => {
+                            captured.borrow_mut().push((true, location.clone()))
+                        }
+                        FolderEvent::SetPane(_) => (),
+                    },
+                )
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(px(1200.), px(680.)));
+        let right_click = |visual: &mut gpui::VisualTestContext, selector| {
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            let target = visual.debug_bounds(selector).unwrap().center();
+            visual.simulate_mouse_down(target, MouseButton::Right, gpui::Modifiers::none());
+            visual.simulate_mouse_up(target, MouseButton::Right, gpui::Modifiers::none());
+        };
+        // A second right-click replaces the destination while the first menu is open.
+        right_click(&mut visual, "home-card-1");
+        right_click(&mut visual, "sidebar-home");
+        visual.simulate_keystrokes("enter");
+        assert_eq!(opened.borrow_mut().pop(), Some((false, Location::Home)));
+
+        for (selector, location, new_window) in [
+            ("home-card-1", Location::Folder(drive.clone()), false),
+            ("sidebar-home", Location::Home, true),
+            ("sidebar-pin-0", Location::Folder(pin), false),
+            ("sidebar-fav-0", Location::Folder(favorite), true),
+            ("sidebar-drive-0", Location::Folder(drive), true),
+            ("sidebar-wsl-0", Location::Folder(distro.path), false),
+        ] {
+            right_click(&mut visual, selector);
+            window
+                .read_with(&visual, |view, _| {
+                    let labels = view
+                        .menu_commands()
+                        .into_iter()
+                        .map(|(label, _)| label)
+                        .collect::<Vec<_>>();
+                    assert_eq!(labels, ["新しいタブで開く", "新しいウィンドウで開く"]);
+                })
+                .unwrap();
+            if selector == "home-card-1" {
+                visual.update(|w, cx| w.draw(cx).clear(cx));
+                let command = visual.debug_bounds("context-menu-command-0").unwrap();
+                visual.simulate_click(command.center(), gpui::Modifiers::none());
+            } else {
+                visual.simulate_keystrokes(if new_window { "down enter" } else { "enter" });
+            }
+            assert_eq!(opened.borrow_mut().pop(), Some((new_window, location)));
+            window
+                .read_with(&visual, |view, _| {
+                    assert!(view.context_menu.is_none());
+                    assert!(view.is_home());
+                })
+                .unwrap();
+        }
+    }
+
+    #[gpui::test]
+    fn place_menu_keeps_navigation_and_refresh_keys_out_of_the_source_tab(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            cx.set_reduce_motion(true);
+            let context = Some("Explorer");
+            cx.bind_keys([
+                gpui::KeyBinding::new("backspace", GoBack, context),
+                gpui::KeyBinding::new("alt-left", GoBack, context),
+                gpui::KeyBinding::new("alt-right", GoForward, context),
+                gpui::KeyBinding::new("alt-up", GoUp, context),
+                gpui::KeyBinding::new("f5", Refresh, context),
+                gpui::KeyBinding::new("ctrl-r", Refresh, context),
+            ]);
+            bind_keys(cx);
+        });
+        let window = super::super::tests::workflow_window(cx);
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let folder = Location::Folder(root.join("src"));
+        window
+            .update(cx, |view, _, cx| {
+                view.history = History::new(Location::Folder(root.to_path_buf()));
+                view.history.push(folder.clone(), None);
+                view.history
+                    .push(Location::Folder(root.join("assets")), None);
+                view.history.go_back(None);
+                cx.notify();
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        for (source, keys) in [
+            (folder, "backspace alt-left alt-right alt-up"),
+            (Location::Home, "f5 ctrl-r"),
+        ] {
+            if source == Location::Home {
+                window
+                    .update(&mut visual, |view, _, cx| {
+                        view.history = History::new(Location::Home);
+                        cx.notify();
+                    })
+                    .unwrap();
+            }
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            let point = visual.debug_bounds("sidebar-home").unwrap().center();
+            visual.simulate_mouse_down(point, MouseButton::Right, gpui::Modifiers::none());
+            visual.simulate_mouse_up(point, MouseButton::Right, gpui::Modifiers::none());
+            visual.simulate_keystrokes(keys);
+            window
+                .update(&mut visual, |view, w, _| {
+                    assert_eq!(view.tab_location(), &source);
+                    assert!(view.place_context_menu_open());
+                    assert!(view.menu_focus.is_focused(w));
+                })
+                .unwrap();
+            visual.simulate_keystrokes("escape");
+        }
+    }
 
     #[gpui::test]
     fn archive_menu_and_shortcuts_cannot_mutate_members(cx: &mut gpui::TestAppContext) {

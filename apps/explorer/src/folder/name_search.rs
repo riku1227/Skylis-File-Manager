@@ -880,7 +880,9 @@ impl FolderView {
                                 .child("新しいタブ")
                                 .on_click(cx.listener(|v, _, _, cx| {
                                     if let Some(h) = v.descendant() {
-                                        cx.emit(FolderEvent::OpenInTab(h.path.clone()));
+                                        cx.emit(FolderEvent::OpenInTab(Location::Folder(
+                                            h.path.clone(),
+                                        )));
                                     }
                                 })),
                         )
@@ -960,7 +962,7 @@ impl FolderView {
                         .child("新しいタブで開く")
                         .on_click(cx.listener(|v, _, _, cx| {
                             if let Some(h) = v.descendant() {
-                                cx.emit(FolderEvent::OpenInTab(h.path.clone()));
+                                cx.emit(FolderEvent::OpenInTab(Location::Folder(h.path.clone())));
                             }
                         })),
                 )

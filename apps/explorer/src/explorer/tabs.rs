@@ -49,6 +49,10 @@ fn screen_position(position: Point<Pixels>, window: &Window) -> Point<Pixels> {
 
 impl Explorer {
     pub(super) fn new_window(&mut self, _: &NewWindow, w: &mut Window, cx: &mut Context<Self>) {
+        self.open_window_at(Location::Home, w, cx);
+    }
+
+    fn open_window_at(&mut self, location: Location, w: &mut Window, cx: &mut Context<Self>) {
         let icons = self.icons.clone();
         let mode = self.mode;
         let compact = self.compact;
@@ -57,8 +61,7 @@ impl Explorer {
             crate::window_chrome::window_options(bounds, "Skylis"),
             move |w, cx| {
                 cx.new(|cx| {
-                    let folder =
-                        cx.new(|cx| FolderView::new(Location::Home, mode, icons.clone(), w, cx));
+                    let folder = cx.new(|cx| FolderView::new(location, mode, icons.clone(), w, cx));
                     Self::with_tabs(vec![folder], icons, mode, compact, w, cx)
                 })
             },
@@ -146,8 +149,11 @@ impl Explorer {
             tab,
             window,
             |this, _, event: &crate::folder::FolderEvent, w, cx| match event {
-                crate::folder::FolderEvent::OpenInTab(path) => {
-                    this.open_tab_at(Location::Folder(path.clone()), w, cx)
+                crate::folder::FolderEvent::OpenInTab(location) => {
+                    this.open_tab_at(location.clone(), w, cx)
+                }
+                crate::folder::FolderEvent::OpenInWindow(location) => {
+                    this.open_window_at(location.clone(), w, cx)
                 }
                 crate::folder::FolderEvent::SetPane(enabled) => {
                     this.pane = *enabled;
@@ -943,6 +949,42 @@ mod tests {
     }
 
     #[gpui::test]
+    fn open_in_window_creates_a_separate_window_at_the_requested_place(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let source = test_window(cx);
+        let location = Location::Folder(env!("CARGO_MANIFEST_DIR").into());
+        source
+            .update(cx, |view, _, cx| {
+                view.tabs[0].update(cx, |_, cx| {
+                    cx.emit(crate::folder::FolderEvent::OpenInWindow(location.clone()));
+                });
+            })
+            .unwrap();
+        cx.update(|cx| {
+            let other_windows: Vec<_> = cx
+                .windows()
+                .into_iter()
+                .filter_map(|handle| handle.downcast::<Explorer>())
+                .filter(|handle| *handle != source)
+                .collect();
+            assert_eq!(other_windows.len(), 1);
+            other_windows[0]
+                .read_with(cx, |view, cx| {
+                    assert_eq!(view.tabs.len(), 1);
+                    assert_eq!(view.tabs[0].read(cx).tab_location(), &location);
+                })
+                .unwrap();
+        });
+        source
+            .read_with(cx, |view, cx| {
+                assert_eq!(view.tabs.len(), 1);
+                assert_eq!(view.tabs[0].read(cx).tab_location(), &Location::Home);
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
     fn moved_folder_open_in_tab_event_reaches_only_its_current_window(
         cx: &mut gpui::TestAppContext,
     ) {
@@ -957,7 +999,9 @@ mod tests {
         target
             .update(cx, |view, _, cx| {
                 view.tabs[0].update(cx, |_, cx| {
-                    cx.emit(crate::folder::FolderEvent::OpenInTab(std::env::temp_dir()))
+                    cx.emit(crate::folder::FolderEvent::OpenInTab(Location::Folder(
+                        std::env::temp_dir(),
+                    )))
                 });
             })
             .unwrap();
