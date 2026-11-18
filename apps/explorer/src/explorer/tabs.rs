@@ -4,7 +4,7 @@ use gpui::{Bounds, Pixels, Point, WindowHandle, point, size};
 #[derive(Clone)]
 pub(super) struct TabDrag {
     pub id: gpui::EntityId,
-    pub label: String,
+    pub label: gpui::SharedString,
     pub mode: ThemeMode,
 }
 
@@ -29,10 +29,6 @@ fn reordered_index(from: usize, slot: usize, len: usize) -> usize {
     slot.min(len)
         .saturating_sub(usize::from(slot > from))
         .min(len.saturating_sub(1))
-}
-
-fn insertion_slot(x: f32, origin: f32, scroll: f32, len: usize) -> usize {
-    (((x - origin - scroll) / 184. + 0.5).floor().max(0.) as usize).min(len)
 }
 
 fn screen_scale(window: &Window) -> f32 {
@@ -78,11 +74,9 @@ impl Explorer {
             && position.x >= strip.origin.x
             && position.x < right
         {
-            Some(insertion_slot(
-                position.x.into(),
-                strip.origin.x.into(),
-                self.tab_scroll.offset().x.into(),
-                self.tabs.len(),
+            Some(self.tab_motion.drop_slot(
+                position.x - strip.origin.x - self.tab_scroll.offset().x,
+                window,
             ))
         } else {
             None
@@ -171,10 +165,17 @@ impl Explorer {
             .insert(tab.entity_id(), vec![observer, events]);
     }
 
-    fn open_tab_at(&mut self, location: Location, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_tab_at(
+        &mut self,
+        location: Location,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let tab = cx.new(|cx| FolderView::new(location, self.mode, self.icons.clone(), window, cx));
         tab.update(cx, |tab, _| tab.compact = self.compact);
         self.watch_tab(&tab, window, cx);
+        self.tab_motion
+            .open(self.tabs.len(), tab.entity_id(), cx.reduce_motion());
         self.tabs.push(tab);
         self.settings_open = false;
         self.switch(self.tabs.len() - 1, window, cx);
@@ -182,6 +183,7 @@ impl Explorer {
 
     fn remove_moved_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let tab = self.tabs.remove(index);
+        self.tab_motion.remove(tab.entity_id());
         self.tab_subscriptions.remove(&tab.entity_id());
         self.dragging_tab = None;
         self.tab_menu = None;
@@ -215,6 +217,7 @@ impl Explorer {
         });
         self.watch_tab(&tab, w, cx);
         let slot = slot.min(self.tabs.len());
+        self.tab_motion.insert(slot, tab.entity_id());
         self.tabs.insert(slot, tab);
         self.settings_open = false;
         self.active = slot;
@@ -371,6 +374,8 @@ impl Explorer {
             self.tabs[self.active].update(cx, |tab, _| tab.cancel_scroll_motion());
             let to = reordered_index(index, slot, self.tabs.len());
             let tab = self.tabs.remove(index);
+            self.tab_motion.remove(id);
+            self.tab_motion.insert(to, id);
             self.tabs.insert(to, tab);
             self.active = to;
             self.switch(to, w, cx);
@@ -575,14 +580,6 @@ mod tests {
         assert_eq!(reordered_index(1, 2, 3), 1);
         assert_eq!(reordered_index(0, 1, 1), 0);
     }
-    #[test]
-    fn tab_drop_slots_respect_horizontal_scroll_and_midpoints() {
-        assert_eq!(insertion_slot(100., 10., 0., 5), 0);
-        assert_eq!(insertion_slot(104., 10., 0., 5), 1);
-        assert_eq!(insertion_slot(10., 10., -368., 5), 2);
-        assert_eq!(insertion_slot(5000., 10., 0., 5), 5);
-    }
-
     fn test_window(cx: &mut gpui::TestAppContext) -> WindowHandle<Explorer> {
         cx.background_executor.allow_parking();
         cx.skip_drawing();

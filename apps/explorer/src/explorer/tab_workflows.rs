@@ -64,6 +64,8 @@ impl Explorer {
         });
         self.watch_tab(&tab, w, cx);
         let index = snapshot.index.min(self.tabs.len());
+        self.tab_motion
+            .open(index, tab.entity_id(), cx.reduce_motion());
         self.tabs.insert(index, tab);
         if index <= self.active {
             self.active += 1;

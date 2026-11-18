@@ -5,8 +5,9 @@ use crate::{
     theme::{Theme, ThemeMode},
 };
 use explorer_core::location::Location;
-use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, img, prelude::*, px, svg};
+use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, prelude::*, px, svg};
 mod settings_panel;
+mod tab_motion;
 mod tab_workflows;
 mod tabs;
 pub(crate) use tab_workflows::bind_keys as bind_workflow_keys;
@@ -54,6 +55,7 @@ pub struct Explorer {
     last_saved_theme: crate::settings_data::ThemePreference,
     tab_subscriptions: std::collections::HashMap<gpui::EntityId, Vec<gpui::Subscription>>,
     tab_scroll: gpui::ScrollHandle,
+    tab_motion: tab_motion::TabStripMotion,
     tab_strip: std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>,
     dragging_tab: Option<gpui::EntityId>,
     drop_slot: Option<usize>,
@@ -286,6 +288,7 @@ impl Explorer {
         });
         let mut this = Self {
             closed_tabs: Default::default(),
+            tab_motion: tab_motion::TabStripMotion::new(tabs.iter().map(Entity::entity_id)),
             tabs,
             active: 0,
             mode,
@@ -341,19 +344,15 @@ impl Explorer {
         cx.notify();
     }
     fn new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
-        let folder =
-            cx.new(|cx| FolderView::new(Location::Home, self.mode, self.icons.clone(), window, cx));
-        self.watch_tab(&folder, window, cx);
-        folder.update(cx, |folder, _| folder.compact = self.compact);
-        self.tabs.push(folder);
-        self.settings_open = false;
-        self.switch(self.tabs.len() - 1, window, cx);
+        self.open_tab_at(Location::Home, window, cx);
     }
     fn close(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if self.tabs.len() == 1 || index >= self.tabs.len() {
             return;
         }
         self.remember_closed(index, cx);
+        self.tab_motion
+            .close(self.tabs[index].entity_id(), cx.reduce_motion());
         let removed = self.tabs.remove(index);
         removed.update(cx, |tab, cx| {
             tab.pause_name_search(cx);
@@ -415,164 +414,7 @@ impl Render for Explorer {
         ) {
             window.request_animation_frame();
         }
-        let mut tabs = div()
-            .id("tabs")
-            .relative()
-            .flex()
-            .items_center()
-            .gap(px(4.))
-            .min_w_0()
-            .w(px(self.tabs.len() as f32 * 184.))
-            .max_w_full()
-            .overflow_x_scroll()
-            .track_scroll(&self.tab_scroll)
-            .child(
-                gpui::canvas(
-                    {
-                        let bounds = self.tab_strip.clone();
-                        let scroll = self.tab_scroll.clone();
-                        move |rect, _, _| {
-                            bounds.set(gpui::Bounds::new(rect.origin - scroll.offset(), rect.size))
-                        }
-                    },
-                    |_, _, _, _| {},
-                )
-                .absolute()
-                .size_full(),
-            );
-        for (i, tab) in self.tabs.iter().enumerate() {
-            let id = tab.entity_id();
-            let owner = cx.weak_entity();
-            let drag = TabDrag {
-                id,
-                label: tab.read(cx).label(),
-                mode: self.mode,
-            };
-            let current = i == self.active;
-            let archive = tab.read(cx).is_archive();
-            let path = tab.read(cx).path().map(std::path::Path::to_path_buf);
-            let image = path.as_ref().and_then(|path| {
-                self.icons.update(cx, |icons, cx| {
-                    icons.get_navigation(
-                        path,
-                        true,
-                        (14. * window.scale_factor()).ceil() as u32,
-                        cx,
-                    )
-                })
-            });
-            tabs = tabs.child(
-                div()
-                    .id(("tab", id))
-                    .on_drag(drag, move |drag, _, _, cx| {
-                        let _ = owner.update(cx, |this, cx| {
-                            this.dragging_tab = Some(drag.id);
-                            this.tab_menu = None;
-                            cx.notify();
-                        });
-                        cx.new(|_| drag.clone())
-                    })
-                    .on_mouse_down(
-                        gpui::MouseButton::Middle,
-                        cx.listener(move |this, _, w, cx| {
-                            cx.stop_propagation();
-                            if let Some(index) =
-                                this.tabs.iter().position(|tab| tab.entity_id() == id)
-                            {
-                                this.close(index, w, cx);
-                            }
-                        }),
-                    )
-                    .on_mouse_down(
-                        gpui::MouseButton::Right,
-                        cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
-                            cx.stop_propagation();
-                            this.tab_menu = Some((id, event.position));
-                            cx.notify();
-                        }),
-                    )
-                    .h(px(28.))
-                    .w(px(180.))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .px(px(10.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(t.c(if current {
-                        "tab.active.border"
-                    } else {
-                        "tab.border"
-                    }))
-                    .bg(t.c(if current { "tab.active.bg" } else { "tab.bg" }))
-                    .text_color(t.c(if current { "text.primary" } else { "tab.fg" }))
-                    .when(current, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
-                    .when(!current, |d| d.hover(|s| s.bg(t.c("tab.hover.bg"))))
-                    .cursor_pointer()
-                    .child(
-                        div()
-                            .size(px(14.))
-                            .flex_shrink_0()
-                            .when_some(image, |d, image| d.child(img(image).size_full()))
-                            .when(path.is_none(), |d| {
-                                d.child(
-                                    svg()
-                                        .path(if archive {
-                                            "icons/file.svg"
-                                        } else {
-                                            "icons/home.svg"
-                                        })
-                                        .size_full()
-                                        .text_color(t.c("icon.default")),
-                                )
-                            }),
-                    )
-                    .child(div().flex_1().truncate().child(tab.read(cx).label()))
-                    .child(
-                        div()
-                            .id(("close-tab", id))
-                            .size(px(18.))
-                            .flex_shrink_0()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(4.))
-                            .hover(|s| s.bg(t.c("state.pressed")))
-                            .child(
-                                svg()
-                                    .path("icons/x.svg")
-                                    .size(px(12.))
-                                    .text_color(t.c("text.secondary")),
-                            )
-                            .on_click(cx.listener(move |this, _, w, cx| {
-                                cx.stop_propagation();
-                                if let Some(index) =
-                                    this.tabs.iter().position(|tab| tab.entity_id() == id)
-                                {
-                                    this.close(index, w, cx)
-                                }
-                            })),
-                    )
-                    .on_click(cx.listener(move |this, _, w, cx| {
-                        if let Some(index) = this.tabs.iter().position(|tab| tab.entity_id() == id)
-                        {
-                            this.switch(index, w, cx)
-                        }
-                    })),
-            );
-        }
-        if let Some(slot) = self.drop_slot {
-            tabs = tabs.child(
-                div()
-                    .absolute()
-                    .left(px(slot as f32 * 184.))
-                    .top(px(2.))
-                    .w(px(2.))
-                    .h(px(24.))
-                    .bg(t.c("focus.ring")),
-            );
-        }
+        let tabs = self.render_tab_strip(t, window, cx);
         div()
             .id("explorer")
             .relative()
@@ -1490,6 +1332,118 @@ mod tests {
                 .advance_clock(std::time::Duration::from_millis(16));
         }
         panic!("motion never settled");
+    }
+
+    #[gpui::test]
+    fn opening_and_closing_a_tab_changes_the_strip_width_over_frames(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| cx.set_reduce_motion(false));
+        let window = settings_key_window(cx);
+        window
+            .update(cx, |probe, w, cx| {
+                probe
+                    .explorer
+                    .update(cx, |view, cx| view.close_settings(w, cx));
+            })
+            .unwrap();
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(px(1200.), px(700.)));
+        let width = |visual: &mut gpui::VisualTestContext| {
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            window
+                .read_with(visual, |probe, cx| {
+                    probe.explorer.read(cx).tab_strip.get().size.width
+                })
+                .unwrap()
+        };
+        let one = width(&mut visual);
+        let sidebar = visual.debug_bounds("sidebar-home").unwrap();
+        window
+            .update(&mut visual, |probe, w, cx| {
+                probe
+                    .explorer
+                    .update(cx, |view, cx| view.new_tab(&NewTab, w, cx));
+            })
+            .unwrap();
+        assert_eq!(width(&mut visual), one);
+        assert_eq!(visual.debug_bounds("sidebar-home"), Some(sidebar));
+        assert!(settle_frames(&mut visual) > 1);
+        let two = width(&mut visual);
+        assert_eq!(two - one, px(184.));
+        window
+            .update(&mut visual, |probe, w, cx| {
+                probe.explorer.update(cx, |view, cx| {
+                    view.close(0, w, cx);
+                    assert_eq!(view.tabs.len(), 1);
+                });
+            })
+            .unwrap();
+        assert_eq!(width(&mut visual), two);
+        assert!(visual.debug_bounds("closing-tab-face").is_some());
+        assert!(settle_frames(&mut visual) > 1);
+        assert_eq!(width(&mut visual), one);
+        assert!(visual.debug_bounds("closing-tab-face").is_none());
+    }
+
+    #[gpui::test]
+    fn opening_tabs_reveals_the_active_tab_in_a_scrollable_strip(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| cx.set_reduce_motion(true));
+        let window = settings_key_window(cx);
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(px(640.), px(560.)));
+        window
+            .update(&mut visual, |probe, w, cx| {
+                probe
+                    .explorer
+                    .update(cx, |view, cx| view.close_settings(w, cx));
+            })
+            .unwrap();
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let strip = visual.debug_bounds("tab-strip").unwrap();
+        let start = gpui::point(strip.left() + px(30.), strip.center().y);
+        let button = gpui::MouseButton::Left;
+        visual.simulate_mouse_down(start, button, gpui::Modifiers::none());
+        visual.simulate_mouse_move(
+            start + gpui::point(px(28.), px(0.)),
+            Some(button),
+            gpui::Modifiers::none(),
+        );
+        let last = window
+            .update(&mut visual, |probe, w, cx| {
+                assert!(cx.has_active_drag());
+                probe.explorer.update(cx, |view, cx| {
+                    for _ in 0..3 {
+                        view.new_tab(&NewTab, w, cx);
+                    }
+                    view.tabs[view.active].entity_id()
+                })
+            })
+            .unwrap();
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        window
+            .update(&mut visual, |probe, w, cx| {
+                assert_eq!(probe.explorer.read(cx).tab_scroll.offset().x, px(0.));
+                assert!(cx.stop_active_drag(w));
+                probe.explorer.update(cx, |view, cx| {
+                    view.dragging_tab = None;
+                    cx.notify();
+                });
+            })
+            .unwrap();
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        window
+            .read_with(&visual, |probe, cx| {
+                let view = probe.explorer.read(cx);
+                assert_eq!(view.tabs[view.active].entity_id(), last);
+                let strip = view.tab_scroll.bounds();
+                let offset = view.tab_scroll.offset().x;
+                let last_bounds = view.tab_scroll.bounds_for_item(4).unwrap();
+                assert!(offset < px(0.));
+                assert!(last_bounds.right() + offset <= strip.right());
+            })
+            .unwrap();
+        assert_eq!(visual.update(|w, cx| w.simulate_next_frame(cx)), 0);
     }
 
     #[gpui::test]
