@@ -189,6 +189,21 @@ impl Entry {
         size: Option<u64>,
         modified: Option<SystemTime>,
     ) -> Self {
+        Self::from_parts(name, path, kind, size, modified)
+    }
+
+    /// A recursive name-search result already has a filesystem path but may not have metadata.
+    pub fn from_search_hit(hit: &crate::name_search::Hit) -> Self {
+        Self::from_parts(hit.name.clone(), hit.path.clone(), hit.kind, None, None)
+    }
+
+    fn from_parts(
+        name: String,
+        path: PathBuf,
+        kind: EntryKind,
+        size: Option<u64>,
+        modified: Option<SystemTime>,
+    ) -> Self {
         Self {
             name_key: name.to_lowercase(),
             hidden: name.starts_with('.'),

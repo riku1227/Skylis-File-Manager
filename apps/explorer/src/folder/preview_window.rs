@@ -3,12 +3,42 @@ use super::*;
 use crate::media::PreviewContent;
 use gpui::{Animation, AnimationExt, AnyWindowHandle, KeyDownEvent, WeakEntity};
 
+pub(super) struct ImageSequence {
+    entries: Vec<Entry>,
+    index: usize,
+}
+
+#[derive(Clone, Copy)]
+enum ImageStep {
+    Previous,
+    Next,
+}
+
+impl ImageSequence {
+    pub(super) fn new(entries: Vec<Entry>, path: &Path) -> Option<Self> {
+        let index = entries.iter().position(|entry| entry.path == path)?;
+        Some(Self { entries, index })
+    }
+
+    pub(super) fn current(&self) -> &Entry {
+        &self.entries[self.index]
+    }
+
+    fn neighbor(&self, step: ImageStep) -> Option<usize> {
+        match step {
+            ImageStep::Previous => self.index.checked_sub(1),
+            ImageStep::Next => (self.index + 1 < self.entries.len()).then_some(self.index + 1),
+        }
+    }
+}
+
 pub(super) struct PreviewWindow {
     source: WeakEntity<FolderView>,
     owner: AnyWindowHandle,
     media: Entity<MediaCache>,
     scope: MediaScope,
     entry: Entry,
+    sequence: Option<ImageSequence>,
     displayed: Option<(Entry, PreviewContent)>,
     mode: ThemeMode,
     focus: FocusHandle,
@@ -42,6 +72,7 @@ impl PreviewWindow {
         source: Entity<FolderView>,
         owner: AnyWindowHandle,
         entry: Entry,
+        sequence: Option<ImageSequence>,
         media: Entity<MediaCache>,
         scope: MediaScope,
         mode: ThemeMode,
@@ -52,11 +83,17 @@ impl PreviewWindow {
         window.focus(&focus, cx);
         let source_changed = cx.observe_in(&source, window, |this, source, window, cx| {
             let source = source.read(cx);
-            if !source.preview_open || source.selected_entry().is_none() {
+            if !source.preview_open {
                 window.remove_window();
                 return;
             }
-            this.entry = source.selected_entry().unwrap().clone();
+            if this.sequence.is_none() {
+                let Some(entry) = source.selected_entry() else {
+                    window.remove_window();
+                    return;
+                };
+                this.entry = entry.clone();
+            }
             this.mode = source.mode;
             cx.notify();
         });
@@ -89,6 +126,7 @@ impl PreviewWindow {
             media,
             scope,
             entry,
+            sequence,
             displayed: None,
             mode,
             focus,
@@ -111,6 +149,16 @@ impl PreviewWindow {
             self.close(window, cx);
             return;
         }
+        if self.sequence.is_some() {
+            if !event.keystroke.modifiers.modified() {
+                match event.keystroke.key.as_str() {
+                    "left" => self.step_image(ImageStep::Previous, cx),
+                    "right" => self.step_image(ImageStep::Next, cx),
+                    _ => (),
+                }
+            }
+            return;
+        }
         let source = self.source.clone();
         let owner = self.owner;
         let key = event.keystroke.clone();
@@ -131,6 +179,74 @@ impl PreviewWindow {
             });
         });
     }
+
+    fn step_image(&mut self, step: ImageStep, cx: &mut Context<Self>) {
+        if let Some(sequence) = &mut self.sequence
+            && let Some(index) = sequence.neighbor(step)
+        {
+            sequence.index = index;
+            self.scope.cancel();
+            self.entry = sequence.current().clone();
+            cx.notify();
+        }
+    }
+
+    fn open_with_default_app(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let entry = self
+            .displayed
+            .as_ref()
+            .map_or(&self.entry, |(entry, _)| entry);
+        let (path, kind) = (entry.path.clone(), entry.kind);
+        self.close(window, cx);
+        let owner = self.owner;
+        let source = self.source.clone();
+        cx.defer(move |cx| {
+            let _ = owner.update(cx, |_, window, cx| {
+                let _ = source.update(cx, |source, cx| {
+                    source.open_filesystem_target(path, kind, window, cx);
+                });
+            });
+        });
+    }
+
+    fn image_navigation(
+        sequence: &ImageSequence,
+        theme: Theme,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let mut nav = div().flex().items_center().gap(px(12.));
+        for (id, label, step) in [
+            ("previous-image", "← 前へ", ImageStep::Previous),
+            ("next-image", "次へ →", ImageStep::Next),
+        ] {
+            if matches!(step, ImageStep::Next) {
+                nav = nav.child(format!(
+                    "{} / {}",
+                    sequence.index + 1,
+                    sequence.entries.len()
+                ));
+            }
+            let enabled = sequence.neighbor(step).is_some();
+            nav = nav.child(
+                div()
+                    .id(id)
+                    .debug_selector(move || id.into())
+                    .rounded(px(4.))
+                    .px(px(8.))
+                    .py(px(4.))
+                    .child(label)
+                    .when(enabled, |button| {
+                        button
+                            .text_color(theme.c("text.primary"))
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme.c("state.hover")))
+                            .on_click(cx.listener(move |this, _, _, cx| this.step_image(step, cx)))
+                    })
+                    .when(!enabled, |button| button.opacity(0.45)),
+            );
+        }
+        nav
+    }
 }
 
 impl Render for PreviewWindow {
@@ -145,6 +261,18 @@ impl Render for PreviewWindow {
         });
         let loading = matches!(content, PreviewContent::Loading);
         self.present(content);
+        let window_title = if self.sequence.is_some() {
+            "画像ビューア"
+        } else {
+            "クイックプレビュー"
+        };
+        let footer_status = if loading {
+            format!("{} を読み込み中…", self.entry.name)
+        } else if self.sequence.is_some() {
+            "Esc で閉じる".into()
+        } else {
+            "↑ ↓ 選択を移動  ·  Space / Esc 閉じる".into()
+        };
         let title = self
             .displayed
             .as_ref()
@@ -230,7 +358,7 @@ impl Render for PreviewWindow {
                                 .items_center()
                                 .text_color(theme.c("text.muted"))
                                 .window_control_area(gpui::WindowControlArea::Drag)
-                                .child("クイックプレビュー"),
+                                .child(window_title),
                         )
                         .child(crate::explorer::window_controls(
                             window.is_maximized(),
@@ -257,16 +385,7 @@ impl Render for PreviewWindow {
                             .text_color(theme.c("accent.fg"))
                             .child("既定のアプリで開く")
                             .on_click(cx.listener(|this, _, window, cx| {
-                                this.close(window, cx);
-                                let owner = this.owner;
-                                let source = this.source.clone();
-                                cx.defer(move |cx| {
-                                    let _ = owner.update(cx, |_, window, cx| {
-                                        let _ = source.update(cx, |source, cx| {
-                                            source.open_selected(&OpenSelected, window, cx);
-                                        });
-                                    });
-                                });
+                                this.open_with_default_app(window, cx)
                             })),
                     ),
             )
@@ -280,16 +399,16 @@ impl Render for PreviewWindow {
             )
             .child(
                 div()
-                    .h(px(32.))
+                    .h(px(36.))
                     .flex_shrink_0()
                     .px(px(16.))
                     .flex()
                     .items_center()
+                    .gap(px(12.))
                     .text_color(theme.c("text.muted"))
-                    .child(if loading {
-                        format!("{} を読み込み中…", self.entry.name)
-                    } else {
-                        "↑ ↓ 選択を移動  ·  Space / Esc 閉じる".into()
+                    .child(div().flex_1().min_w_0().truncate().child(footer_status))
+                    .when_some(self.sequence.as_ref(), |footer, sequence| {
+                        footer.child(Self::image_navigation(sequence, theme, cx))
                     }),
             )
             .with_animation(

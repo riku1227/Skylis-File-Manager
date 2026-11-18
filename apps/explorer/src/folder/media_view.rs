@@ -1,9 +1,14 @@
 use super::*;
 use crate::media::MediaCache;
+use preview_window::{ImageSequence, PreviewWindow};
 
 #[derive(Clone)]
 pub(super) struct SharedMedia(pub Entity<MediaCache>);
 impl gpui::Global for SharedMedia {}
+
+pub(super) fn is_gallery_image(kind: EntryKind, path: &Path) -> bool {
+    kind == EntryKind::File && crate::media::is_image_path(path)
+}
 
 impl FolderView {
     pub(super) fn toggle_preview(
@@ -27,62 +32,111 @@ impl FolderView {
         let Some(entry) = self.selected_entry().cloned() else {
             return;
         };
-        #[cfg(target_os = "macos")]
-        if let Err(error) = crate::media::quicklook::show(&entry.path, w) {
-            self.notice = Some(error.to_string());
-            cx.notify();
-            return;
-        }
         self.cancel_scroll_motion();
         self.preview_scope.cancel();
-        self.preview_open = true;
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "macos")]
         {
-            let source = cx.entity();
-            let owner = w.window_handle();
-            let media = self.media.clone();
-            let scope = self.preview_scope.clone();
-            let mode = self.mode;
-            let bounds = gpui::Bounds::new(
-                w.bounds().origin + gpui::point(px(48.), px(48.)),
-                gpui::size(px(800.), px(600.)),
-            );
-            let native_owner = preview_window::native_owner(w);
-            match cx.open_window(
-                gpui::WindowOptions {
-                    window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-                    window_min_size: Some(gpui::size(px(400.), px(300.))),
-                    titlebar: Some(gpui::TitlebarOptions {
-                        title: Some("クイックプレビュー — Skylis".into()),
-                        appears_transparent: cfg!(windows),
-                        ..Default::default()
-                    }),
-                    focus: false,
-                    is_minimizable: false,
-                    ..Default::default()
-                },
-                move |window, cx| {
-                    preview_window::attach_native_owner(window, native_owner);
-                    cx.new(|cx| {
-                        preview_window::PreviewWindow::new(
-                            source, owner, entry, media, scope, mode, window, cx,
-                        )
-                    })
-                },
-            ) {
-                Ok(handle) => self.preview_window = Some(handle),
-                Err(error) => {
-                    self.preview_open = false;
-                    self.notice = Some(format!("プレビューを開けません: {error}"));
-                }
+            match crate::media::quicklook::show(&entry.path, w) {
+                Ok(()) => self.preview_open = true,
+                Err(error) => self.notice = Some(error.to_string()),
             }
+            cx.notify();
+        }
+        #[cfg(not(target_os = "macos"))]
+        self.open_preview_window(entry, None, w, cx);
+    }
+
+    pub(super) fn open_image_viewer(
+        &mut self,
+        path: &Path,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Snapshot the displayed order, including any search results already shown.
+        // This copies only listing metadata and opens no files on the UI thread.
+        let entries = self
+            .visible
+            .iter()
+            .map(|&i| &self.entries[i])
+            .filter(|entry| is_gallery_image(entry.kind, &entry.path))
+            .cloned()
+            .chain(
+                self.descendants
+                    .hits
+                    .iter()
+                    .filter(|hit| self.recursive_search() && is_gallery_image(hit.kind, &hit.path))
+                    .map(|hit| Entry::from_search_hit(hit)),
+            )
+            .collect();
+        let Some(sequence) = ImageSequence::new(entries, path) else {
+            return;
+        };
+        #[cfg(target_os = "macos")]
+        let _ = crate::media::quicklook::close(w);
+        self.close_preview(cx);
+        self.cancel_scroll_motion();
+        self.open_preview_window(sequence.current().clone(), Some(sequence), w, cx);
+    }
+
+    fn open_preview_window(
+        &mut self,
+        entry: Entry,
+        sequence: Option<ImageSequence>,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let source = cx.entity();
+        let owner = w.window_handle();
+        let media = self.media.clone();
+        let scope = self.preview_scope.clone();
+        let mode = self.mode;
+        let viewer = sequence.is_some();
+        let bounds = gpui::Bounds::new(
+            w.bounds().origin + gpui::point(px(48.), px(48.)),
+            gpui::size(px(800.), px(600.)),
+        );
+        let native_owner = preview_window::native_owner(w);
+        match cx.open_window(
+            gpui::WindowOptions {
+                window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
+                window_min_size: Some(gpui::size(px(400.), px(300.))),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: Some(
+                        if viewer {
+                            "画像ビューア — Skylis"
+                        } else {
+                            "クイックプレビュー — Skylis"
+                        }
+                        .into(),
+                    ),
+                    appears_transparent: cfg!(windows),
+                    ..Default::default()
+                }),
+                focus: viewer,
+                is_minimizable: false,
+                ..Default::default()
+            },
+            move |window, cx| {
+                preview_window::attach_native_owner(window, native_owner);
+                cx.new(|cx| {
+                    PreviewWindow::new(
+                        source, owner, entry, sequence, media, scope, mode, window, cx,
+                    )
+                })
+            },
+        ) {
+            Ok(handle) => {
+                self.preview_open = true;
+                self.preview_window = Some(handle);
+            }
+            Err(error) => self.notice = Some(format!("プレビューを開けません: {error}")),
         }
         cx.notify();
     }
+
     pub(crate) fn close_preview(&mut self, cx: &mut Context<Self>) {
         self.preview_open = false;
         self.preview_scope.cancel();
-        #[cfg(not(target_os = "macos"))]
         if let Some(handle) = self.preview_window.take() {
             cx.defer(move |cx| {
                 let _ = handle.update(cx, |_, window, _| window.remove_window());
