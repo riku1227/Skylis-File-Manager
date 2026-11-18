@@ -13,6 +13,7 @@ mod sizes;
 use sizes::SizeState;
 mod grouping;
 mod media_view;
+#[cfg(not(target_os = "macos"))]
 mod preview_window;
 mod wsl;
 use crate::media::{MediaCache, MediaScope};
@@ -79,6 +80,7 @@ pub struct FolderView {
     preview_scope: MediaScope,
     inspector_image: std::cell::RefCell<Option<(Entry, std::sync::Arc<gpui::RenderImage>)>>,
     preview_open: bool,
+    #[cfg(not(target_os = "macos"))]
     preview_window: Option<gpui::WindowHandle<preview_window::PreviewWindow>>,
     gallery: bool,
     gallery_override: Option<bool>,
@@ -359,6 +361,7 @@ impl FolderView {
             preview_scope: MediaScope::new(),
             inspector_image: Default::default(),
             preview_open: false,
+            #[cfg(not(target_os = "macos"))]
             preview_window: None,
             gallery: false,
             gallery_override: None,
@@ -894,23 +897,8 @@ impl FolderView {
             }
             return;
         }
-        self.open_listed_target(path, entry.kind, window, cx);
+        self.open_filesystem_target(path, entry.kind, window, cx);
     }
-
-    fn open_listed_target(
-        &mut self,
-        path: PathBuf,
-        kind: EntryKind,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if media_view::is_gallery_image(kind, &path) {
-            self.open_image_viewer(&path, window, cx);
-        } else {
-            self.open_filesystem_target(path, kind, window, cx);
-        }
-    }
-
     fn open_filesystem_target(
         &mut self,
         path: PathBuf,
@@ -2759,7 +2747,7 @@ impl Render for FolderView {
         self.theme_search_filters(t, cx);
         #[cfg(target_os = "macos")]
         {
-            if self.preview_open && self.preview_window.is_none() {
+            if self.preview_open {
                 if let Some(entry) = self.selected_entry() {
                     match crate::media::quicklook::update(&entry.path, window) {
                         Ok(true) => (),

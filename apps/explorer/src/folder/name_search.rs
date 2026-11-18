@@ -696,7 +696,7 @@ impl FolderView {
         let Some(hit) = self.descendant().cloned() else {
             return;
         };
-        self.open_listed_target(hit.path.clone(), hit.kind, window, cx);
+        self.open_filesystem_target(hit.path.clone(), hit.kind, window, cx);
     }
     fn reveal_descendant(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(hit) = self.descendant().cloned() else {
