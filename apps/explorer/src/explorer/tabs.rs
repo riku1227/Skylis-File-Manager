@@ -1,5 +1,5 @@
 use super::*;
-use gpui::{Bounds, Pixels, Point, WindowHandle, point, size};
+use gpui::{Bounds, Pixels, Point, WindowHandle, point};
 
 #[derive(Clone)]
 pub(super) struct TabDrag {
@@ -573,6 +573,8 @@ fn move_existing_window(_: &Window, _: Point<Pixels>, _: &App) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::size;
+
     #[test]
     fn reorder_slots_account_for_removal_and_end_drop() {
         assert_eq!(reordered_index(0, 3, 3), 2);
