@@ -6,22 +6,51 @@ use crate::{
         ProgressMeasure, PromptAction, PromptId, PromptKind, PromptRequest, PromptResponse,
         TotalState,
     },
-    settings_data::ActivityDisplay,
 };
 use gpui::{
-    AnyElement, AnyWindowHandle, Bounds, Div, MouseButton, Stateful, Task, WindowId, WindowOptions,
-    actions, point, size,
+    Anchor, AnyElement, AnyWindowHandle, Div, MouseButton, PathBuilder, Pixels, Point, Stateful,
+    actions, point,
 };
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
 
-const AUTO_DELAY: Duration = Duration::from_millis(500);
 const CONFIRM_DELAY: Duration = Duration::from_millis(400);
 const TITLE: &str = "ファイル操作";
 
 actions!(activity, [ToggleActivity]);
+
+pub(crate) fn bind_trigger_keys(cx: &mut App) {
+    cx.bind_keys(
+        [
+            "enter",
+            "space",
+            "up",
+            "down",
+            "left",
+            "right",
+            "home",
+            "end",
+            "pageup",
+            "pagedown",
+            "shift-up",
+            "shift-down",
+            "shift-left",
+            "shift-right",
+            "shift-home",
+            "shift-end",
+            "shift-pageup",
+            "shift-pagedown",
+            "delete",
+            "shift-delete",
+            "f2",
+            "shift-f10",
+            "menu",
+        ]
+        .map(|key| gpui::KeyBinding::new(key, gpui::NoAction, Some("ActivityTrigger"))),
+    );
+}
 
 pub(super) struct ActivityState {
     pub center: Entity<OperationCenter>,
@@ -33,7 +62,6 @@ pub(super) struct ActivityState {
     sheet: Presence<PromptSheet>,
     sheet_focus: FocusHandle,
     sheet_previous: Option<FocusHandle>,
-    auto_timer: Option<(Instant, Task<()>)>,
 }
 
 #[derive(Clone)]
@@ -60,7 +88,6 @@ impl ActivityState {
             sheet: Presence::default(),
             sheet_focus: cx.focus_handle(),
             sheet_previous: None,
-            auto_timer: None,
         }
     }
 
@@ -69,75 +96,241 @@ impl ActivityState {
     }
 }
 
-pub(crate) fn render_pill(
+#[derive(Default)]
+struct ActivitySummary {
+    running: u32,
+    progress_sum: u32,
+    unknown_progress: bool,
+    queued: u32,
+    cancelling: u32,
+    paused: u32,
+    decisions: u32,
+    errors: u32,
+}
+
+impl ActivitySummary {
+    fn read(center: &OperationCenter) -> Self {
+        Self::from_jobs(
+            center
+                .snapshots()
+                .map(|job| (job.status, job.percent, job.unread_error)),
+        )
+    }
+
+    fn from_jobs(jobs: impl IntoIterator<Item = (JobStatus, Option<u8>, bool)>) -> Self {
+        let mut summary = Self::default();
+        for (status, percent, unread_error) in jobs {
+            match status {
+                JobStatus::Running => {
+                    summary.running += 1;
+                    if let Some(percent) = percent {
+                        summary.progress_sum += u32::from(percent);
+                    } else {
+                        summary.unknown_progress = true;
+                    }
+                }
+                JobStatus::Queued => summary.queued += 1,
+                JobStatus::Paused => summary.paused += 1,
+                JobStatus::WaitingForUser(_) => summary.decisions += 1,
+                JobStatus::Cancelling => summary.cancelling += 1,
+                _ if !status.is_active() && unread_error => summary.errors += 1,
+                _ => {}
+            }
+        }
+        summary
+    }
+
+    fn average(&self) -> Option<u32> {
+        if self.running == 0 || self.unknown_progress {
+            return None;
+        }
+        Some((self.progress_sum + self.running / 2) / self.running)
+    }
+
+    fn description(&self) -> String {
+        let mut text = if let Some(average) = self.average() {
+            format!("実行中 {} 件の平均進捗 {average}%", self.running)
+        } else if self.running > 0 {
+            format!("実行中 {} 件 · 進捗が不明な操作があります", self.running)
+        } else {
+            "実行中の操作はありません".into()
+        };
+        for (count, label) in [
+            (self.queued, "待機中"),
+            (self.paused, "一時停止中"),
+            (self.cancelling, "中止処理中"),
+            (self.decisions, "要確認"),
+            (self.errors, "未確認のエラー"),
+        ] {
+            if count > 0 {
+                text.push_str(&format!(" · {label} {count} 件"));
+            }
+        }
+        text
+    }
+}
+
+pub(crate) fn render_trigger(
     center: &Entity<OperationCenter>,
-    window_id: WindowId,
+    focus: &FocusHandle,
+    window: &Window,
     t: Theme,
     cx: &App,
-) -> Option<AnyElement> {
-    let (mut active, mut waiting, mut errors) = (0, 0, 0);
-    for job in center.read(cx).snapshots() {
-        match job.status {
-            JobStatus::WaitingForUser(_) => waiting += 1,
-            status if status.is_active() => active += 1,
-            _ if job.unread_error => errors += 1,
-            _ => {}
-        }
-    }
-    if active + waiting + errors == 0 {
-        center.read(cx).clear_pill_bounds(window_id);
-        return None;
-    }
-    let label = [
-        (waiting, "要確認"),
-        (active, "ファイル操作"),
-        (errors, "エラー"),
-    ]
-    .into_iter()
-    .filter(|(count, _)| *count > 0)
-    .map(|(count, text)| format!("{text} {count}"))
-    .collect::<Vec<_>>()
-    .join(" · ");
+) -> impl IntoElement {
+    let summary = ActivitySummary::read(center.read(cx));
+    let label = format!("{TITLE} · {}", summary.description());
+    let pending = summary.queued + summary.cancelling + summary.paused > 0;
+    let handle = window.window_handle();
     let bounds_center = center.clone();
-    Some(
-        div()
-            .id("activity-pill")
-            .debug_selector(|| "activity-pill".into())
-            .role(gpui::Role::Button)
-            .aria_label(label.clone())
-            .relative()
-            .flex_shrink_0()
-            .h(px(21.))
-            .px(px(8.))
-            .rounded(px(10.))
-            .flex()
-            .items_center()
-            .gap(px(5.))
-            .cursor_pointer()
-            .bg(t.c("surface.chip-selected"))
-            .hover(|d| d.bg(t.c("state.hover")))
-            .text_color(t.c(if errors > 0 {
-                "danger.fg"
-            } else if waiting > 0 {
-                "meter.warn"
-            } else {
-                "accent.fg"
-            }))
-            .child(
-                gpui::canvas(
-                    move |bounds, _, cx| {
-                        bounds_center.read(cx).record_pill_bounds(window_id, bounds)
-                    },
-                    |_, _, _, _| {},
-                )
-                .absolute()
-                .size_full(),
+    div()
+        .id("activity-trigger")
+        .debug_selector(|| "activity-trigger".into())
+        .role(gpui::Role::Button)
+        .aria_label(label.clone())
+        .tooltip(move |_, cx| cx.new(|_| ActivityTip(label.clone(), t)).into())
+        .track_focus(focus)
+        .tab_index(0)
+        .key_context("ActivityTrigger")
+        .relative()
+        .size(px(36.))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(8.))
+        .cursor_pointer()
+        .hover(|d| d.bg(t.c("state.hover")))
+        .focus(|d| d.bg(t.c("surface.chip-selected")))
+        .child(
+            gpui::canvas(
+                move |bounds, window, cx| {
+                    if bounds_center
+                        .read(cx)
+                        .record_trigger_bounds(handle.window_id(), bounds)
+                        && let Some(explorer) = handle.downcast::<Explorer>()
+                    {
+                        // The Explorer overlay reads the last layout's anchor.
+                        window.on_next_frame(move |_, cx| {
+                            let _ = explorer.update(cx, |this, _, cx| {
+                                if this.activity.popup.mounted() {
+                                    cx.notify();
+                                }
+                            });
+                        });
+                    }
+                },
+                |_, _, _, _| {},
             )
-            .child(svg().path("icons/activity.svg").size(px(12.)))
-            .child(label)
-            .on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleActivity), cx))
-            .into_any_element(),
+            .absolute()
+            .inset_0()
+            .size_full(),
+        )
+        .child(
+            div()
+                .relative()
+                .size(px(24.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .border_1()
+                .border_color(t.c("meter.track"))
+                .when_some(
+                    summary.average().filter(|percent| *percent > 0),
+                    |d, percent| d.child(progress_arc(0., percent as f32 / 100., t)),
+                )
+                .when(summary.unknown_progress, |d| {
+                    d.child(progress_arc(0., 0.15, t))
+                        .child(progress_arc(0.21, 0.08, t))
+                })
+                .when(summary.running > 0, |d| {
+                    d.text_size(px(11.))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(t.c("accent.fg"))
+                        .child(summary.running.to_string())
+                })
+                .when(summary.running == 0 && pending, |d| {
+                    d.text_color(t.c("text.secondary")).child("…")
+                })
+                .when(summary.running == 0 && !pending, |d| {
+                    d.child(
+                        svg()
+                            .path("icons/activity.svg")
+                            .size(px(12.))
+                            .text_color(t.c("text.muted")),
+                    )
+                }),
+        )
+        .when(summary.decisions > 0, |d| {
+            d.child(alert_badge("activity-decision-badge", "!", "meter.warn", t).top(px(0.)))
+        })
+        .when(summary.errors > 0, |d| {
+            d.child(alert_badge("activity-error-badge", "×", "danger.fg", t).bottom(px(0.)))
+        })
+        .on_key_down(|event, window, cx| {
+            if matches!(event.keystroke.key.as_str(), "enter" | "space")
+                && !event.keystroke.modifiers.modified()
+            {
+                window.prevent_default();
+                cx.stop_propagation();
+                if !event.is_held {
+                    window.dispatch_action(Box::new(ToggleActivity), cx);
+                }
+            }
+        })
+        .on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleActivity), cx))
+}
+
+fn alert_badge(id: &'static str, symbol: &'static str, color: &str, t: Theme) -> Stateful<Div> {
+    div()
+        .id(id)
+        .debug_selector(move || id.into())
+        .absolute()
+        .right(px(0.))
+        .size(px(14.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .border_1()
+        .border_color(t.c(color))
+        .bg(t.c("surface.dialog"))
+        .text_color(t.c("text.primary"))
+        .text_size(px(10.))
+        .font_weight(gpui::FontWeight::BOLD)
+        .child(symbol)
+}
+
+fn progress_arc(start: f32, length: f32, t: Theme) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| {
+            let center: Point<Pixels> = bounds.center();
+            let radius = px(10.5);
+            let at = |turn: f32| {
+                let angle = (turn - 0.25) * std::f32::consts::TAU;
+                center + point(radius * angle.cos(), radius * angle.sin())
+            };
+            let mut path = PathBuilder::stroke(px(2.));
+            path.move_to(at(start));
+            // Splitting the sweep also handles a full ring, where the endpoints coincide.
+            for fraction in [0.5, 1.] {
+                path.arc_to(
+                    point(radius, radius),
+                    px(0.),
+                    false,
+                    true,
+                    at(start + fraction * length),
+                );
+            }
+            if let Ok(path) = path.build() {
+                window.paint_path(path, t.c("accent.fg"));
+            }
+        },
     )
+    .absolute()
+    .inset_0()
+    .size_full()
 }
 
 impl Explorer {
@@ -147,12 +340,6 @@ impl Explorer {
         }
         if self.settings_open {
             self.close_settings(window, cx);
-        }
-        if self.preferences.read(cx).value.activity_display == ActivityDisplay::Window
-            || self.activity.center.read(cx).activity_window.is_some()
-        {
-            self.pop_out(window, cx);
-            return;
         }
         if self.activity.popup_open {
             return;
@@ -168,12 +355,9 @@ impl Explorer {
             return;
         }
         self.activity.popup_open = false;
+        let previous = self.activity.popup_previous.take();
         if self.activity.popup_focus.contains_focused(window, cx) {
-            let focus = self
-                .activity
-                .popup_previous
-                .take()
-                .unwrap_or_else(|| self.tabs[self.active].focus_handle(cx));
+            let focus = previous.unwrap_or_else(|| self.tabs[self.active].focus_handle(cx));
             window.focus(&focus, cx);
         }
         cx.notify();
@@ -188,85 +372,11 @@ impl Explorer {
         if self.activity.modal() || self.settings_open {
             return;
         }
-        if self.preferences.read(cx).value.activity_display == ActivityDisplay::Window
-            || self.activity.center.read(cx).activity_window.is_some()
-        {
-            self.pop_out(window, cx);
-        } else if self.activity.popup_open {
+        if self.activity.popup_open {
             self.close_activity(window, cx);
         } else {
             self.show_activity(window, cx);
         }
-    }
-
-    fn pop_out(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        match open_activity_window(
-            &self.activity.center,
-            self.preferences.clone(),
-            window,
-            true,
-            cx,
-        ) {
-            Ok(()) => self.close_activity(window, cx),
-            Err(error) => {
-                self.tab_error = Some(format!("ファイル操作ウィンドウを開けません: {error}"));
-                cx.notify();
-            }
-        }
-    }
-
-    fn auto_deadline(&self, window: &Window, cx: &App) -> Option<Instant> {
-        let center = self.activity.center.read(cx);
-        if self.preferences.read(cx).value.activity_display != ActivityDisplay::Window
-            || center.activity_window.is_some()
-            || center.auto_presented
-            || center.target_window(None) != Some(window.window_handle())
-        {
-            return None;
-        }
-        center
-            .snapshots()
-            .filter(|job| job.status.is_active())
-            .map(|job| job.submitted_at + AUTO_DELAY)
-            .min()
-    }
-
-    fn sync_auto_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let deadline = self.auto_deadline(window, cx);
-        if self.activity.auto_timer.as_ref().map(|(at, _)| *at) == deadline {
-            return;
-        }
-        self.activity.auto_timer = deadline.map(|deadline| {
-            let delay = deadline.saturating_duration_since(cx.background_executor().now());
-            let timer = cx.background_executor().timer(delay);
-            let task = cx.spawn_in(window, async move |this, cx| {
-                timer.await;
-                let _ = this.update_in(cx, |this, window, cx| {
-                    this.activity.auto_timer = None;
-                    let now = cx.background_executor().now();
-                    if this.auto_deadline(window, cx).is_some_and(|at| now >= at) {
-                        match open_activity_window(
-                            &this.activity.center,
-                            this.preferences.clone(),
-                            window,
-                            false,
-                            cx,
-                        ) {
-                            Ok(()) => this.close_activity(window, cx),
-                            Err(error) => {
-                                this.activity
-                                    .center
-                                    .update(cx, |center, _| center.auto_presented = true);
-                                this.tab_error =
-                                    Some(format!("ファイル操作ウィンドウを開けません: {error}"));
-                                cx.notify();
-                            }
-                        }
-                    }
-                });
-            });
-            (deadline, task)
-        });
     }
 
     pub(super) fn sync_activity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -279,6 +389,7 @@ impl Explorer {
         if request.as_ref().map(|r| r.id) != self.activity.prompt.as_ref().map(|p| p.request.id) {
             if let Some(request) = request {
                 if self.activity.prompt.is_none() {
+                    self.close_activity(window, cx);
                     self.activity.sheet_previous = window.focused(cx);
                 }
                 self.activity.prompt = Some(PromptSheet {
@@ -297,9 +408,6 @@ impl Explorer {
                     .unwrap_or_else(|| self.tabs[self.active].focus_handle(cx));
                 window.focus(&focus, cx);
             }
-        }
-        if self.activity.popup_open && self.activity.center.read(cx).activity_window.is_some() {
-            self.close_activity(window, cx);
         }
         if self.activity.popup_open && !self.settings_open && window.is_window_active() {
             let center = self.activity.center.clone();
@@ -321,7 +429,6 @@ impl Explorer {
         if popup || sheet {
             window.request_animation_frame();
         }
-        self.sync_auto_window(window, cx);
     }
 
     pub(super) fn render_activity_popup(
@@ -331,19 +438,23 @@ impl Explorer {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let shown = self.activity.popup.shown()?;
+        let viewport = window.viewport_size();
+        let anchor = self
+            .activity
+            .center
+            .read(cx)
+            .trigger_bounds(window.window_handle().window_id())?;
+        let margin = px(8.);
+        let top = anchor.bottom() + px(6.);
+        let width = px(420.).min((viewport.width - margin * 2.).max(px(1.)));
+        let height = px(470.).min((viewport.height - top - margin).max(px(1.)));
+        let position = point(anchor.right(), top - px(4. * (1. - shown.progress)));
+        let summary = ActivitySummary::read(self.activity.center.read(cx));
         let child = div()
             .id("activity-popover")
             .debug_selector(|| "activity-popover".into())
-            .absolute()
-            .right(px(8.))
-            .bottom(px(32. - 6. * (1. - shown.progress)))
-            .w(px(420.))
-            .max_w_full()
-            .max_h(
-                (window.viewport_size().height - px(44.))
-                    .min(px(490.))
-                    .max(px(50.)),
-            )
+            .w(width)
+            .max_h(height)
             .flex()
             .flex_col()
             .rounded(px(10.))
@@ -361,10 +472,12 @@ impl Explorer {
                     .on_mouse_down_out(cx.listener(
                         |this, event: &gpui::MouseDownEvent, window, cx| {
                             if this.activity.popup_open
-                                && !this.activity.center.read(cx).pill_contains(
-                                    window.window_handle().window_id(),
-                                    event.position,
-                                )
+                                && !this
+                                    .activity
+                                    .center
+                                    .read(cx)
+                                    .trigger_bounds(window.window_handle().window_id())
+                                    .is_some_and(|bounds| bounds.contains(&event.position))
                             {
                                 this.close_activity(window, cx);
                             }
@@ -403,14 +516,6 @@ impl Explorer {
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .child(TITLE),
                     )
-                    .child(button("activity-pop-out", "別ウィンドウで開く", t).when(
-                        shown.live,
-                        |d| {
-                            keyboard_button(d, t).on_click(
-                                cx.listener(|this, _, window, cx| this.pop_out(window, cx)),
-                            )
-                        },
-                    ))
                     .child(
                         icon_button("activity-close", "icons/x.svg", true, t)
                             .role(gpui::Role::Button)
@@ -422,15 +527,35 @@ impl Explorer {
                             }),
                     ),
             )
+            .child(
+                div()
+                    .id("activity-ring-summary")
+                    .px(px(10.))
+                    .py(px(8.))
+                    .border_b_1()
+                    .border_color(t.c("border.subtle"))
+                    .text_color(t.c("text.secondary"))
+                    .child(summary.description()),
+            )
             .child(ActivityList::render(
                 &self.activity.center,
                 shown.live,
-                Some(window.window_handle()),
+                window.window_handle(),
                 t,
                 cx,
             ))
             .when(!shown.live, |d| d.child(motion::ghost_shield()));
-        Some(gpui::deferred(child).with_priority(2).into_any_element())
+        Some(
+            gpui::deferred(
+                gpui::anchored()
+                    .anchor(Anchor::TopRight)
+                    .position(position)
+                    .snap_to_window_with_margin(margin)
+                    .child(child),
+            )
+            .with_priority(2)
+            .into_any_element(),
+        )
     }
 
     fn answer_prompt(&mut self, prompt: PromptId, action: PromptAction, cx: &mut Context<Self>) {
@@ -717,7 +842,7 @@ impl ActivityList {
     fn render(
         center: &Entity<OperationCenter>,
         interactive: bool,
-        clicked_window: Option<AnyWindowHandle>,
+        window_handle: AnyWindowHandle,
         t: Theme,
         cx: &App,
     ) -> AnyElement {
@@ -754,14 +879,7 @@ impl ActivityList {
                         .child(title),
                 )
                 .children(matching.map(|job| {
-                    Self::card(
-                        center,
-                        job,
-                        interactive,
-                        clicked_window,
-                        waiting_for_user,
-                        t,
-                    )
+                    Self::card(center, job, interactive, window_handle, waiting_for_user, t)
                 }));
         }
         if jobs.snapshots().next().is_none() {
@@ -811,7 +929,7 @@ impl ActivityList {
         center: &Entity<OperationCenter>,
         job: &JobSnapshot,
         interactive: bool,
-        clicked_window: Option<AnyWindowHandle>,
+        window_handle: AnyWindowHandle,
         waiting_for_user: bool,
         t: Theme,
     ) -> impl IntoElement {
@@ -831,16 +949,34 @@ impl ActivityList {
             JobStatus::Running => "進行中",
             JobStatus::Paused => "一時停止中",
             JobStatus::Cancelling => "中止しています",
-            JobStatus::WaitingForUser(_) => "Skylis のメインウィンドウで確認してください",
+            JobStatus::WaitingForUser(_) => "操作元のウィンドウで確認してください",
             JobStatus::Completed => "完了",
             JobStatus::CompletedWithIssues => "一部失敗",
             JobStatus::Failed => "失敗",
             JobStatus::Cancelled => "中止",
         };
         let id = job.id;
+        let card = div()
+            .id(("activity-job", id.0 as usize))
+            .mb(px(8.))
+            .p(px(8.))
+            .rounded(px(6.))
+            .bg(t.c("surface.raised"))
+            .border_1()
+            .border_color(t.c("border.subtle"))
+            .child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .gap(px(6.))
+                    .child(title)
+                    .child(div().text_color(t.c("text.secondary")).child(status)),
+            );
+        if matches!(job.status, JobStatus::WaitingForUser(_)) {
+            return card;
+        }
+
         let cancel_center = center.clone();
-        let navigation_center = center.clone();
-        let origin = job.origin;
         let open_target = if matches!(
             job.status,
             JobStatus::Completed | JobStatus::CompletedWithIssues
@@ -861,111 +997,88 @@ impl ActivityList {
         } else {
             None
         };
-        div()
-            .id(("activity-job", id.0 as usize))
-            .mb(px(8.))
-            .p(px(8.))
-            .rounded(px(6.))
-            .bg(t.c("surface.raised"))
-            .border_1()
-            .border_color(t.c("border.subtle"))
-            .child(
+        card.when(job.status == JobStatus::Queued && waiting_for_user, |d| {
+            d.child(
                 div()
-                    .flex()
-                    .justify_between()
-                    .gap(px(6.))
-                    .child(title)
-                    .child(div().text_color(t.c("text.secondary")).child(status)),
+                    .mt(px(2.))
+                    .text_color(t.c("text.muted"))
+                    .child("前の操作が確認待ちです"),
             )
-            .when(job.status == JobStatus::Queued && waiting_for_user, |d| {
-                d.child(
-                    div()
-                        .mt(px(2.))
-                        .text_color(t.c("text.muted"))
-                        .child("前の操作が確認待ちです"),
-                )
-            })
-            .when_some(job.destination.as_ref(), |d, path| {
-                let path = path.to_string_lossy().into_owned();
-                d.child(path_text(("activity-destination", id.0 as usize), path, t))
-            })
-            .when(
-                job.status.is_active() && job.status != JobStatus::Queued,
-                |d| d.child(Self::progress(job, t)),
+        })
+        .when_some(job.destination.as_ref(), |d, path| {
+            let path = path.to_string_lossy().into_owned();
+            d.child(path_text(("activity-destination", id.0 as usize), path, t))
+        })
+        .when(
+            job.status.is_active() && job.status != JobStatus::Queued,
+            |d| d.child(Self::progress(job, t)),
+        )
+        .when_some(job.progress.current_item.clone(), |d, path| {
+            let name = std::path::Path::new(&path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+            d.child(
+                div()
+                    .id(("activity-current-item", id.0 as usize))
+                    .truncate()
+                    .text_color(t.c("text.muted"))
+                    .child(name)
+                    .tooltip(move |_, cx| cx.new(|_| ActivityTip(path.clone(), t)).into()),
             )
-            .when_some(job.progress.current_item.clone(), |d, path| {
-                let name = std::path::Path::new(&path)
-                    .file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| path.clone());
-                d.child(
-                    div()
-                        .id(("activity-current-item", id.0 as usize))
-                        .truncate()
-                        .text_color(t.c("text.muted"))
-                        .child(name)
-                        .tooltip(move |_, cx| cx.new(|_| ActivityTip(path.clone(), t)).into()),
-                )
-            })
-            .when(job.issue_count > 0, |d| {
-                let count = job.issue_count;
-                d.child(
-                    div()
-                        .text_color(t.c("danger.fg"))
-                        .child(format!("問題 {count} 件")),
-                )
-                .children(job.issues().iter().take(3).map(|issue| {
-                    let text = issue.item.as_ref().map_or_else(
-                        || issue.message.clone(),
-                        |item| format!("{item} · {}", issue.message),
-                    );
-                    div().text_color(t.c("danger.fg")).child(text)
-                }))
-            })
-            .when(
-                job.cancellable && job.status != JobStatus::Cancelling,
-                |d| {
-                    d.child(
-                        job_button("activity-cancel", id.0, "中止", t)
-                            .mt(px(6.))
-                            .when(interactive, |button| {
-                                keyboard_button(button, t).on_click(move |_, _, cx| {
-                                    cancel_center.update(cx, |center, cx| center.cancel(id, cx));
-                                })
-                            }),
-                    )
-                },
+        })
+        .when(job.issue_count > 0, |d| {
+            let count = job.issue_count;
+            d.child(
+                div()
+                    .text_color(t.c("danger.fg"))
+                    .child(format!("問題 {count} 件")),
             )
-            .when(
-                job.status == JobStatus::Running
-                    && !job.cancellable
-                    && matches!(job.backend, JobBackend::OsDelegated { .. }),
-                |d| {
-                    d.child(div().text_color(t.c("text.muted")).child(if cfg!(windows) {
-                        "中止は Windows の進捗ウィンドウから"
-                    } else {
-                        "Finder に委譲中 · アプリからの中止には対応していません"
-                    }))
-                },
-            )
-            .when_some(open_target, |d, (folder, select)| {
+            .children(job.issues().iter().take(3).map(|issue| {
+                let text = issue.item.as_ref().map_or_else(
+                    || issue.message.clone(),
+                    |item| format!("{item} · {}", issue.message),
+                );
+                div().text_color(t.c("danger.fg")).child(text)
+            }))
+        })
+        .when(
+            job.cancellable && job.status != JobStatus::Cancelling,
+            |d| {
                 d.child(
-                    job_button("activity-open-destination", id.0, "保存先を開く", t)
+                    job_button("activity-cancel", id.0, "中止", t)
                         .mt(px(6.))
                         .when(interactive, |button| {
                             keyboard_button(button, t).on_click(move |_, _, cx| {
-                                open_destination(
-                                    &navigation_center,
-                                    clicked_window,
-                                    origin,
-                                    folder.clone(),
-                                    select.clone(),
-                                    cx,
-                                )
+                                cancel_center.update(cx, |center, cx| center.cancel(id, cx));
                             })
                         }),
                 )
-            })
+            },
+        )
+        .when(
+            job.status == JobStatus::Running
+                && !job.cancellable
+                && job.backend == JobBackend::OsDelegated,
+            |d| {
+                d.child(
+                    div()
+                        .text_color(t.c("text.muted"))
+                        .child("Finder に委譲中 · アプリからの中止には対応していません"),
+                )
+            },
+        )
+        .when_some(open_target, |d, (folder, select)| {
+            d.child(
+                job_button("activity-open-destination", id.0, "保存先を開く", t)
+                    .mt(px(6.))
+                    .when(interactive, |button| {
+                        keyboard_button(button, t).on_click(move |_, _, cx| {
+                            open_destination(window_handle, folder.clone(), select.clone(), cx)
+                        })
+                    }),
+            )
+        })
     }
 
     fn progress(job: &JobSnapshot, t: Theme) -> AnyElement {
@@ -1072,22 +1185,12 @@ impl Render for ActivityTip {
 }
 
 fn open_destination(
-    center: &Entity<OperationCenter>,
-    clicked_window: Option<AnyWindowHandle>,
-    origin: Option<AnyWindowHandle>,
+    window_handle: AnyWindowHandle,
     path: PathBuf,
     select: Option<String>,
     cx: &mut App,
 ) {
-    let target = clicked_window
-        .and_then(|handle| handle.downcast::<Explorer>())
-        .or_else(|| {
-            center
-                .read(cx)
-                .target_window(origin)
-                .and_then(|handle| handle.downcast::<Explorer>())
-        });
-    let Some(target) = target else {
+    let Some(target) = window_handle.downcast::<Explorer>() else {
         return;
     };
     cx.defer(move |cx| {
@@ -1105,140 +1208,6 @@ fn open_destination(
             window.activate_window();
         });
     });
-}
-
-fn open_activity_window(
-    center: &Entity<OperationCenter>,
-    preferences: Entity<crate::settings::Preferences>,
-    owner: &Window,
-    focus: bool,
-    cx: &mut App,
-) -> anyhow::Result<()> {
-    if let Some(handle) = center.read(cx).activity_window {
-        if handle
-            .update(cx, |_, window, _| {
-                if focus {
-                    window.activate_window();
-                }
-            })
-            .is_ok()
-        {
-            return Ok(());
-        }
-    }
-    let bounds = Bounds::new(
-        owner.bounds().origin + point(px(42.), px(42.)),
-        size(px(450.), px(430.)),
-    );
-    let options = WindowOptions {
-        focus,
-        window_min_size: Some(size(px(320.), px(220.))),
-        window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-        titlebar: Some(gpui::TitlebarOptions {
-            title: Some("ファイル操作 — Skylis".into()),
-            appears_transparent: cfg!(windows),
-            ..Default::default()
-        }),
-        is_minimizable: false,
-        ..Default::default()
-    };
-    let window_center = center.clone();
-    let handle = cx.open_window(options, |window, cx| {
-        cx.new(|cx| {
-            cx.observe(&window_center, |_, _, cx| cx.notify()).detach();
-            cx.observe(&preferences, |_, _, cx| cx.notify()).detach();
-            cx.observe_window_appearance(window, |_, _, cx| cx.notify())
-                .detach();
-            let focus_handle = cx.focus_handle();
-            window.focus(&focus_handle, cx);
-            ActivityWindow {
-                center: window_center,
-                preferences,
-                focus: focus_handle,
-            }
-        })
-    })?;
-    center.update(cx, |center, cx| {
-        center.activity_window = Some(handle.into());
-        center.auto_presented = true;
-        if focus {
-            center.acknowledge_errors(cx);
-        }
-        cx.notify();
-    });
-    Ok(())
-}
-
-struct ActivityWindow {
-    center: Entity<OperationCenter>,
-    preferences: Entity<crate::settings::Preferences>,
-    focus: FocusHandle,
-}
-
-impl Render for ActivityWindow {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if window.is_window_active() && self.center.read(cx).snapshots().any(|job| job.unread_error)
-        {
-            let center = self.center.clone();
-            cx.defer(move |cx| center.update(cx, |center, cx| center.acknowledge_errors(cx)));
-        }
-        let value = &self.preferences.read(cx).value;
-        let t = Theme::resolve(value.theme.into(), window.appearance());
-        apply_frame_limit(window, value.high_refresh_rate);
-        div()
-            .id("activity-window")
-            .track_focus(&self.focus)
-            .tab_group()
-            .tab_stop(false)
-            .size_full()
-            .flex()
-            .flex_col()
-            .bg(t.c("surface.canvas"))
-            .text_color(t.c("text.primary"))
-            .text_size(px(12.))
-            .on_key_down(|event, window, cx| {
-                if event.keystroke.modifiers.control
-                    || event.keystroke.modifiers.alt
-                    || event.keystroke.modifiers.platform
-                {
-                    return;
-                }
-                match event.keystroke.key.as_str() {
-                    "escape" => window.remove_window(),
-                    "up" => window.focus_prev(cx),
-                    "down" => window.focus_next(cx),
-                    "tab" if event.keystroke.modifiers.shift => window.focus_prev(cx),
-                    "tab" => window.focus_next(cx),
-                    _ => return,
-                }
-                cx.stop_propagation();
-            })
-            .when(cfg!(windows), |d| {
-                d.child(
-                    div()
-                        .id("activity-titlebar")
-                        .h(px(38.))
-                        .flex_shrink_0()
-                        .flex()
-                        .items_center()
-                        .border_b_1()
-                        .border_color(t.c("border.subtle"))
-                        .child(
-                            div()
-                                .id("activity-window-drag")
-                                .flex_1()
-                                .h_full()
-                                .px(px(12.))
-                                .flex()
-                                .items_center()
-                                .window_control_area(gpui::WindowControlArea::Drag)
-                                .child(TITLE),
-                        )
-                        .child(window_controls(window.is_maximized(), false, t)),
-                )
-            })
-            .child(ActivityList::render(&self.center, true, None, t, cx))
-    }
 }
 
 #[cfg(test)]

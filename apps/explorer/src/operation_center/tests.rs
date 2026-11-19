@@ -33,6 +33,18 @@ impl OperationCenter {
         );
     }
 
+    pub(crate) fn test_fail(&mut self, id: JobId, cx: &mut Context<Self>) {
+        self.record_archive_completion(
+            id,
+            ArchiveCompletion {
+                output: Err("解凍に失敗しました".into()),
+                affected_parents: Vec::new(),
+                cancelled: false,
+            },
+            cx,
+        );
+    }
+
     pub(crate) fn test_prompt_kind(
         &mut self,
         id: JobId,
@@ -455,7 +467,7 @@ fn native_transfer_waits_in_a_bounded_fifo(cx: &mut gpui::TestAppContext) {
                 PathLease::default(),
                 None,
                 window,
-                move |worker, _| {
+                move |worker| {
                     hold.recv_blocking().unwrap();
                     assert!(worker.is_cancelled());
                     Ok(TransferOutcome::Aborted)
@@ -473,7 +485,7 @@ fn native_transfer_waits_in_a_bounded_fifo(cx: &mut gpui::TestAppContext) {
                         PathLease::default(),
                         None,
                         window,
-                        move |_, _| {
+                        move |_| {
                             started.try_send(number).unwrap();
                             Ok(TransferOutcome::Completed)
                         },
@@ -489,7 +501,7 @@ fn native_transfer_waits_in_a_bounded_fifo(cx: &mut gpui::TestAppContext) {
                     PathLease::default(),
                     None,
                     window,
-                    |_, _| unreachable!(),
+                    |_| unreachable!(),
                     cx,
                 )
                 .is_err()
@@ -550,7 +562,7 @@ fn permanent_delete_only_mutates_after_confirmation(cx: &mut gpui::TestAppContex
                     PathLease::default(),
                     None,
                     window,
-                    move |worker, _| {
+                    move |worker| {
                         file_operations::confirm_permanent_delete(
                             &[selected],
                             reason,
@@ -645,7 +657,7 @@ fn path_leases_serialize_both_lanes_in_submission_order(cx: &mut gpui::TestAppCo
                 ),
                 None,
                 window,
-                move |_, _| {
+                move |_| {
                     move_gate.recv_blocking().unwrap();
                     Ok(TransferOutcome::Completed)
                 },
@@ -669,7 +681,7 @@ fn path_leases_serialize_both_lanes_in_submission_order(cx: &mut gpui::TestAppCo
                 PathLease::transfer(JobKind::Trash, &[output], None),
                 None,
                 window,
-                |_, _| Ok(TransferOutcome::Completed),
+                |_| Ok(TransferOutcome::Completed),
                 cx,
             )
             .unwrap()
@@ -801,7 +813,7 @@ fn no_owner_fails_the_queued_transfer_before_native_io(cx: &mut gpui::TestAppCon
                 PathLease::default(),
                 None,
                 window,
-                move |_, _| {
+                move |_| {
                     hold.recv_blocking().unwrap();
                     Ok(TransferOutcome::Completed)
                 },
@@ -814,7 +826,7 @@ fn no_owner_fails_the_queued_transfer_before_native_io(cx: &mut gpui::TestAppCon
                 PathLease::default(),
                 None,
                 window,
-                |worker, _| {
+                |worker| {
                     worker
                         .native_owner()
                         .map(|_| panic!("native work requires a valid owner"))
@@ -844,73 +856,6 @@ fn no_owner_fails_the_queued_transfer_before_native_io(cx: &mut gpui::TestAppCon
             .snapshots()
             .any(|job| job.id == id && job.status == JobStatus::Failed)
     }));
-}
-
-#[cfg(windows)]
-#[gpui::test]
-fn engine_changes_apply_when_a_queued_job_starts(cx: &mut gpui::TestAppContext) {
-    use crate::settings::{Preferences, SharedPreferences};
-    cx.background_executor.allow_parking();
-    let window = cx
-        .add_empty_window()
-        .update(|window, _| window.window_handle());
-    let prefs = cx.update(|cx| {
-        let prefs = cx.new(|cx| Preferences::new((Default::default(), Some("test".into())), cx));
-        cx.set_global(SharedPreferences(prefs.clone()));
-        prefs
-    });
-    let center = cx.update(init);
-    let (release_first, hold_first) = bounded::<()>(1);
-    let (release_second, hold_second) = bounded::<()>(1);
-    let (first, second) = center.update(cx, |center, cx| {
-        let first = center
-            .submit_transfer(
-                JobKind::Copy,
-                PathLease::default(),
-                None,
-                window,
-                move |_, engine| {
-                    hold_first.recv_blocking().unwrap();
-                    assert_eq!(engine, FileTransferEngine::OsIntegrated);
-                    Ok(TransferOutcome::Completed)
-                },
-                cx,
-            )
-            .unwrap();
-        let second = center
-            .submit_transfer(
-                JobKind::Copy,
-                PathLease::default(),
-                None,
-                window,
-                move |_, engine| {
-                    hold_second.recv_blocking().unwrap();
-                    assert_eq!(engine, FileTransferEngine::OsDialog);
-                    Ok(TransferOutcome::Completed)
-                },
-                cx,
-            )
-            .unwrap();
-        (first, second)
-    });
-    prefs.update(cx, |prefs, _| {
-        prefs.value.file_transfer_engine = FileTransferEngine::OsDialog
-    });
-    release_first.try_send(()).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !center.read_with(cx, |center, _| center.transfer_running == Some(second.0)) {
-        assert!(Instant::now() < deadline);
-        cx.run_until_parked();
-        std::thread::yield_now();
-    }
-    center.update(cx, |center, cx| {
-        assert!(!center.cancel(second.0, cx));
-        assert!(!center.record(second.0).unwrap().job.cancellable);
-    });
-    release_second.try_send(()).unwrap();
-    drain_workers(&center, cx);
-    assert_eq!(first.1.try_recv().unwrap(), Ok(TransferOutcome::Completed));
-    assert_eq!(second.1.try_recv().unwrap(), Ok(TransferOutcome::Completed));
 }
 
 #[gpui::test]
@@ -955,7 +900,7 @@ fn failed_archive_send_releases_lease_and_wakes_queued_transfer(cx: &mut gpui::T
                 PathLease::transfer(JobKind::Trash, std::slice::from_ref(&shared), None),
                 None,
                 window,
-                |_, _| Ok(TransferOutcome::Completed),
+                |_| Ok(TransferOutcome::Completed),
                 cx,
             )
             .unwrap();

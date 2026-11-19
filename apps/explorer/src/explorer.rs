@@ -1104,46 +1104,6 @@ mod tests {
     }
 
     #[gpui::test]
-    fn file_operation_settings_preserve_platform_and_startup_categories(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        use settings_panel::SettingsCategory;
-        let window = settings_key_window(cx);
-        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
-        let file_operations = SettingsCategory::FileOperations.index();
-        let startup = SettingsCategory::Startup.index();
-        if cfg!(windows) {
-            assert!(SettingsCategory::WindowsIntegration.index() < file_operations);
-        }
-        if cfg!(target_os = "macos") {
-            assert!(SettingsCategory::MacPermissions.index() < file_operations);
-        }
-        assert_eq!(file_operations + 1, startup);
-        cx.simulate_keystrokes(window.into(), "up");
-        cx.simulate_keystrokes(window.into(), "up");
-        click_setting(&mut visual, "file-transfer-engine-1");
-        click_setting(&mut visual, "activity-display-1");
-        window
-            .read_with(cx, |probe, cx| {
-                let view = probe.explorer.read(cx);
-                assert_eq!(view.settings_category, file_operations);
-                let value = &view.preferences.read(cx).value;
-                assert_eq!(
-                    value.file_transfer_engine,
-                    crate::settings_data::FileTransferEngine::OsDialog
-                );
-                assert_eq!(
-                    value.activity_display,
-                    crate::settings_data::ActivityDisplay::Window
-                );
-            })
-            .unwrap();
-        cx.simulate_keystrokes(window.into(), "down");
-        visual.update(|w, cx| w.draw(cx).clear(cx));
-        assert!(visual.debug_bounds("settings-row-restore-tabs").is_some());
-    }
-
-    #[gpui::test]
     fn settings_categories_only_change_visible_content(cx: &mut gpui::TestAppContext) {
         let window = settings_key_window(cx);
         let before = window

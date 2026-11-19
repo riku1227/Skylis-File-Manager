@@ -2,17 +2,14 @@ use super::*;
 use crate::operation_center::JobId;
 use gpui::{Modifiers, TestAppContext, VisualTestContext, WindowHandle};
 
-fn explorer(cx: &mut TestAppContext, display: ActivityDisplay) -> WindowHandle<Explorer> {
+fn explorer(cx: &mut TestAppContext) -> WindowHandle<Explorer> {
     cx.background_executor.allow_parking();
     cx.update(|cx| {
         if !cx.has_global::<crate::settings::SharedPreferences>() {
             let prefs = cx.new(|cx| {
                 crate::settings::Preferences::new(
                     (
-                        crate::settings_data::Settings {
-                            activity_display: display,
-                            ..Default::default()
-                        },
+                        Default::default(),
                         Some("memory-only test preferences".into()),
                     ),
                     cx,
@@ -49,15 +46,144 @@ fn start(
     (center, id)
 }
 
+#[test]
+fn activity_ring_averages_only_running_jobs_and_tracks_alerts_separately() {
+    use JobStatus::*;
+    let mixed = [
+        (Running, Some(20), false),
+        (Running, Some(41), false),
+        (Queued, None, false),
+        (Paused, Some(100), false),
+        (Cancelling, None, false),
+        (WaitingForUser(PromptId(1)), None, false),
+        (Completed, Some(100), false),
+        (Failed, Some(75), true),
+    ];
+    let summary = ActivitySummary::from_jobs(mixed);
+    assert_eq!(summary.running, 2);
+    assert_eq!(summary.average(), Some(31));
+    assert_eq!(summary.queued, 1);
+    assert_eq!(summary.cancelling, 1);
+    assert_eq!(summary.decisions, 1);
+    assert_eq!(summary.errors, 1);
+    assert!(summary.description().contains("待機中 1 件"));
+
+    let summary = ActivitySummary::from_jobs(mixed.into_iter().chain([(Running, None, false)]));
+    assert_eq!(summary.running, 3);
+    assert_eq!(summary.average(), None);
+    assert!(summary.unknown_progress);
+
+    let summary = ActivitySummary::from_jobs([(Cancelling, None, false)]);
+    assert_eq!(summary.running, 0);
+    assert_eq!(summary.average(), None);
+    assert!(!summary.unknown_progress);
+    assert!(summary.description().contains("中止処理中 1 件"));
+}
+
 #[gpui::test]
-fn pill_and_popup_follow_job_across_tab_switch_close_and_detach(cx: &mut TestAppContext) {
-    let window = explorer(cx, ActivityDisplay::StatusBar);
+fn idle_activity_trigger_opens_and_toggles_inside_the_explorer(cx: &mut TestAppContext) {
+    let window = explorer(cx);
     let mut visual = VisualTestContext::from_window(window.into(), cx);
     draw(&mut visual);
-    assert!(visual.debug_bounds("activity-pill").is_none());
+    let trigger = visual.debug_bounds("activity-trigger").unwrap();
+    let search = visual.debug_bounds("name-search-field").unwrap();
+    let view_settings = visual.debug_bounds("display-settings-trigger").unwrap();
+    let settings = visual.debug_bounds("settings").unwrap();
+    assert_eq!(trigger.size.width, trigger.size.height);
+    assert!(search.right() <= trigger.left());
+    assert!(trigger.right() <= view_settings.left());
+    assert!(view_settings.right() <= settings.left());
+    click(&mut visual, "activity-trigger");
+    let popup = visual.debug_bounds("activity-popover").unwrap();
+    assert!(popup.top() >= trigger.bottom());
+    assert_eq!(popup.right(), trigger.right());
+    click(&mut visual, "activity-trigger");
+    assert!(
+        window
+            .read_with(cx, |view, _| !view.activity.popup_open)
+            .unwrap()
+    );
+}
+
+#[gpui::test]
+fn toolbar_ring_is_keyboard_reachable_and_owns_its_activation_keys(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        cx.set_reduce_motion(true);
+        bind_trigger_keys(cx);
+        cx.bind_keys([
+            gpui::KeyBinding::new("enter", crate::OpenSelected, Some("Explorer")),
+            gpui::KeyBinding::new("space", crate::QuickPreview, Some("Explorer")),
+        ]);
+    });
+    let window = explorer(cx);
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
+    draw(&mut visual);
+    cx.simulate_keystrokes(window.into(), "tab enter");
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-popover").is_some());
+    cx.simulate_keystrokes(window.into(), "escape space");
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-popover").is_some());
+    cx.simulate_keystrokes(window.into(), "escape");
+    draw(&mut visual);
+    click(&mut visual, "activity-trigger");
+    cx.simulate_keystrokes(window.into(), "escape enter");
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-popover").is_some());
+}
+
+#[gpui::test]
+fn activity_shortcut_and_escape_restore_focus_and_keep_the_popup_in_view(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        cx.set_reduce_motion(true);
+        cx.bind_keys([gpui::KeyBinding::new(
+            "ctrl-shift-j",
+            ToggleActivity,
+            Some("ExplorerTabs"),
+        )]);
+    });
+    let window = explorer(cx);
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
+    draw(&mut visual);
+    let previous = window.update(cx, |_, w, cx| w.focused(cx)).unwrap();
+    cx.simulate_keystrokes(window.into(), "ctrl-shift-j");
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-popover").is_some());
+    visual.simulate_resize(gpui::size(px(420.), px(280.)));
+    draw(&mut visual);
+    visual.update(|w, cx| w.simulate_next_frame(cx));
+    draw(&mut visual);
+    let trigger = visual.debug_bounds("activity-trigger").unwrap();
+    let popup = visual.debug_bounds("activity-popover").unwrap();
+    assert!(popup.left() >= px(8.));
+    assert!(popup.right() <= px(412.));
+    assert!(popup.top() >= trigger.bottom());
+    assert!(popup.bottom() <= px(272.));
+
+    cx.simulate_keystrokes(window.into(), "ctrl-shift-j");
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-popover").is_none());
+    cx.simulate_keystrokes(window.into(), "ctrl-shift-j");
+    draw(&mut visual);
+    cx.simulate_keystrokes(window.into(), "tab");
+    cx.simulate_keystrokes(window.into(), "escape");
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-popover").is_none());
+    assert_eq!(
+        window.update(cx, |_, w, cx| w.focused(cx)).unwrap(),
+        previous
+    );
+}
+
+#[gpui::test]
+fn ring_and_popup_follow_job_across_tab_switch_close_and_detach(cx: &mut TestAppContext) {
+    let window = explorer(cx);
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-trigger").is_some());
     let (center, id) = start(window, cx);
     center.update(cx, |center, cx| center.test_report_halfway(id, cx));
-    click(&mut visual, "activity-pill");
+    click(&mut visual, "activity-trigger");
     assert!(visual.debug_bounds("activity-popover").is_some());
 
     window
@@ -79,7 +205,7 @@ fn pill_and_popup_follow_job_across_tab_switch_close_and_detach(cx: &mut TestApp
         .expect("detached explorer");
     let mut other = VisualTestContext::from_window(detached.into(), cx);
     draw(&mut other);
-    assert!(other.debug_bounds("activity-pill").is_some());
+    assert!(other.debug_bounds("activity-trigger").is_some());
     assert!(center.read_with(cx, |center, _| {
         center
             .snapshots()
@@ -88,83 +214,93 @@ fn pill_and_popup_follow_job_across_tab_switch_close_and_detach(cx: &mut TestApp
     center.update(cx, |center, cx| center.test_finish(id, cx));
     draw(&mut visual);
     draw(&mut other);
-    assert!(visual.debug_bounds("activity-pill").is_none());
-    assert!(other.debug_bounds("activity-pill").is_none());
+    assert!(visual.debug_bounds("activity-trigger").is_some());
+    assert!(other.debug_bounds("activity-trigger").is_some());
     assert!(visual.debug_bounds("activity-popover").is_some());
+    click(&mut other, "activity-trigger");
+    assert!(other.debug_bounds("activity-clear").is_some());
 }
 
 #[gpui::test]
-fn pop_out_uses_the_shared_list_and_closes_with_the_last_main_window(cx: &mut TestAppContext) {
-    let window = explorer(cx, ActivityDisplay::StatusBar);
+fn running_job_leaves_progress_in_the_toolbar_until_requested(cx: &mut TestAppContext) {
+    let window = explorer(cx);
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
     let (center, id) = start(window, cx);
-    let mut visual = VisualTestContext::from_window(window.into(), cx);
-    click(&mut visual, "activity-pill");
-    click(&mut visual, "activity-pop-out");
-    assert!(
-        window
-            .read_with(cx, |view, _| !view.activity.popup_open)
-            .unwrap()
-    );
-    let child = center
-        .read_with(cx, |center, _| center.activity_window)
-        .expect("activity window");
-    let mut child_visual = VisualTestContext::from_window(child, cx);
-    draw(&mut child_visual);
-    assert!(child_visual.debug_bounds("activity-list").is_some());
-    click(&mut visual, "activity-pill");
-    assert_eq!(
-        center.read_with(cx, |center, _| center.activity_window),
-        Some(child)
-    );
-
-    center.update(cx, |center, cx| center.test_finish(id, cx));
-    assert!(visual.simulate_close());
-    window
-        .update(cx, |_, window, _| window.remove_window())
-        .unwrap();
-    cx.run_until_parked();
-    assert!(center.read_with(cx, |center, _| center.activity_window.is_none()));
-    assert!(child.update(cx, |_, _, _| ()).is_err());
-}
-
-#[gpui::test]
-fn automatic_window_opens_only_while_a_job_is_still_running_after_500ms(cx: &mut TestAppContext) {
-    let window = explorer(cx, ActivityDisplay::Window);
-    let mut visual = VisualTestContext::from_window(window.into(), cx);
-    let (center, short) = start(window, cx);
-    draw(&mut visual);
-    cx.run_until_parked();
-    cx.background_executor
-        .advance_clock(Duration::from_millis(499));
-    assert!(center.read_with(cx, |center, _| center.activity_window.is_none()));
-    center.update(cx, |center, cx| center.test_finish(short, cx));
-    cx.background_executor
-        .advance_clock(Duration::from_millis(50));
-    assert!(center.read_with(cx, |center, _| center.activity_window.is_none()));
-
-    let (_, long) = start(window, cx);
-    draw(&mut visual);
-    cx.run_until_parked();
-    cx.background_executor
-        .advance_clock(Duration::from_millis(499));
-    assert!(center.read_with(cx, |center, _| center.activity_window.is_none()));
-    cx.background_executor
-        .advance_clock(Duration::from_millis(1));
-    cx.run_until_parked();
-    let child = center
-        .read_with(cx, |center, _| center.activity_window)
-        .expect("window at 500ms");
-    child.update(cx, |_, w, _| w.remove_window()).unwrap();
     draw(&mut visual);
     cx.background_executor.advance_clock(Duration::from_secs(1));
-    assert!(center.read_with(cx, |center, _| center.activity_window.is_none()));
-    center.update(cx, |center, cx| center.test_finish(long, cx));
+    cx.run_until_parked();
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-trigger").is_some());
+    assert!(visual.debug_bounds("activity-popover").is_none());
+    assert_eq!(cx.update(|cx| cx.windows().len()), 1);
+    center.update(cx, |center, cx| center.test_finish(id, cx));
+}
+
+#[gpui::test]
+fn terminal_error_is_badged_and_remains_in_history_without_a_blocking_sheet(
+    cx: &mut TestAppContext,
+) {
+    let window = explorer(cx);
+    let (center, id) = start(window, cx);
+    center.update(cx, |center, cx| center.test_fail(id, cx));
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-error-badge").is_some());
+    assert!(visual.debug_bounds("activity-confirmation-sheet").is_none());
+    assert!(visual.debug_bounds("activity-popover").is_none());
+
+    click(&mut visual, "activity-trigger");
+    assert!(visual.debug_bounds("activity-clear").is_some());
+    assert!(center.read_with(cx, |center, _| {
+        center
+            .snapshots()
+            .any(|job| job.id == id && job.status == JobStatus::Failed)
+    }));
+    click(&mut visual, "activity-clear");
+    assert!(center.read_with(cx, |center, _| center.snapshots().next().is_none()));
+}
+
+#[gpui::test]
+fn arriving_prompt_takes_focus_from_open_popover_and_restores_folder_focus(
+    cx: &mut TestAppContext,
+) {
+    let window = explorer(cx);
+    let (center, id) = start(window, cx);
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
+    draw(&mut visual);
+    let previous = window
+        .update(cx, |view, w, cx| {
+            let previous = w.focused(cx);
+            view.show_activity(w, cx);
+            previous
+        })
+        .unwrap();
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-popover").is_some());
+
+    let response = center.update(cx, |center, cx| center.test_prompt(id, cx));
+    draw(&mut visual);
+    assert!(visual.debug_bounds("activity-confirmation-sheet").is_some());
+    window
+        .update(cx, |view, w, _| {
+            assert!(!view.activity.popup_open);
+            assert!(view.activity.sheet_focus.is_focused(w));
+        })
+        .unwrap();
+    cx.simulate_keystrokes(window.into(), "escape");
+    assert_eq!(response.try_recv().unwrap().action, PromptAction::Cancel);
+    draw(&mut visual);
+    assert_eq!(
+        window.update(cx, |_, w, cx| w.focused(cx)).unwrap(),
+        previous
+    );
+    center.update(cx, |center, cx| center.test_finish(id, cx));
 }
 
 #[gpui::test]
 fn prompt_is_routed_to_origin_guards_enter_and_restores_focus(cx: &mut TestAppContext) {
-    let origin = explorer(cx, ActivityDisplay::StatusBar);
-    let other = explorer(cx, ActivityDisplay::StatusBar);
+    let origin = explorer(cx);
+    let other = explorer(cx);
     let keys = ["enter", "right", "enter"];
     cx.update(|cx| {
         cx.bind_keys([gpui::KeyBinding::new(
@@ -185,7 +321,16 @@ fn prompt_is_routed_to_origin_guards_enter_and_restores_focus(cx: &mut TestAppCo
             .debug_bounds("activity-confirmation-sheet")
             .is_none()
     );
-    assert!(background.debug_bounds("activity-pill").is_some());
+    assert!(source.debug_bounds("activity-popover").is_none());
+    assert!(background.debug_bounds("activity-decision-badge").is_some());
+    click(&mut background, "activity-trigger");
+    assert!(background.debug_bounds("activity-popover").is_some());
+    assert!(background.debug_bounds("activity-cancel-1").is_none());
+    assert!(
+        background
+            .debug_bounds("activity-confirm-action-1")
+            .is_none()
+    );
     origin
         .update(cx, |view, w, _| {
             assert!(view.activity.sheet_focus.is_focused(w));
@@ -214,8 +359,8 @@ fn prompt_is_routed_to_origin_guards_enter_and_restores_focus(cx: &mut TestAppCo
 
 #[gpui::test]
 fn closing_the_prompt_origin_routes_it_to_the_last_active_explorer(cx: &mut TestAppContext) {
-    let origin = explorer(cx, ActivityDisplay::StatusBar);
-    let other = explorer(cx, ActivityDisplay::StatusBar);
+    let origin = explorer(cx);
+    let other = explorer(cx);
     let (center, id) = start(origin, cx);
     center.update(cx, |center, cx| center.activate_window(other.into(), cx));
     let response = center.update(cx, |center, cx| center.test_prompt(id, cx));
@@ -247,10 +392,12 @@ fn closing_the_prompt_origin_routes_it_to_the_last_active_explorer(cx: &mut Test
 }
 
 #[gpui::test]
-fn exit_ghost_absorbs_pop_out_click_and_quit_exposes_active_jobs(cx: &mut TestAppContext) {
-    let window = explorer(cx, ActivityDisplay::StatusBar);
+fn exit_ghost_absorbs_history_clear_click_and_quit_exposes_active_jobs(cx: &mut TestAppContext) {
+    let window = explorer(cx);
     let (center, id) = start(window, cx);
     let mut visual = VisualTestContext::from_window(window.into(), cx);
+    let (_, finished) = start(window, cx);
+    center.update(cx, |center, cx| center.test_finish(finished, cx));
     cx.update(crate::explorer::request_quit);
     draw(&mut visual);
     assert!(
@@ -263,12 +410,14 @@ fn exit_ghost_absorbs_pop_out_click_and_quit_exposes_active_jobs(cx: &mut TestAp
     cx.background_executor
         .advance_clock(Duration::from_millis(160));
     draw(&mut visual);
-    let pop_out = visual.debug_bounds("activity-pop-out").unwrap().center();
+    let clear = visual.debug_bounds("activity-clear").unwrap().center();
     cx.simulate_keystrokes(window.into(), "escape");
     draw(&mut visual);
     assert!(visual.debug_bounds("motion-ghost-shield").is_some());
-    visual.simulate_click(pop_out, Modifiers::none());
-    assert!(center.read_with(cx, |center, _| center.activity_window.is_none()));
+    visual.simulate_click(clear, Modifiers::none());
+    assert!(center.read_with(cx, |center, _| {
+        center.snapshots().any(|job| job.id == finished)
+    }));
     assert!(
         window
             .read_with(cx, |view, _| !view.activity.popup_open)
@@ -278,11 +427,11 @@ fn exit_ghost_absorbs_pop_out_click_and_quit_exposes_active_jobs(cx: &mut TestAp
 }
 
 #[gpui::test]
-fn clicking_outside_popover_closes_it_and_pill_toggles_cleanly(cx: &mut TestAppContext) {
-    let window = explorer(cx, ActivityDisplay::StatusBar);
+fn clicking_outside_popover_closes_it_and_trigger_toggles_cleanly(cx: &mut TestAppContext) {
+    let window = explorer(cx);
     let mut visual = VisualTestContext::from_window(window.into(), cx);
     let (center, id) = start(window, cx);
-    click(&mut visual, "activity-pill");
+    click(&mut visual, "activity-trigger");
     assert!(
         window
             .read_with(cx, |view, _| view.activity.popup_open)
@@ -297,14 +446,14 @@ fn clicking_outside_popover_closes_it_and_pill_toggles_cleanly(cx: &mut TestAppC
             .unwrap()
     );
 
-    click(&mut visual, "activity-pill");
+    click(&mut visual, "activity-trigger");
     assert!(
         window
             .read_with(cx, |view, _| view.activity.popup_open)
             .unwrap()
     );
 
-    click(&mut visual, "activity-pill");
+    click(&mut visual, "activity-trigger");
     assert!(
         window
             .read_with(cx, |view, _| !view.activity.popup_open)
@@ -315,10 +464,10 @@ fn clicking_outside_popover_closes_it_and_pill_toggles_cleanly(cx: &mut TestAppC
 
 #[gpui::test]
 fn settings_modal_blocks_toggle_activity_and_closes_open_popover(cx: &mut TestAppContext) {
-    let window = explorer(cx, ActivityDisplay::StatusBar);
+    let window = explorer(cx);
     let mut visual = VisualTestContext::from_window(window.into(), cx);
     let (center, id) = start(window, cx);
-    click(&mut visual, "activity-pill");
+    click(&mut visual, "activity-trigger");
     assert!(
         window
             .read_with(cx, |view, _| view.activity.popup_open)
@@ -347,7 +496,6 @@ fn settings_modal_blocks_toggle_activity_and_closes_open_popover(cx: &mut TestAp
             .read_with(cx, |view, _| !view.activity.popup_open)
             .unwrap()
     );
-    assert!(center.read_with(cx, |center, _| center.activity_window.is_none()));
     center.update(cx, |center, cx| center.test_finish(id, cx));
 }
 
@@ -358,8 +506,8 @@ fn multiple_jobs_render_distinct_controls_and_open_destination_in_clicked_window
     let dir = tempfile::tempdir().unwrap();
     let archive_path = dir.path().join("result.zip");
     std::fs::write(&archive_path, b"zip").unwrap();
-    let origin = explorer(cx, ActivityDisplay::StatusBar);
-    let other = explorer(cx, ActivityDisplay::StatusBar);
+    let origin = explorer(cx);
+    let other = explorer(cx);
     let (center, id1) = start(origin, cx);
     let id2 = center.update(cx, |center, cx| center.test_job(origin.into(), cx));
     assert_eq!((id1.0, id2.0), (1, 2));
@@ -368,7 +516,7 @@ fn multiple_jobs_render_distinct_controls_and_open_destination_in_clicked_window
     });
 
     let mut other_visual = VisualTestContext::from_window(other.into(), cx);
-    click(&mut other_visual, "activity-pill");
+    click(&mut other_visual, "activity-trigger");
     assert!(other_visual.debug_bounds("activity-cancel-2").is_some());
     click(&mut other_visual, "activity-open-destination-1");
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -409,7 +557,7 @@ fn multiple_jobs_render_distinct_controls_and_open_destination_in_clicked_window
 
 #[gpui::test]
 fn ghost_sheet_ignores_apply_all_and_modal_blocks_duplicate_tab(cx: &mut TestAppContext) {
-    let window = explorer(cx, ActivityDisplay::StatusBar);
+    let window = explorer(cx);
     let mut visual = VisualTestContext::from_window(window.into(), cx);
     let (center, id) = start(window, cx);
     let _rx = center.update(cx, |center, cx| {

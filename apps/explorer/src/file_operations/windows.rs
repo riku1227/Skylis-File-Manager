@@ -5,7 +5,6 @@ use super::{
 use crate::{
     file_operation_progress::{RecycleGuard, Subscription},
     operation_center::{JobIssue, JobWorker, PermanentDeleteReason},
-    settings_data::FileTransferEngine,
 };
 use anyhow::Context as _;
 use std::path::{Path, PathBuf};
@@ -36,22 +35,18 @@ impl Drop for Apartment {
     }
 }
 
-fn transfer_flags(engine: FileTransferEngine) -> FILEOPERATION_FLAGS {
-    let flags = FOFX_ADDUNDORECORD | FOF_NOCONFIRMMKDIR;
-    match engine {
-        FileTransferEngine::OsIntegrated => flags | FOF_SILENT,
-        FileTransferEngine::OsDialog => flags,
-    }
+fn transfer_flags() -> FILEOPERATION_FLAGS {
+    // Silence progress while retaining the Shell's collision and elevation prompts.
+    FOFX_ADDUNDORECORD | FOF_NOCONFIRMMKDIR | FOF_SILENT
 }
 
-fn delete_flags(kind: DeleteKind, engine: FileTransferEngine) -> FILEOPERATION_FLAGS {
+fn delete_flags(kind: DeleteKind) -> FILEOPERATION_FLAGS {
     let silent = FOF_SILENT | FOF_NOERRORUI | FOF_NOCONFIRMATION;
-    let recycle = FOFX_RECYCLEONDELETE | FOF_ALLOWUNDO | FOFX_ADDUNDORECORD | FOF_WANTNUKEWARNING;
-    match (kind, engine) {
-        (DeleteKind::Recycle, FileTransferEngine::OsIntegrated) => recycle | silent,
-        (DeleteKind::Recycle, FileTransferEngine::OsDialog) => recycle,
-        (DeleteKind::Permanent, FileTransferEngine::OsIntegrated) => silent,
-        (DeleteKind::Permanent, FileTransferEngine::OsDialog) => FOF_WANTNUKEWARNING,
+    match kind {
+        DeleteKind::Recycle => {
+            silent | FOFX_RECYCLEONDELETE | FOF_ALLOWUNDO | FOFX_ADDUNDORECORD | FOF_WANTNUKEWARNING
+        }
+        DeleteKind::Permanent => silent,
     }
 }
 
@@ -74,7 +69,6 @@ fn operation(hwnd: isize, flags: FILEOPERATION_FLAGS) -> windows::core::Result<I
 pub(super) fn transfer(
     prepared: &Prepared,
     kind: TransferKind,
-    engine: FileTransferEngine,
     worker: &JobWorker,
 ) -> anyhow::Result<TransferOutcome> {
     let _apartment = Apartment::new()?;
@@ -95,13 +89,8 @@ pub(super) fn transfer(
     let Some(owner) = worker.native_owner()? else {
         return Ok(TransferOutcome::Aborted);
     };
-    let operation = operation(owner.hwnd, transfer_flags(engine))?;
-    let sink = match engine {
-        FileTransferEngine::OsIntegrated => {
-            Some(Subscription::new(&operation, worker, engine, None)?)
-        }
-        FileTransferEngine::OsDialog => Subscription::new(&operation, worker, engine, None).ok(),
-    };
+    let operation = operation(owner.hwnd, transfer_flags())?;
+    let sink = Subscription::new(&operation, worker, None)?;
     for (source, kind) in &sources {
         unsafe {
             match kind {
@@ -115,21 +104,17 @@ pub(super) fn transfer(
             }
         }
     }
-    perform(&operation, sink.as_ref())
+    perform(&operation, &sink)
 }
 
 pub(super) fn delete(
     paths: &[PathBuf],
     kind: DeleteKind,
-    engine: FileTransferEngine,
     worker: &mut JobWorker,
 ) -> anyhow::Result<TransferOutcome> {
-    match (kind, engine) {
-        (_, FileTransferEngine::OsDialog) => delete_batch(paths, kind, engine, worker),
-        (DeleteKind::Permanent, FileTransferEngine::OsIntegrated) => {
-            confirm_permanent(paths, PermanentDeleteReason::Explicit, worker)
-        }
-        (DeleteKind::Recycle, FileTransferEngine::OsIntegrated) => recycle_silently(paths, worker),
+    match kind {
+        DeleteKind::Permanent => confirm_permanent(paths, PermanentDeleteReason::Explicit, worker),
+        DeleteKind::Recycle => recycle_silently(paths, worker),
     }
 }
 
@@ -140,19 +125,13 @@ fn confirm_permanent(
 ) -> anyhow::Result<TransferOutcome> {
     confirm_permanent_delete(paths, reason, worker, |paths, worker| {
         let paths = prepare_deletion(paths)?;
-        delete_batch(
-            &paths,
-            DeleteKind::Permanent,
-            FileTransferEngine::OsIntegrated,
-            worker,
-        )
+        delete_batch(&paths, DeleteKind::Permanent, worker)
     })
 }
 
 fn delete_batch(
     paths: &[PathBuf],
     kind: DeleteKind,
-    engine: FileTransferEngine,
     worker: &JobWorker,
 ) -> anyhow::Result<TransferOutcome> {
     let _apartment = Apartment::new()?;
@@ -164,17 +143,12 @@ fn delete_batch(
     let Some(owner) = worker.native_owner()? else {
         return Ok(TransferOutcome::Aborted);
     };
-    let operation = operation(owner.hwnd, delete_flags(kind, engine))?;
-    let sink = match engine {
-        FileTransferEngine::OsIntegrated => {
-            Some(Subscription::new(&operation, worker, engine, None)?)
-        }
-        FileTransferEngine::OsDialog => Subscription::new(&operation, worker, engine, None).ok(),
-    };
+    let operation = operation(owner.hwnd, delete_flags(kind))?;
+    let sink = Subscription::new(&operation, worker, None)?;
     for item in &items {
         unsafe { operation.DeleteItem(item, None)? };
     }
-    perform(&operation, sink.as_ref())
+    perform(&operation, &sink)
 }
 
 fn recycle_silently(paths: &[PathBuf], worker: &mut JobWorker) -> anyhow::Result<TransferOutcome> {
@@ -273,8 +247,7 @@ fn recycle_candidates(
     worker: &JobWorker,
 ) -> anyhow::Result<(TransferOutcome, usize)> {
     let _apartment = Apartment::new()?;
-    let engine = FileTransferEngine::OsIntegrated;
-    let flags = delete_flags(DeleteKind::Recycle, engine);
+    let flags = delete_flags(DeleteKind::Recycle);
     // A failed PreDeleteItem can abort all requests in a single IFileOperation.
     // Isolate top-level selections so a refusal cannot suppress later candidates.
     let Some(owner) = worker.native_owner()? else {
@@ -290,7 +263,7 @@ fn recycle_candidates(
             let item = shell_item(path)?;
             let operation = operation(owner.hwnd, flags)?;
             let guard = RecycleGuard::new(item.clone());
-            let sink = Subscription::new(&operation, worker, engine, Some(guard.clone()))?;
+            let sink = Subscription::new(&operation, worker, Some(guard.clone()))?;
             unsafe { operation.DeleteItem(&item, None)? };
             let result = unsafe { operation.PerformOperations() };
             let perform_hr = match &result {
@@ -336,19 +309,16 @@ fn recycle_candidates(
     Ok((TransferOutcome::Completed, recycled_count))
 }
 
-fn perform(
-    operation: &IFileOperation,
-    sink: Option<&Subscription>,
-) -> anyhow::Result<TransferOutcome> {
+fn perform(operation: &IFileOperation, sink: &Subscription) -> anyhow::Result<TransferOutcome> {
     operation_result(operation, sink, unsafe { operation.PerformOperations() })
 }
 
 fn operation_result(
     operation: &IFileOperation,
-    sink: Option<&Subscription>,
+    sink: &Subscription,
     result: windows::core::Result<()>,
 ) -> anyhow::Result<TransferOutcome> {
-    if sink.is_some_and(Subscription::user_cancelled)
+    if sink.user_cancelled()
         || result.as_ref().is_err_and(|err| {
             matches!(
                 err.code(),
@@ -360,48 +330,31 @@ fn operation_result(
         return Ok(TransferOutcome::Aborted);
     }
     result.context("ファイル操作が完了しませんでした。一部の項目は処理済みの可能性があります")?;
-    if let Some(sink) = sink {
-        sink.finish_result()
-            .context("Windowsのファイル操作が失敗しました")?;
-    }
+    sink.finish_result()
+        .context("Windowsのファイル操作が失敗しました")?;
     Ok(TransferOutcome::Completed)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use FileTransferEngine::*;
 
     #[test]
     fn integrated_transfer_is_silent_and_preserves_collision_confirmation() {
         assert_eq!(
-            transfer_flags(OsIntegrated),
+            transfer_flags(),
             FOF_SILENT | FOFX_ADDUNDORECORD | FOF_NOCONFIRMMKDIR
         );
-        assert_eq!(
-            transfer_flags(OsDialog),
-            FOFX_ADDUNDORECORD | FOF_NOCONFIRMMKDIR
-        );
-        for engine in [OsIntegrated, OsDialog] {
-            assert_eq!(transfer_flags(engine).0 & FOF_NOCONFIRMATION.0, 0);
-        }
+        assert_eq!(transfer_flags().0 & FOF_NOCONFIRMATION.0, 0);
     }
 
     #[test]
-    fn recycle_keeps_the_nuke_warning_with_both_engines() {
-        let standard =
+    fn integrated_delete_preserves_the_recycle_guard_flags() {
+        let recycle =
             FOFX_RECYCLEONDELETE | FOF_ALLOWUNDO | FOFX_ADDUNDORECORD | FOF_WANTNUKEWARNING;
         let silent = FOF_SILENT | FOF_NOERRORUI | FOF_NOCONFIRMATION;
-        assert_eq!(
-            delete_flags(DeleteKind::Recycle, OsIntegrated),
-            standard | silent
-        );
-        assert_eq!(delete_flags(DeleteKind::Recycle, OsDialog), standard);
-        assert_eq!(delete_flags(DeleteKind::Permanent, OsIntegrated), silent);
-        assert_eq!(
-            delete_flags(DeleteKind::Permanent, OsDialog),
-            FOF_WANTNUKEWARNING
-        );
+        assert_eq!(delete_flags(DeleteKind::Recycle), recycle | silent);
+        assert_eq!(delete_flags(DeleteKind::Permanent), silent);
     }
 
     #[test]

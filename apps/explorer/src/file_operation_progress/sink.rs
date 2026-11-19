@@ -1,7 +1,4 @@
-use crate::{
-    operation_center::{JobIssue, JobProgress, JobWorker, ProgressMeasure},
-    settings_data::FileTransferEngine,
-};
+use crate::operation_center::{JobIssue, JobProgress, JobWorker, ProgressMeasure};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -34,7 +31,6 @@ impl Subscription {
     pub(crate) fn new(
         operation: &IFileOperation,
         worker: &JobWorker,
-        engine: FileTransferEngine,
         recycle: Option<RecycleGuard>,
     ) -> Result<Self> {
         let finish = Rc::new(Cell::new(HRESULT(0)));
@@ -42,7 +38,6 @@ impl Subscription {
         let shell_cancelled = Rc::new(Cell::new(false));
         let sink: IFileOperationProgressSink = Sink {
             worker: worker.clone(),
-            cancellable: engine == FileTransferEngine::OsIntegrated,
             recycle,
             finish: finish.clone(),
             app_cancelled: app_cancelled.clone(),
@@ -200,7 +195,6 @@ fn item_name(item: &IShellItem, filesystem_only: bool) -> Option<String> {
 #[implement(IFileOperationProgressSink)]
 struct Sink {
     worker: JobWorker,
-    cancellable: bool,
     recycle: Option<RecycleGuard>,
     finish: Rc<Cell<HRESULT>>,
     app_cancelled: Rc<Cell<bool>>,
@@ -210,7 +204,7 @@ struct Sink {
 
 impl Sink_Impl {
     fn check_cancel(&self) -> Result<()> {
-        if self.cancellable && self.worker.is_cancelled() {
+        if self.worker.is_cancelled() {
             self.app_cancelled.set(true);
             return Err(COPYENGINE_E_USER_CANCELLED.into());
         }

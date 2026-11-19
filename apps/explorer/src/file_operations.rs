@@ -1,5 +1,5 @@
 //! Native file operations. OperationCenter admits jobs and calls these adapters on workers.
-use crate::{operation_center::JobWorker, settings_data::FileTransferEngine};
+use crate::operation_center::JobWorker;
 use anyhow::Context as _;
 use std::path::{Path, PathBuf};
 
@@ -58,7 +58,6 @@ pub fn supports_delete(kind: DeleteKind) -> bool {
 pub(crate) fn delete(
     paths: &[PathBuf],
     kind: DeleteKind,
-    engine: FileTransferEngine,
     worker: &mut JobWorker,
 ) -> TransferResult {
     (|| {
@@ -72,16 +71,15 @@ pub(crate) fn delete(
         }
         #[cfg(windows)]
         {
-            windows::delete(&paths, kind, engine, worker)
+            windows::delete(&paths, kind, worker)
         }
         #[cfg(target_os = "macos")]
         {
-            let _ = engine;
             macos_trash(&paths, worker)
         }
         #[cfg(not(any(windows, target_os = "macos")))]
         {
-            let _ = (engine, paths);
+            let _ = paths;
             anyhow::bail!("このOSの削除にはまだ対応していません")
         }
     })()
@@ -244,7 +242,6 @@ pub(crate) fn transfer(
     paths: &[PathBuf],
     destination: &Path,
     kind: TransferKind,
-    engine: FileTransferEngine,
     worker: &mut JobWorker,
 ) -> TransferResult {
     (|| {
@@ -254,11 +251,10 @@ pub(crate) fn transfer(
         }
         #[cfg(windows)]
         {
-            windows::transfer(&prepared, kind, engine, worker)
+            windows::transfer(&prepared, kind, worker)
         }
         #[cfg(target_os = "macos")]
         {
-            let _ = engine;
             if kind != TransferKind::Automatic {
                 return macos_transfer(&prepared, kind);
             }
@@ -282,7 +278,7 @@ pub(crate) fn transfer(
         }
         #[cfg(not(any(windows, target_os = "macos")))]
         {
-            let _ = (prepared, kind, engine);
+            let _ = (prepared, kind);
             anyhow::bail!("このOSのファイル操作にはまだ対応していません")
         }
     })()

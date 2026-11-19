@@ -20,7 +20,7 @@ impl JobWorker {
     }
 }
 
-type TransferWork = Box<dyn FnOnce(&mut JobWorker, FileTransferEngine) -> TransferResult + Send>;
+type TransferWork = Box<dyn FnOnce(&mut JobWorker) -> TransferResult + Send>;
 
 pub(super) struct TransferCommand {
     pub(super) id: JobId,
@@ -44,9 +44,7 @@ impl OperationCenter {
             lease,
             Some(destination.clone()),
             window.window_handle(),
-            move |worker, engine| {
-                file_operations::transfer(&paths, &destination, kind, engine, worker)
-            },
+            move |worker| file_operations::transfer(&paths, &destination, kind, worker),
             cx,
         )
         .map(|(_, result)| result)
@@ -73,7 +71,7 @@ impl OperationCenter {
             lease,
             None,
             window.window_handle(),
-            move |worker, engine| file_operations::delete(&paths, kind, engine, worker),
+            move |worker| file_operations::delete(&paths, kind, worker),
             cx,
         )
         .map(|(_, result)| result)
@@ -85,7 +83,7 @@ impl OperationCenter {
         lease: PathLease,
         destination: Option<PathBuf>,
         origin: AnyWindowHandle,
-        execute: impl FnOnce(&mut JobWorker, FileTransferEngine) -> TransferResult + Send + 'static,
+        execute: impl FnOnce(&mut JobWorker) -> TransferResult + Send + 'static,
         cx: &mut Context<Self>,
     ) -> Result<(JobId, Receiver<TransferResult>), String> {
         if self.transfer_pending.len() >= PENDING_TRANSFERS {
@@ -93,9 +91,7 @@ impl OperationCenter {
         }
         let id = self.insert(
             kind,
-            JobBackend::OsDelegated {
-                reason: current_engine(cx),
-            },
+            JobBackend::OsDelegated,
             destination,
             origin,
             Some(CancelToken::new()),
@@ -130,10 +126,9 @@ impl OperationCenter {
                 .transfer_pending
                 .pop_front()
                 .expect("ready transfer job");
-            let engine = current_engine(cx);
             let record = self.record(id).expect("queued transfer");
-            let cancellable = (cfg!(windows) && engine == FileTransferEngine::OsIntegrated)
-                || (cfg!(target_os = "macos") && record.job.kind == JobKind::Trash);
+            let cancellable =
+                cfg!(windows) || (cfg!(target_os = "macos") && record.job.kind == JobKind::Trash);
             let cancel = record
                 .cancel
                 .as_ref()
@@ -143,7 +138,6 @@ impl OperationCenter {
                 record.cancel = None;
             }
             record.job.cancellable = cancellable;
-            record.job.backend = JobBackend::OsDelegated { reason: engine };
             record.job.status = JobStatus::Running;
 
             let (finished, terminal) = bounded(1);
@@ -154,7 +148,7 @@ impl OperationCenter {
                     let outcome = if worker.is_cancelled() {
                         Ok(TransferOutcome::Aborted)
                     } else {
-                        execute(&mut worker, engine)
+                        execute(&mut worker)
                     };
                     let progress = worker.latest_progress();
                     let issues = std::mem::take(
@@ -292,12 +286,6 @@ impl OperationCenter {
             _hold: hold,
         })
     }
-}
-
-fn current_engine(cx: &App) -> FileTransferEngine {
-    cx.try_global::<crate::settings::SharedPreferences>()
-        .map(|prefs| prefs.0.read(cx).value.file_transfer_engine)
-        .unwrap_or_default()
 }
 
 #[cfg(windows)]

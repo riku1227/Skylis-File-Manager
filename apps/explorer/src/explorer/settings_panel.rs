@@ -2,8 +2,6 @@ use super::*;
 use crate::motion;
 use gpui::{Animation, AnimationExt};
 
-use crate::settings_data::{ActivityDisplay, FileTransferEngine};
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SettingsCategory {
     Appearance,
@@ -12,7 +10,6 @@ pub(super) enum SettingsCategory {
     Developer,
     WindowsIntegration,
     MacPermissions,
-    FileOperations,
     Startup,
 }
 
@@ -40,7 +37,6 @@ fn categories() -> Vec<(
     if cfg!(target_os = "macos") {
         pages.push((MacPermissions, "macOSアクセス権限", "icons/link.svg", 8..8));
     }
-    pages.push((FileOperations, "ファイル操作", "icons/activity.svg", 8..8));
     pages.push((Startup, "起動", "icons/desktop.svg", 8..9));
     pages
 }
@@ -270,46 +266,6 @@ impl Explorer {
                         .child(error),
                 )
             });
-        if *category == SettingsCategory::FileOperations {
-            body = body
-                .child(div().mb(px(8.)).child("ファイル転送エンジン"))
-                .child(div().flex().flex_wrap().gap(px(6.)).children([
-                    (FileTransferEngine::OsIntegrated, "標準連携"),
-                    (FileTransferEngine::OsDialog, "OS標準ダイアログ（退避用）"),
-                ].into_iter().enumerate().map(|(index, (engine, label))| {
-                    setting_choice("file-transfer-engine", index, label, engine == value.file_transfer_engine, t)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.preferences.update(cx, |p, cx| p.change(|s| s.file_transfer_engine = engine, cx));
-                        }))
-                })))
-                .child(div().mt(px(8.)).text_color(t.c("text.muted"))
-                    .child({
-                        #[cfg(windows)]
-                        {
-                            "標準連携では、通常のコピー・移動・削除の進捗と中止をアプリ内で操作できます（競合・権限昇格・エラー時は Windows のダイアログを表示します）。OS標準ダイアログを選ぶと、従来の Windows 進捗ウィンドウで操作します。"
-                        }
-                        #[cfg(target_os = "macos")]
-                        {
-                            "macOSでは、ゴミ箱への移動をアプリ内で進捗表示・中止できます。コピーと移動はFinderに委譲します。"
-                        }
-                        #[cfg(not(any(windows, target_os = "macos")))]
-                        {
-                            "このOSではネイティブファイル転送・削除は未対応です。"
-                        }
-                    }))
-                .child(div().mt(px(4.)).text_color(t.c("text.muted"))
-                    .child("独自転送エンジンは今後の段階実装で追加予定です。"))
-                .child(div().mt(px(24.)).mb(px(8.)).child("アクティビティ表示"))
-                .child(div().flex().flex_wrap().gap(px(6.)).children([
-                    (ActivityDisplay::StatusBar, "アプリ内（ステータスバー）"),
-                    (ActivityDisplay::Window, "別ウィンドウ（約500ms以上で自動表示）"),
-                ].into_iter().enumerate().map(|(index, (display, label))| {
-                    setting_choice("activity-display", index, label, display == value.activity_display, t)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.preferences.update(cx, |p, cx| p.change(|s| s.activity_display = display, cx));
-                        }))
-                })));
-        }
         if *category == SettingsCategory::WindowsIntegration {
             use crate::folder_integration::Integration;
             body = body.child(div().text_color(t.c("text.secondary")).child("現在のユーザーに適用します。それぞれ個別に元へ戻せます。登録後はSkylisの実行ファイルを移動しないでください。"))
@@ -778,39 +734,6 @@ impl Explorer {
             )
         });
     }
-}
-
-fn setting_choice(
-    id: &'static str,
-    index: usize,
-    label: &'static str,
-    selected: bool,
-    t: Theme,
-) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id((id, index))
-        .debug_selector(move || format!("{id}-{index}").into())
-        .role(gpui::Role::Button)
-        .aria_label(label)
-        .tab_index(0)
-        .px(px(10.))
-        .py(px(6.))
-        .rounded(px(6.))
-        .border_1()
-        .border_color(t.c(if selected {
-            "accent.fg"
-        } else {
-            "button.border"
-        }))
-        .bg(t.c(if selected {
-            "surface.chip-selected"
-        } else {
-            "button.bg"
-        }))
-        .focus(|d| d.bg(t.c("surface.chip-selected")))
-        .cursor_pointer()
-        .hover(|d| d.bg(t.c("state.hover")))
-        .child(label)
 }
 
 fn refresh_description(interval: Option<std::time::Duration>, enabled: bool) -> String {

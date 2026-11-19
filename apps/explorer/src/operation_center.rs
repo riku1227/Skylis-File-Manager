@@ -4,11 +4,10 @@ mod model;
 mod transfer;
 
 use crate::file_operations::{self, DeleteKind, TransferKind, TransferOutcome, TransferResult};
-use crate::settings_data::FileTransferEngine;
 use async_channel::{Receiver, Sender, bounded};
 use explorer_core::archive::{self, ArchiveFormat, ArchiveIndex};
 use gpui::{
-    AnyWindowHandle, App, AppContext, Bounds, Context, Entity, EventEmitter, Global, Pixels, Point,
+    AnyWindowHandle, App, AppContext, Bounds, Context, Entity, EventEmitter, Global, Pixels,
     Window, WindowId,
 };
 use leases::PathLease;
@@ -43,22 +42,7 @@ pub(crate) fn init(cx: &mut App) -> Entity<OperationCenter> {
     cx.set_global(SharedOperationCenter(center.clone()));
     let weak = center.downgrade();
     cx.on_window_closed(move |cx, id| {
-        let child = weak
-            .update(cx, |center, cx| {
-                center.unregister_window(id, cx);
-                center
-                    .windows
-                    .is_empty()
-                    .then_some(center.activity_window)
-                    .flatten()
-            })
-            .ok()
-            .flatten();
-        if let Some(child) = child {
-            cx.defer(move |cx| {
-                let _ = child.update(cx, |_, window, _| window.remove_window());
-            });
-        }
+        let _ = weak.update(cx, |center, cx| center.unregister_window(id, cx));
     })
     .detach();
     center
@@ -85,9 +69,7 @@ pub(crate) struct OperationCenter {
     transfer_completions: usize,
     completions: VecDeque<ArchiveCompletion>,
     windows: Vec<AnyWindowHandle>,
-    pill_bounds: RefCell<HashMap<WindowId, Bounds<Pixels>>>,
-    pub activity_window: Option<AnyWindowHandle>,
-    pub auto_presented: bool,
+    trigger_bounds: RefCell<HashMap<WindowId, Bounds<Pixels>>>,
 }
 
 struct Record {
@@ -120,9 +102,7 @@ impl OperationCenter {
             transfer_completions: 0,
             completions: VecDeque::new(),
             windows: Vec::new(),
-            pill_bounds: RefCell::new(HashMap::new()),
-            activity_window: None,
-            auto_presented: false,
+            trigger_bounds: RefCell::new(HashMap::new()),
         }
     }
 
@@ -164,7 +144,7 @@ impl OperationCenter {
 
     pub fn unregister_window(&mut self, id: WindowId, cx: &mut Context<Self>) {
         self.windows.retain(|window| window.window_id() != id);
-        self.pill_bounds.borrow_mut().remove(&id);
+        self.trigger_bounds.borrow_mut().remove(&id);
         if self.windows.is_empty() {
             let prompted: Vec<JobId> = self
                 .jobs
@@ -176,28 +156,15 @@ impl OperationCenter {
                 self.cancel(job, cx);
             }
         }
-        if self
-            .activity_window
-            .is_some_and(|window| window.window_id() == id)
-        {
-            self.activity_window = None;
-        }
         cx.notify();
     }
 
-    pub fn record_pill_bounds(&self, window: WindowId, bounds: Bounds<Pixels>) {
-        self.pill_bounds.borrow_mut().insert(window, bounds);
+    pub fn record_trigger_bounds(&self, window: WindowId, bounds: Bounds<Pixels>) -> bool {
+        self.trigger_bounds.borrow_mut().insert(window, bounds) != Some(bounds)
     }
 
-    pub fn clear_pill_bounds(&self, window: WindowId) {
-        self.pill_bounds.borrow_mut().remove(&window);
-    }
-
-    pub fn pill_contains(&self, window: WindowId, point: Point<Pixels>) -> bool {
-        self.pill_bounds
-            .borrow()
-            .get(&window)
-            .is_some_and(|bounds| bounds.contains(&point))
+    pub fn trigger_bounds(&self, window: WindowId) -> Option<Bounds<Pixels>> {
+        self.trigger_bounds.borrow().get(&window).copied()
     }
 
     pub fn target_window(&self, origin: Option<AnyWindowHandle>) -> Option<AnyWindowHandle> {
@@ -250,19 +217,8 @@ impl OperationCenter {
                 .expect("admission reserves one history slot");
             self.jobs.remove(oldest);
         }
-        if active == 0 {
-            self.auto_presented = false;
-        }
         self.jobs.push_back(Record {
-            job: JobSnapshot::new(
-                id,
-                kind,
-                backend,
-                destination,
-                origin,
-                cancel.is_some(),
-                cx.background_executor().now(),
-            ),
+            job: JobSnapshot::new(id, kind, backend, destination, origin, cancel.is_some()),
             cancel,
             prompt: None,
             lease: PathLease::default(),

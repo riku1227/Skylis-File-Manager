@@ -1,7 +1,7 @@
-use crate::{file_operations::TransferKind, settings_data::FileTransferEngine};
+use crate::file_operations::TransferKind;
 use explorer_core::archive::{ArchiveFormat, ArchiveProgress};
 use gpui::AnyWindowHandle;
-use std::{path::PathBuf, time::Instant};
+use std::path::PathBuf;
 
 const ISSUE_LIMIT: usize = 256;
 pub(super) const ISSUE_BYTES_LIMIT: usize = 256 * 1024;
@@ -37,7 +37,7 @@ impl From<TransferKind> for JobKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum JobBackend {
     Builtin,
-    OsDelegated { reason: FileTransferEngine },
+    OsDelegated,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -224,7 +224,6 @@ pub(crate) struct JobSnapshot {
     pub destination: Option<PathBuf>,
     pub output: Option<PathBuf>,
     pub origin: Option<AnyWindowHandle>,
-    pub submitted_at: Instant,
     pub status: JobStatus,
     pub progress: JobProgress,
     pub percent: Option<u8>,
@@ -242,7 +241,6 @@ impl JobSnapshot {
         destination: Option<PathBuf>,
         origin: AnyWindowHandle,
         cancellable: bool,
-        submitted_at: Instant,
     ) -> Self {
         Self {
             id,
@@ -251,7 +249,6 @@ impl JobSnapshot {
             destination,
             output: None,
             origin: Some(origin),
-            submitted_at,
             status: JobStatus::Queued,
             progress: JobProgress::default(),
             percent: None,

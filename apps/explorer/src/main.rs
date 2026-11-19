@@ -175,6 +175,7 @@ fn main() {
             search::bind_keys(cx);
             folder::keyboard::bind_keys(cx);
             explorer::bind_workflow_keys(cx);
+            explorer::activity::bind_trigger_keys(cx);
             folder::display_settings::bind_keys(cx);
             folder::search_filters::bind_keys(cx);
             folder::context_menu::bind_keys(cx);

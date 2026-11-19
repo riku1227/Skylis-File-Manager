@@ -70,6 +70,7 @@ pub struct FolderView {
     restored_display: Option<crate::session_data::SavedDisplay>,
     session_deferred: bool,
     display_settings: display_settings::DisplaySettings,
+    activity_trigger_focus: FocusHandle,
     marquee: marquee::MarqueeState,
     motion: scroll_motion::FolderMotion,
     multi_selection: std::collections::BTreeSet<PathBuf>,
@@ -347,6 +348,7 @@ impl FolderView {
             restored_display: None,
             session_deferred: deferred,
             display_settings: display_settings::DisplaySettings::new(cx),
+            activity_trigger_focus: cx.focus_handle(),
             marquee: Default::default(),
             motion: Default::default(),
             multi_selection: Default::default(),
@@ -1704,9 +1706,17 @@ impl FolderView {
             )
             .child(address)
             .child(self.render_name_search_field(t, window, cx))
+            .child(crate::explorer::activity::render_trigger(
+                &self.operations,
+                &self.activity_trigger_focus,
+                window,
+                t,
+                cx,
+            ))
             .child(self.render_display_trigger(t, cx))
             .child(
                 icon_button("settings", "icons/settings.svg", true, t)
+                    .debug_selector(|| "settings".into())
                     .on_click(|_, w, cx| w.dispatch_action(Box::new(OpenSettings), cx)),
             )
     }
@@ -2639,7 +2649,7 @@ impl FolderView {
             .into_any_element()
     }
 
-    fn render_status(&self, t: Theme, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_status(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .items_center()
@@ -2705,12 +2715,6 @@ impl FolderView {
                         .child("隠しファイル表示中"),
                 )
             })
-            .children(crate::explorer::activity::render_pill(
-                &self.operations,
-                window.window_handle().window_id(),
-                t,
-                cx,
-            ))
     }
 }
 impl Drop for FolderView {
@@ -2857,12 +2861,26 @@ impl Render for FolderView {
                     cx.stop_propagation();
                     return;
                 }
-                if event.keystroke.key == "tab" && !this.input_focused(w, cx) {
-                    if event.keystroke.modifiers.shift && !this.pinned.is_empty() {
-                        w.focus(&this.pin_remove_focus[this.pinned.len() - 1], cx);
+                if event.keystroke.key == "tab"
+                    && !modifiers.control
+                    && !modifiers.platform
+                    && !modifiers.alt
+                    && !this.input_focused(w, cx)
+                {
+                    let target = if this.activity_trigger_focus.is_focused(w) {
+                        if modifiers.shift {
+                            &this.focus
+                        } else {
+                            &this.display_settings.trigger_focus
+                        }
+                    } else if modifiers.shift && !this.pinned.is_empty() {
+                        &this.pin_remove_focus[this.pinned.len() - 1]
+                    } else if modifiers.shift {
+                        &this.display_settings.trigger_focus
                     } else {
-                        w.focus(&this.display_settings.trigger_focus, cx);
-                    }
+                        &this.activity_trigger_focus
+                    };
+                    w.focus(target, cx);
                     cx.stop_propagation();
                 }
             }))
@@ -3089,7 +3107,7 @@ impl Render for FolderView {
                     },
                 )
             })
-            .child(self.render_status(t, window, cx))
+            .child(self.render_status(t, cx))
             .when(self.menu_presence.mounted(), |d| {
                 d.child(self.render_context_menu(t, cx))
             })
