@@ -54,6 +54,21 @@ pub fn open_with_default_app(path: &Path) -> std::io::Result<()> {
     imp::open_with_default_app(path)
 }
 
+#[cfg(windows)]
+#[path = "platform/windows_photos.rs"]
+mod windows_photos;
+
+/// Use the Photos viewer activation when Microsoft Photos owns the association.
+pub fn open_image_with_default_app(path: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    if let Some(uri) = windows_photos::viewer_uri_if_default(path)
+        && imp::shell_open(uri.as_ref()).is_ok()
+    {
+        return Ok(());
+    }
+    open_with_default_app(path)
+}
+
 /// Open the virtual recycle bin through the OS shell, never as a filesystem directory.
 pub fn open_recycle_bin() -> std::io::Result<()> {
     #[cfg(windows)]
@@ -174,7 +189,11 @@ mod imp {
     }
 
     pub fn open_with_default_app(path: &Path) -> std::io::Result<()> {
-        let file = wide(path.as_os_str());
+        shell_open(path.as_os_str())
+    }
+
+    pub(super) fn shell_open(target: &std::ffi::OsStr) -> std::io::Result<()> {
+        let file = wide(target);
         let verb = wide("open".as_ref());
         // SAFETY: 引数はすべてNUL終端のUTF-16
         let r = unsafe {

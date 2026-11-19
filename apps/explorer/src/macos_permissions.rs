@@ -1,4 +1,5 @@
 //! Observations about a user-requested listing, never a global TCC/FDA verdict.
+#[cfg(any(target_os = "macos", test))]
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -22,7 +23,8 @@ impl Observation {
     }
 }
 
-pub fn bundle_for_executable(executable: &Path) -> Option<PathBuf> {
+#[cfg(any(target_os = "macos", test))]
+fn bundle_for_executable(executable: &Path) -> Option<PathBuf> {
     let macos = executable.parent()?;
     let contents = macos.parent()?;
     let bundle = contents.parent()?;

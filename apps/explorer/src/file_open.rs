@@ -43,7 +43,12 @@ pub fn request(
                         } else if request.cancel.is_cancelled() || request.reply.is_closed() {
                             continue;
                         } else {
-                            platform::open_with_default_app(&request.path)
+                            let opened = if crate::media::is_image_path(&request.path) {
+                                platform::open_image_with_default_app(&request.path)
+                            } else {
+                                platform::open_with_default_app(&request.path)
+                            };
+                            opened
                                 .map(|_| OpenOutcome::Opened)
                                 .map_err(|e| e.to_string())
                         };
