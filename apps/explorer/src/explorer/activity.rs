@@ -819,6 +819,7 @@ impl ActivityList {
             JobKind::Copy => "コピー",
             JobKind::Move => "移動",
             JobKind::CopyOrMove => "コピーまたは移動",
+            JobKind::CopyAndMove => "コピーと移動",
             JobKind::Trash => "ゴミ箱へ移動",
             JobKind::PermanentDelete => "完全に削除",
             JobKind::ArchiveCreate(explorer_core::archive::ArchiveFormat::Zip) => "ZIP 圧縮",

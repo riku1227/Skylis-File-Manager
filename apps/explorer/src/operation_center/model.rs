@@ -17,6 +17,7 @@ pub(crate) enum JobKind {
     Copy,
     Move,
     CopyOrMove,
+    CopyAndMove,
     Trash,
     PermanentDelete,
     ArchiveCreate(ArchiveFormat),
@@ -122,6 +123,7 @@ pub(crate) struct JobProgress {
     pub measure: ProgressMeasure,
     pub current_item: Option<String>,
     pub hydrating_cloud_likely: bool,
+    pub resolved_kind: Option<JobKind>,
 }
 
 impl From<ArchiveProgress> for JobProgress {
@@ -142,6 +144,7 @@ impl From<ArchiveProgress> for JobProgress {
                 .map(|path| path.to_string_lossy().into_owned())
                 .or_else(|| Some(value.current_name).filter(|name| !name.is_empty())),
             hydrating_cloud_likely: false,
+            resolved_kind: None,
         }
     }
 }
@@ -150,6 +153,7 @@ impl JobProgress {
     /// Backends include skipped work in done. Normalize against the previous sample,
     /// including samples coalesced before the UI has seen them.
     pub(super) fn normalized(mut self, previous: &Self) -> Self {
+        self.resolved_kind = self.resolved_kind.or(previous.resolved_kind);
         if self.measure == ProgressMeasure::Indeterminate {
             self.measure = previous.measure.clone();
         }
@@ -260,6 +264,9 @@ impl JobSnapshot {
 
     pub(super) fn update(&mut self, progress: JobProgress) {
         self.progress = progress.normalized(&self.progress);
+        if let Some(kind) = self.progress.resolved_kind {
+            self.kind = kind;
+        }
         self.percent = self.percent.max(self.progress.percent());
     }
 

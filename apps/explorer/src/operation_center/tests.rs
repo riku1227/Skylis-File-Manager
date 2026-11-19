@@ -117,6 +117,50 @@ fn archive_updates_coalesce_at_100ms_with_one_pending_signal() {
 }
 
 #[gpui::test]
+fn resolved_transfer_kind_survives_progress_and_completion(cx: &mut gpui::TestAppContext) {
+    let window = cx
+        .add_empty_window()
+        .update(|window, _| window.window_handle());
+    let center = cx.update(init);
+    for (kinds, expected) in [
+        ([TransferKind::Copy, TransferKind::Copy], JobKind::Copy),
+        ([TransferKind::Move, TransferKind::Move], JobKind::Move),
+        (
+            [TransferKind::Move, TransferKind::Copy],
+            JobKind::CopyAndMove,
+        ),
+    ] {
+        let (events, _) = bounded(1);
+        let worker = JobWorker::new(CancelToken::new(), events);
+        worker.report_transfer_kind(kinds);
+        let initial = worker.latest_progress().unwrap();
+        worker.report(measuring(10, TotalState::Known(20)));
+        let latest = worker.latest_progress().unwrap();
+        assert_eq!(latest.resolved_kind, Some(expected));
+
+        center.update(cx, |center, cx| {
+            let id = center.test_job(window, cx);
+            center.record(id).unwrap().job.kind = JobKind::CopyOrMove;
+            center.update_progress(id, initial, cx);
+            assert_eq!(center.record(id).unwrap().job.kind, expected);
+
+            let (result, _) = bounded(1);
+            center.finish_transfer(
+                id,
+                result,
+                Ok(TransferOutcome::Completed),
+                Some(latest),
+                JobIssues::default(),
+                cx,
+            );
+            let job = &center.record(id).unwrap().job;
+            assert_eq!(job.kind, expected);
+            assert_eq!(job.percent, Some(100));
+        });
+    }
+}
+
+#[gpui::test]
 fn measured_total_and_percent_are_monotonic_until_success(cx: &mut gpui::TestAppContext) {
     let window = cx
         .add_empty_window()
@@ -680,6 +724,7 @@ fn unrelated_jobs_and_shared_copy_sources_do_not_conflict() {
     for kind in [
         JobKind::Move,
         JobKind::CopyOrMove,
+        JobKind::CopyAndMove,
         JobKind::Trash,
         JobKind::PermanentDelete,
     ] {

@@ -19,7 +19,11 @@ impl PathLease {
         let mut lease = Self::archive(sources, destination);
         if matches!(
             kind,
-            JobKind::Move | JobKind::CopyOrMove | JobKind::Trash | JobKind::PermanentDelete
+            JobKind::Move
+                | JobKind::CopyOrMove
+                | JobKind::CopyAndMove
+                | JobKind::Trash
+                | JobKind::PermanentDelete
         ) {
             lease.writes.append(&mut lease.reads);
         }

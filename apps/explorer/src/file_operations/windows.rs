@@ -89,6 +89,9 @@ pub(super) fn transfer(
             volume::resolve(kind, path, &prepared.destination),
         ));
     }
+    if kind == TransferKind::Automatic {
+        worker.report_transfer_kind(sources.iter().map(|(_, kind)| *kind));
+    }
     let Some(owner) = worker.native_owner()? else {
         return Ok(TransferOutcome::Aborted);
     };

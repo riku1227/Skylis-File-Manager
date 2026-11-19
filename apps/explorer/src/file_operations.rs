@@ -259,7 +259,26 @@ pub(crate) fn transfer(
         #[cfg(target_os = "macos")]
         {
             let _ = engine;
-            macos_transfer(&prepared, kind)
+            if kind != TransferKind::Automatic {
+                return macos_transfer(&prepared, kind);
+            }
+
+            let kinds: Vec<_> = prepared
+                .paths
+                .iter()
+                .map(|path| volume::resolve(kind, path, &prepared.destination))
+                .collect();
+            worker.report_transfer_kind(kinds.iter().copied());
+            for (path, resolved) in prepared.paths.iter().zip(kinds) {
+                let single = Prepared {
+                    paths: vec![path.clone()],
+                    destination: prepared.destination.clone(),
+                };
+                if macos_transfer(&single, resolved)? == TransferOutcome::Aborted {
+                    return Ok(TransferOutcome::Aborted);
+                }
+            }
+            Ok(TransferOutcome::Completed)
         }
         #[cfg(not(any(windows, target_os = "macos")))]
         {
@@ -349,20 +368,6 @@ fn prepare(paths: &[PathBuf], destination: &Path) -> anyhow::Result<Prepared> {
 
 #[cfg(target_os = "macos")]
 fn macos_transfer(prepared: &Prepared, kind: TransferKind) -> anyhow::Result<TransferOutcome> {
-    if kind == TransferKind::Automatic {
-        // 同じバッチ内の別ボリュームも、項目ごとに既定動作を選ぶ。
-        for path in &prepared.paths {
-            let resolved = volume::resolve(kind, path, &prepared.destination);
-            let single = Prepared {
-                paths: vec![path.clone()],
-                destination: prepared.destination.clone(),
-            };
-            if macos_transfer(&single, resolved)? == TransferOutcome::Aborted {
-                return Ok(TransferOutcome::Aborted);
-            }
-        }
-        return Ok(TransferOutcome::Completed);
-    }
     // A fixed script receives paths only as argv: quoting and shell syntax in filenames cannot
     // become executable code. Finder preserves macOS metadata. Replacement stays disabled.
     // macOS may ask for Automation permission; denial is reported to the application.

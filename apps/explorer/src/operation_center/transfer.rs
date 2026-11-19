@@ -2,6 +2,24 @@ use super::*;
 
 const PENDING_TRANSFERS: usize = 12;
 
+impl JobWorker {
+    pub fn report_transfer_kind(&self, kinds: impl IntoIterator<Item = TransferKind>) {
+        let mut kinds = kinds.into_iter();
+        let Some(first) = kinds.next() else {
+            return;
+        };
+        let kind = if kinds.any(|kind| kind != first) {
+            JobKind::CopyAndMove
+        } else {
+            first.into()
+        };
+        self.report(JobProgress {
+            resolved_kind: Some(kind),
+            ..JobProgress::default()
+        });
+    }
+}
+
 type TransferWork = Box<dyn FnOnce(&mut JobWorker, FileTransferEngine) -> TransferResult + Send>;
 
 pub(super) struct TransferCommand {
