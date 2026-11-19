@@ -73,6 +73,7 @@ pub fn color(name: &str, dark: bool) -> Rgba {
         "meter.warn" => if dark { rgba(0xf59e0bff) } else { rgba(0xf59e0bff) },
         "meter.track" => if dark { rgba(0x94a3b838) } else { rgba(0x94a3b838) },
         "scrollbar.thumb" => if dark { rgba(0xb4b4b447) } else { rgba(0x64748b42) },
+        "success.fg" => if dark { rgba(0x80d6a3ff) } else { rgba(0x18653fff) },
         "danger.fg" => if dark { rgba(0xe5736bff) } else { rgba(0xc8453bff) },
         "danger.solid" => if dark { rgba(0xc8453bff) } else { rgba(0xc8453bff) },
         _ => panic!("unknown design token: {name}"),

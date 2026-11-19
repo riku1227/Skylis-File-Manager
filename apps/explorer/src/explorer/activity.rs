@@ -527,16 +527,19 @@ impl Explorer {
                             }),
                     ),
             )
-            .child(
-                div()
-                    .id("activity-ring-summary")
-                    .px(px(10.))
-                    .py(px(8.))
-                    .border_b_1()
-                    .border_color(t.c("border.subtle"))
-                    .text_color(t.c("text.secondary"))
-                    .child(summary.description()),
-            )
+            .when(self.activity.center.read(cx).has_active(), |d| {
+                d.child(
+                    div()
+                        .id("activity-ring-summary")
+                        .debug_selector(|| "activity-ring-summary".into())
+                        .px(px(10.))
+                        .py(px(8.))
+                        .border_b_1()
+                        .border_color(t.c("border.subtle"))
+                        .text_color(t.c("text.secondary"))
+                        .child(summary.description()),
+                )
+            })
             .child(ActivityList::render(
                 &self.activity.center,
                 shown.live,
@@ -836,6 +839,46 @@ fn keyboard_button(button: Stateful<Div>, t: Theme) -> Stateful<Div> {
         .focus(|d| d.bg(t.c("surface.chip-selected")))
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ActivitySection {
+    Decisions,
+    Errors,
+    Running,
+    Queued,
+    Completed,
+    Cancelled,
+}
+
+impl ActivitySection {
+    const ORDER: [(Self, &'static str, &'static str); 6] = [
+        (Self::Decisions, "要確認", "activity-decisions-heading"),
+        (Self::Errors, "問題があった操作", "activity-errors-heading"),
+        (Self::Running, "進行中", "activity-running-heading"),
+        (Self::Queued, "待機中", "activity-queued-heading"),
+        (
+            Self::Completed,
+            "完了した操作",
+            "activity-completed-heading",
+        ),
+        (
+            Self::Cancelled,
+            "中止した操作",
+            "activity-cancelled-heading",
+        ),
+    ];
+
+    fn for_status(status: JobStatus) -> Self {
+        match status {
+            JobStatus::WaitingForUser(_) => Self::Decisions,
+            JobStatus::Running | JobStatus::Paused | JobStatus::Cancelling => Self::Running,
+            JobStatus::Queued => Self::Queued,
+            JobStatus::Completed => Self::Completed,
+            JobStatus::Failed | JobStatus::CompletedWithIssues => Self::Errors,
+            JobStatus::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
 struct ActivityList;
 
 impl ActivityList {
@@ -858,23 +901,21 @@ impl ActivityList {
         let waiting_for_user = jobs
             .snapshots()
             .any(|job| matches!(job.status, JobStatus::WaitingForUser(_)));
-        let mut finished = false;
-        for (section, title) in ["要確認", "進行中", "待機中", "最近の操作"]
-            .into_iter()
-            .enumerate()
-        {
+        for (section, title, selector) in ActivitySection::ORDER {
             let mut matching = jobs
                 .snapshots()
-                .filter(|job| Self::section(job.status) == section)
+                .filter(|job| ActivitySection::for_status(job.status) == section)
                 .peekable();
             if matching.peek().is_none() {
                 continue;
             }
-            finished |= section == 3;
             list = list
                 .child(
                     div()
+                        .id(selector)
+                        .debug_selector(move || selector.into())
                         .mb(px(5.))
+                        .text_size(px(13.))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .child(title),
                 )
@@ -890,6 +931,7 @@ impl ActivityList {
             );
         }
         let center = center.clone();
+        let finished = jobs.snapshots().any(|job| !job.status.is_active());
         div()
             .flex_1()
             .min_h_0()
@@ -899,11 +941,13 @@ impl ActivityList {
             .when(finished, |d| {
                 d.child(
                     div()
+                        .flex()
+                        .justify_end()
                         .px(px(10.))
                         .py(px(6.))
                         .border_t_1()
                         .border_color(t.c("border.subtle"))
-                        .child(button("activity-clear", "完了済みを消す", t).when(
+                        .child(button("activity-clear", "履歴を消す", t).when(
                             interactive,
                             |button| {
                                 keyboard_button(button, t).on_click(move |_, _, cx| {
@@ -914,15 +958,6 @@ impl ActivityList {
                 )
             })
             .into_any_element()
-    }
-
-    fn section(status: JobStatus) -> usize {
-        match status {
-            JobStatus::WaitingForUser(_) => 0,
-            JobStatus::Running | JobStatus::Paused | JobStatus::Cancelling => 1,
-            JobStatus::Queued => 2,
-            _ => 3,
-        }
     }
 
     fn card(
@@ -950,27 +985,55 @@ impl ActivityList {
             JobStatus::Paused => "一時停止中",
             JobStatus::Cancelling => "中止しています",
             JobStatus::WaitingForUser(_) => "操作元のウィンドウで確認してください",
-            JobStatus::Completed => "完了",
-            JobStatus::CompletedWithIssues => "一部失敗",
-            JobStatus::Failed => "失敗",
+            JobStatus::Completed => "✓ 完了",
+            JobStatus::CompletedWithIssues => "! 一部失敗",
+            JobStatus::Failed => "× 失敗",
             JobStatus::Cancelled => "中止",
         };
+        let completed = job.status == JobStatus::Completed;
+        let tone = match job.status {
+            JobStatus::Completed => Some(t.c("success.fg")),
+            JobStatus::CompletedWithIssues | JobStatus::Failed => Some(t.c("danger.fg")),
+            _ => None,
+        };
         let id = job.id;
+        let status = div()
+            .id(("activity-job-status", id.0 as usize))
+            .when(completed, |d| {
+                d.debug_selector(move || format!("activity-completed-status-{}", id.0).into())
+            })
+            .text_color(t.c("text.secondary"))
+            .when_some(tone, |d, tone| {
+                d.px(px(7.))
+                    .py(px(2.))
+                    .rounded_full()
+                    .bg(tone.opacity(0.12))
+                    .text_color(tone)
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+            })
+            .child(status);
         let card = div()
             .id(("activity-job", id.0 as usize))
+            .flex()
+            .flex_col()
             .mb(px(8.))
             .p(px(8.))
             .rounded(px(6.))
             .bg(t.c("surface.raised"))
             .border_1()
             .border_color(t.c("border.subtle"))
+            .when(completed, |d| {
+                d.bg(t.c("success.fg").opacity(0.07))
+                    .border_color(t.c("success.fg").opacity(0.24))
+            })
             .child(
                 div()
                     .flex()
+                    .items_center()
                     .justify_between()
                     .gap(px(6.))
-                    .child(title)
-                    .child(div().text_color(t.c("text.secondary")).child(status)),
+                    .child(div().font_weight(gpui::FontWeight::SEMIBOLD).child(title))
+                    .child(status),
             );
         if matches!(job.status, JobStatus::WaitingForUser(_)) {
             return card;
@@ -1005,14 +1068,6 @@ impl ActivityList {
                     .child("前の操作が確認待ちです"),
             )
         })
-        .when_some(job.destination.as_ref(), |d, path| {
-            let path = path.to_string_lossy().into_owned();
-            d.child(path_text(("activity-destination", id.0 as usize), path, t))
-        })
-        .when(
-            job.status.is_active() && job.status != JobStatus::Queued,
-            |d| d.child(Self::progress(job, t)),
-        )
         .when_some(job.progress.current_item.clone(), |d, path| {
             let name = std::path::Path::new(&path)
                 .file_name()
@@ -1023,10 +1078,22 @@ impl ActivityList {
                     .id(("activity-current-item", id.0 as usize))
                     .truncate()
                     .text_color(t.c("text.muted"))
+                    .when(completed, |d| {
+                        d.text_color(t.c("text.primary"))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                    })
                     .child(name)
                     .tooltip(move |_, cx| cx.new(|_| ActivityTip(path.clone(), t)).into()),
             )
         })
+        .when_some(job.destination.as_ref(), |d, path| {
+            let path = path.to_string_lossy().into_owned();
+            d.child(path_text(("activity-destination", id.0 as usize), path, t))
+        })
+        .when(
+            job.status.is_active() && job.status != JobStatus::Queued,
+            |d| d.child(Self::progress(job, t)),
+        )
         .when(job.issue_count > 0, |d| {
             let count = job.issue_count;
             d.child(
@@ -1048,6 +1115,7 @@ impl ActivityList {
                 d.child(
                     job_button("activity-cancel", id.0, "中止", t)
                         .mt(px(6.))
+                        .self_start()
                         .when(interactive, |button| {
                             keyboard_button(button, t).on_click(move |_, _, cx| {
                                 cancel_center.update(cx, |center, cx| center.cancel(id, cx));
@@ -1072,6 +1140,7 @@ impl ActivityList {
             d.child(
                 job_button("activity-open-destination", id.0, "保存先を開く", t)
                     .mt(px(6.))
+                    .self_start()
                     .when(interactive, |button| {
                         keyboard_button(button, t).on_click(move |_, _, cx| {
                             open_destination(window_handle, folder.clone(), select.clone(), cx)

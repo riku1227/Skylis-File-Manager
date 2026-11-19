@@ -237,6 +237,32 @@ fn running_job_leaves_progress_in_the_toolbar_until_requested(cx: &mut TestAppCo
 }
 
 #[gpui::test]
+fn completed_history_has_its_own_section_and_keeps_failures_visible(cx: &mut TestAppContext) {
+    let window = explorer(cx);
+    let (center, completed) = start(window, cx);
+    center.update(cx, |center, cx| center.test_finish(completed, cx));
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
+    click(&mut visual, "activity-trigger");
+    assert!(visual.debug_bounds("activity-ring-summary").is_none());
+    let completed_heading = visual.debug_bounds("activity-completed-heading").unwrap();
+    let status = visual.debug_bounds("activity-completed-status-1").unwrap();
+    assert!(completed_heading.bottom() <= status.top());
+    let destination = visual.debug_bounds("activity-open-destination-1").unwrap();
+    assert!(destination.size.width < completed_heading.size.width);
+
+    let (_, failed) = start(window, cx);
+    center.update(cx, |center, cx| center.test_fail(failed, cx));
+    let _ = start(window, cx);
+    draw(&mut visual);
+    let failure_heading = visual.debug_bounds("activity-errors-heading").unwrap();
+    let running_heading = visual.debug_bounds("activity-running-heading").unwrap();
+    let completed_heading = visual.debug_bounds("activity-completed-heading").unwrap();
+    assert!(visual.debug_bounds("activity-ring-summary").is_some());
+    assert!(failure_heading.bottom() <= running_heading.top());
+    assert!(running_heading.bottom() <= completed_heading.top());
+}
+
+#[gpui::test]
 fn terminal_error_is_badged_and_remains_in_history_without_a_blocking_sheet(
     cx: &mut TestAppContext,
 ) {

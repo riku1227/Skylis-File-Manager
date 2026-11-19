@@ -177,6 +177,7 @@
   --ex-meter-warn: #f59e0b;
   --ex-meter-track: rgba(148, 163, 184, 0.22);
   --ex-scrollbar-thumb: rgba(100, 116, 139, 0.26);
+  --ex-success-fg: #18653f;
   --ex-danger-fg: #c8453b;
   --ex-danger-solid: #c8453b;
   /* shadow */
@@ -281,6 +282,7 @@
   --ex-meter-warn: #f59e0b;
   --ex-meter-track: rgba(148, 163, 184, 0.22);
   --ex-scrollbar-thumb: rgba(180, 180, 180, 0.28);
+  --ex-success-fg: #80d6a3;
   --ex-danger-fg: #e5736b;
   --ex-danger-solid: #c8453b;
   /* shadow */
@@ -386,6 +388,7 @@
     --ex-meter-warn: #f59e0b;
     --ex-meter-track: rgba(148, 163, 184, 0.22);
     --ex-scrollbar-thumb: rgba(180, 180, 180, 0.28);
+    --ex-success-fg: #80d6a3;
     --ex-danger-fg: #e5736b;
     --ex-danger-solid: #c8453b;
     /* shadow */
