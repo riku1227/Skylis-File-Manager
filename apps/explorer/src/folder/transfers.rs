@@ -40,7 +40,7 @@ fn external_drop_kind(same_process: bool, control: bool, shift: bool) -> Transfe
 /// Cheap per-row descriptor. The selection is frozen once when a drag actually starts,
 /// rather than cloning a potentially huge selection for every visible row on every frame.
 #[derive(Clone)]
-pub(super) struct FileDrag {
+pub(crate) struct FileDrag {
     source: gpui::WeakEntity<FolderView>,
     item: PathBuf,
     is_dir: bool,

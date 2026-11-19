@@ -1,6 +1,6 @@
 use crate::{
     actions::*,
-    folder::{FolderView, icon_button},
+    folder::{FileDrag, FolderView, icon_button},
     shell_icons::ShellIcons,
     theme::{Theme, ThemeMode},
 };
@@ -75,6 +75,7 @@ pub struct Explorer {
     tab_motion: tab_motion::TabStripMotion,
     tab_strip: std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>,
     dragging_tab: Option<gpui::EntityId>,
+    file_tab_hover: Option<(gpui::EntityId, gpui::Task<()>)>,
     drop_slot: Option<usize>,
     tab_menu: Option<(gpui::EntityId, gpui::Point<gpui::Pixels>)>,
     tab_error: Option<String>,
@@ -334,6 +335,7 @@ impl Explorer {
             tab_scroll: gpui::ScrollHandle::new(),
             tab_strip: Default::default(),
             dragging_tab: None,
+            file_tab_hover: None,
             drop_slot: None,
             tab_menu: None,
             tab_error: None,
@@ -461,9 +463,24 @@ impl Render for Explorer {
             .text_size(px(12.))
             .on_drag_move::<TabDrag>(cx.listener(
                 |this, event: &gpui::DragMoveEvent<TabDrag>, w, cx| {
+                    this.file_tab_hover = None;
                     this.update_tab_drop_indicator(event.event.position, w, cx);
                 },
             ))
+            .on_drag_move(cx.listener(Self::hover_tab_with_files::<FileDrag>))
+            .on_drag_move(cx.listener(Self::hover_tab_with_files::<gpui::ExternalPaths>))
+            .capture_any_mouse_down(cx.listener(|this, event: &gpui::MouseDownEvent, _, _| {
+                if event.button == gpui::MouseButton::Left {
+                    this.file_tab_hover = None;
+                }
+            }))
+            .capture_any_mouse_up(cx.listener(|this, event: &gpui::MouseUpEvent, _, _| {
+                if event.button == gpui::MouseButton::Left {
+                    this.file_tab_hover = None;
+                }
+            }))
+            .on_mouse_exit(cx.listener(|this, _, _, _| this.file_tab_hover = None))
+            .on_file_drop_exit(cx.listener(|this, _, _, _| this.file_tab_hover = None))
             .on_mouse_up(
                 gpui::MouseButton::Left,
                 cx.listener(|this, event: &gpui::MouseUpEvent, w, cx| {
@@ -478,8 +495,11 @@ impl Render for Explorer {
             )
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, w, cx| {
                 if event.keystroke.key == "escape"
-                    && (this.dragging_tab.is_some() || this.tab_menu.is_some())
+                    && (this.dragging_tab.is_some()
+                        || this.tab_menu.is_some()
+                        || this.file_tab_hover.is_some())
                 {
+                    this.file_tab_hover = None;
                     this.dragging_tab = None;
                     this.tab_menu = None;
                     this.clear_tab_drop_indicators(w, cx);
@@ -499,7 +519,11 @@ impl Render for Explorer {
                 }
             }))
             .capture_action(cx.listener(|this, _: &ClearSearch, w, cx| {
-                if this.dragging_tab.is_some() || this.tab_menu.is_some() {
+                if this.dragging_tab.is_some()
+                    || this.tab_menu.is_some()
+                    || this.file_tab_hover.is_some()
+                {
+                    this.file_tab_hover = None;
                     this.dragging_tab = None;
                     this.tab_menu = None;
                     this.clear_tab_drop_indicators(w, cx);

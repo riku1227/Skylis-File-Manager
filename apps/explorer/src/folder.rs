@@ -8,7 +8,7 @@ pub(crate) mod keyboard;
 mod marquee;
 mod selection_geometry;
 mod transfers;
-use transfers::FileDrag;
+pub(crate) use transfers::FileDrag;
 mod sizes;
 use sizes::SizeState;
 mod grouping;

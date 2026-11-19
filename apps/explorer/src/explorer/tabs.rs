@@ -2,6 +2,9 @@ use super::*;
 #[cfg(test)]
 use gpui::size;
 use gpui::{Bounds, Pixels, Point, WindowHandle, point};
+use std::time::Duration;
+
+const FILE_TAB_HOVER_DELAY: Duration = Duration::from_millis(400);
 
 #[derive(Clone)]
 pub(super) struct TabDrag {
@@ -46,6 +49,50 @@ fn screen_position(position: Point<Pixels>, window: &Window) -> Point<Pixels> {
 }
 
 impl Explorer {
+    fn file_hover_tab(&self, position: Point<Pixels>, window: &Window) -> Option<gpui::EntityId> {
+        let strip = self.tab_scroll.bounds();
+        if self.settings_open
+            || self.activity.modal()
+            || self.tab_menu.is_some()
+            || !strip.contains(&position)
+        {
+            return None;
+        }
+        let x = position.x - strip.left() - self.tab_scroll.offset().x;
+        self.tab_motion
+            .live_tab_at(x, window)
+            .filter(|id| self.tabs[self.active].entity_id() != *id)
+    }
+
+    pub(super) fn hover_tab_with_files<T: 'static>(
+        &mut self,
+        event: &gpui::DragMoveEvent<T>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let target = self.file_hover_tab(event.event.position, window);
+        if target == self.file_tab_hover.as_ref().map(|(id, _)| *id) {
+            return;
+        }
+        self.file_tab_hover = target.map(|id| {
+            let delay = cx.background_executor().timer(FILE_TAB_HOVER_DELAY);
+            let task = cx.spawn_in(window, async move |view, cx| {
+                delay.await;
+                let _ = view.update_in(cx, |this, w, cx| {
+                    this.file_tab_hover = None;
+                    if cx.has_active_drag()
+                        && this.file_hover_tab(w.mouse_position(), w) == Some(id)
+                        && let Some(index) = this.tabs.iter().position(|tab| tab.entity_id() == id)
+                    {
+                        // Switching the view leaves GPUI's drag payload and cursor in place.
+                        this.switch(index, w, cx);
+                    }
+                });
+            });
+            (id, task)
+        });
+    }
+
     pub(super) fn new_window(&mut self, _: &NewWindow, w: &mut Window, cx: &mut Context<Self>) {
         self.open_window_at(Location::Home, w, cx);
     }
@@ -602,8 +649,12 @@ mod tests {
         assert_eq!(reordered_index(0, 1, 1), 0);
     }
     fn test_window(cx: &mut gpui::TestAppContext) -> WindowHandle<Explorer> {
-        cx.background_executor.allow_parking();
         cx.skip_drawing();
+        rendered_test_window(cx)
+    }
+
+    fn rendered_test_window(cx: &mut gpui::TestAppContext) -> WindowHandle<Explorer> {
+        cx.background_executor.allow_parking();
         cx.update(|cx| {
             if !cx.has_global::<crate::settings::SharedPreferences>() {
                 let preferences = cx.new(|cx| {
@@ -624,6 +675,158 @@ mod tests {
                 .new(|cx| FolderView::new(Location::Home, ThemeMode::Light, icons.clone(), w, cx));
             Explorer::with_tabs(vec![tab], icons, ThemeMode::Light, false, w, cx)
         })
+    }
+
+    #[gpui::test]
+    fn file_drag_switches_tabs_only_after_hover_and_keeps_the_drag(cx: &mut gpui::TestAppContext) {
+        use gpui::{FileDropEvent, InputEvent, VisualTestContext};
+        cx.update(|cx| cx.set_reduce_motion(true));
+        let window = rendered_test_window(cx);
+        window
+            .update(cx, |view, w, cx| {
+                view.new_tab(&NewTab, w, cx);
+                view.new_tab(&NewTab, w, cx);
+                view.switch(0, w, cx);
+            })
+            .unwrap();
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let tab = |index: usize, visual: &VisualTestContext| {
+            window
+                .read_with(visual, |v, _| {
+                    v.tab_scroll.bounds_for_item(index + 1).unwrap().center()
+                })
+                .unwrap()
+        };
+        let target = tab(1, &visual);
+        let other = tab(2, &visual);
+        let dispatch = |visual: &mut VisualTestContext, event: FileDropEvent| {
+            visual.update(|w, cx| w.dispatch_event(event.to_platform_input(), cx));
+            visual.run_until_parked();
+        };
+        dispatch(
+            &mut visual,
+            FileDropEvent::Entered {
+                position: target,
+                paths: gpui::ExternalPaths(
+                    [std::env::temp_dir().join("drag-hover.txt")]
+                        .into_iter()
+                        .collect(),
+                ),
+            },
+        );
+        visual
+            .executor()
+            .advance_clock(std::time::Duration::from_millis(399));
+        assert_eq!(window.read_with(&visual, |v, _| v.active).unwrap(), 0);
+        dispatch(&mut visual, FileDropEvent::Pending { position: other });
+        visual
+            .executor()
+            .advance_clock(std::time::Duration::from_millis(1));
+        assert_eq!(window.read_with(&visual, |v, _| v.active).unwrap(), 0);
+        visual
+            .executor()
+            .advance_clock(std::time::Duration::from_millis(399));
+        window
+            .read_with(&visual, |v, cx| {
+                assert_eq!(v.active, 2);
+                assert!(cx.has_active_drag());
+                assert_eq!(v.tabs.len(), 3);
+            })
+            .unwrap();
+
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        dispatch(&mut visual, FileDropEvent::Pending { position: target });
+        dispatch(&mut visual, FileDropEvent::Exited);
+        visual
+            .executor()
+            .advance_clock(std::time::Duration::from_millis(400));
+        window
+            .read_with(&visual, |v, cx| {
+                assert_eq!(v.active, 2);
+                assert!(!cx.has_active_drag());
+            })
+            .unwrap();
+    }
+
+    #[cfg(windows)]
+    #[gpui::test]
+    fn a_file_drag_can_be_released_into_the_folder_opened_by_hover(cx: &mut gpui::TestAppContext) {
+        use crate::operation_center::{JobKind, shared};
+        use gpui::{Modifiers, MouseButton, VisualTestContext};
+
+        let source = tempfile::tempdir().unwrap();
+        let destination = tempfile::tempdir().unwrap();
+        std::fs::write(source.path().join("drag-test.txt"), b"test file").unwrap();
+        cx.update(|cx| cx.set_reduce_motion(true));
+        let window = rendered_test_window(cx);
+        window
+            .update(cx, |view, w, cx| {
+                view.open_tab_at(Location::Folder(source.path().to_path_buf()), w, cx);
+                view.open_tab_at(Location::Folder(destination.path().to_path_buf()), w, cx);
+                view.switch(1, w, cx);
+            })
+            .unwrap();
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let row = loop {
+            visual.run_until_parked();
+            visual.update(|w, cx| w.draw(cx).clear(cx));
+            if let Some(bounds) = visual.debug_bounds("entry-name-0") {
+                break bounds.center();
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "source file was not listed"
+            );
+            std::thread::yield_now();
+        };
+        let target = window
+            .read_with(&visual, |view, _| {
+                view.tab_scroll.bounds_for_item(3).unwrap().center()
+            })
+            .unwrap();
+        visual.simulate_mouse_down(row, MouseButton::Left, Modifiers::none());
+        visual.simulate_mouse_move(
+            row + point(px(16.), px(0.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        window
+            .read_with(&visual, |_, cx| assert!(cx.has_active_drag()))
+            .unwrap();
+        visual.simulate_mouse_move(target, MouseButton::Left, Modifiers::none());
+        visual.run_until_parked();
+        visual.executor().advance_clock(FILE_TAB_HOVER_DELAY);
+        window
+            .read_with(&visual, |view, cx| {
+                assert_eq!(view.active, 2);
+                assert!(cx.has_active_drag());
+                assert!(shared(cx).unwrap().read(cx).snapshots().next().is_none());
+            })
+            .unwrap();
+
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        let release = point(px(500.), px(200.));
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::none()
+        };
+        visual.simulate_mouse_move(release, MouseButton::Left, shift);
+        visual.simulate_mouse_up(release, MouseButton::Left, shift);
+        window
+            .read_with(&visual, |_, cx| {
+                assert!(!cx.has_active_drag());
+                let center = shared(cx).unwrap();
+                let job = center
+                    .read(cx)
+                    .snapshots()
+                    .next()
+                    .expect("the drop enqueued a transfer");
+                assert_eq!(job.kind, JobKind::Move);
+                assert_eq!(job.destination.as_deref(), Some(destination.path()));
+            })
+            .unwrap();
     }
 
     #[gpui::test]
