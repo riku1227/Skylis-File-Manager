@@ -1,7 +1,7 @@
 //! Selection-based deletion. The Windows adapter owns permanent-delete confirmation;
 //! keeping one native confirmation preserves system-specific recycle/elevation warnings.
 use super::*;
-use crate::file_operations::{self, DeleteKind};
+use crate::file_operations::DeleteKind;
 
 impl FolderView {
     pub(super) fn delete_selected(
@@ -35,7 +35,9 @@ impl FolderView {
         self.cancel_scroll_motion();
         self.context_menu = None;
         window.focus(&self.focus, cx);
-        match file_operations::delete(paths.clone(), kind, window) {
+        match self.operations.update(cx, |center, cx| {
+            center.delete(paths.clone(), kind, window, cx)
+        }) {
             Ok(receiver) => {
                 self.notice = Some("削除しています…".into());
                 // The snapshot, not a later selection, determines both the operation and

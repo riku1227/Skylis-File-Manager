@@ -50,6 +50,7 @@ pub struct ArchiveProgress {
     pub processed_bytes: u64,
     pub total_bytes: Option<u64>,
     pub current_name: String,
+    pub current_source: Option<PathBuf>,
     pub entries_done: usize,
 }
 
@@ -516,6 +517,7 @@ impl<'a> Work<'a> {
                 processed_bytes: 0,
                 total_bytes: total,
                 current_name: String::new(),
+                current_source: None,
                 entries_done: 0,
             },
             decoded: 0,

@@ -14,6 +14,7 @@ mod motion;
 mod motion_preferences;
 mod name_search;
 mod native_shell;
+mod operation_center;
 mod search;
 mod session;
 mod session_data;
@@ -137,6 +138,16 @@ fn main() {
                 KeyBinding::new("cmd-q", Quit, None),
             ]);
             cx.bind_keys([
+                KeyBinding::new(
+                    "ctrl-shift-j",
+                    explorer::activity::ToggleActivity,
+                    Some("ExplorerTabs"),
+                ),
+                KeyBinding::new(
+                    "cmd-shift-j",
+                    explorer::activity::ToggleActivity,
+                    Some("ExplorerTabs"),
+                ),
                 KeyBinding::new("ctrl-,", OpenSettings, Some("ExplorerTabs")),
                 KeyBinding::new("cmd-,", OpenSettings, Some("ExplorerTabs")),
             ]);
@@ -167,6 +178,7 @@ fn main() {
             folder::search_filters::bind_keys(cx);
             folder::context_menu::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| explorer::request_quit(cx));
+            operation_center::init(cx);
             if startup.is_empty() {
                 let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
                 cx.open_window(

@@ -2,41 +2,6 @@ use super::*;
 use crate::file_operations::{self, TransferKind, TransferOutcome};
 use std::{cell::OnceCell, collections::BTreeSet, rc::Rc};
 
-pub(super) struct TransferProgress {
-    pub latest: Option<file_operations::OperationProgress>,
-    _receiver: Task<()>,
-}
-struct SharedTransferProgress(Entity<TransferProgress>);
-impl gpui::Global for SharedTransferProgress {}
-
-pub(super) fn transfer_progress(cx: &mut App) -> Entity<TransferProgress> {
-    if let Some(shared) = cx.try_global::<SharedTransferProgress>() {
-        return shared.0.clone();
-    }
-    let entity = cx.new(|cx| {
-        let receiver = file_operations::subscribe_progress();
-        let task = cx.spawn(async move |view: gpui::WeakEntity<TransferProgress>, cx| {
-            while receiver.recv().await.is_ok() {
-                if view
-                    .update(cx, |view, cx| {
-                        view.latest = file_operations::progress_snapshot();
-                        cx.notify();
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        });
-        TransferProgress {
-            latest: file_operations::progress_snapshot(),
-            _receiver: task,
-        }
-    });
-    cx.set_global(SharedTransferProgress(entity.clone()));
-    entity
-}
-
 /// 弱参照だけを保持し、終了したドラッグの選択や画像を残さない。
 struct DragFeedback {
     source: gpui::EntityId,
@@ -610,7 +575,9 @@ impl FolderView {
         };
         let initiator = cx.entity_id();
         let events = file_transfer_events(cx);
-        match file_operations::transfer(paths, destination, kind, window) {
+        match self.operations.update(cx, |center, cx| {
+            center.transfer(paths, destination, kind, window, cx)
+        }) {
             Err(error) => self.notice = Some(error.to_string()),
             Ok(receiver) => {
                 #[cfg(windows)]

@@ -10,6 +10,20 @@ pub enum ThemePreference {
     System,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FileTransferEngine {
+    #[default]
+    OsIntegrated,
+    OsDialog,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ActivityDisplay {
+    #[default]
+    StatusBar,
+    Window,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
     pub show_hidden: bool,
@@ -22,6 +36,8 @@ pub struct Settings {
     pub high_refresh_rate: bool,
     pub smooth_scroll: bool,
     pub performance_overlay: bool,
+    pub file_transfer_engine: FileTransferEngine,
+    pub activity_display: ActivityDisplay,
     pub pinned_folders: Vec<PathBuf>,
 }
 impl Default for Settings {
@@ -37,6 +53,8 @@ impl Default for Settings {
             high_refresh_rate: true,
             smooth_scroll: true,
             performance_overlay: false,
+            file_transfer_engine: FileTransferEngine::default(),
+            activity_display: ActivityDisplay::default(),
             pinned_folders: Vec::new(),
         }
     }
@@ -75,6 +93,20 @@ impl Settings {
                 "high_refresh_rate" => settings.high_refresh_rate = boolean()?,
                 "smooth_scroll" => settings.smooth_scroll = boolean()?,
                 "performance_overlay" => settings.performance_overlay = boolean()?,
+                "file_transfer_engine" => {
+                    settings.file_transfer_engine = match value {
+                        "os_integrated" => FileTransferEngine::OsIntegrated,
+                        "os_dialog" => FileTransferEngine::OsDialog,
+                        _ => return Err("ファイル転送エンジンの設定値が不正です".into()),
+                    };
+                }
+                "activity_display" => {
+                    settings.activity_display = match value {
+                        "status_bar" => ActivityDisplay::StatusBar,
+                        "window" => ActivityDisplay::Window,
+                        _ => return Err("アクティビティ表示の設定値が不正です".into()),
+                    };
+                }
                 "pin" => {
                     let path = decode_pin(value)?;
                     if !settings.pinned_folders.iter().any(|p| same_pin(p, &path)) {
@@ -110,6 +142,14 @@ impl Settings {
         );
         text.push_str(&format!("restore_tabs={}\n", self.restore_tabs));
         text.push_str(&format!("show_hidden={}\n", self.show_hidden));
+        text.push_str(match self.file_transfer_engine {
+            FileTransferEngine::OsIntegrated => "file_transfer_engine=os_integrated\n",
+            FileTransferEngine::OsDialog => "file_transfer_engine=os_dialog\n",
+        });
+        text.push_str(match self.activity_display {
+            ActivityDisplay::StatusBar => "activity_display=status_bar\n",
+            ActivityDisplay::Window => "activity_display=window\n",
+        });
         for path in &self.pinned_folders {
             text.push_str("pin=");
             for byte in path.to_string_lossy().as_bytes() {
@@ -176,6 +216,23 @@ fn decode_pin(value: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn file_operation_settings_migrate_round_trip_and_reject_invalid_values() {
+        let defaults = Settings::decode("version=1\n").unwrap();
+        assert_eq!(
+            defaults.file_transfer_engine,
+            FileTransferEngine::OsIntegrated
+        );
+        assert_eq!(defaults.activity_display, ActivityDisplay::StatusBar);
+        let changed = Settings {
+            file_transfer_engine: FileTransferEngine::OsDialog,
+            activity_display: ActivityDisplay::Window,
+            ..defaults
+        };
+        assert_eq!(Settings::decode(&changed.encode()).unwrap(), changed);
+        assert!(Settings::decode("version=1\nfile_transfer_engine=builtin").is_err());
+        assert!(Settings::decode("version=1\nactivity_display=other").is_err());
+    }
     #[test]
     fn hidden_visibility_migrates_off_and_persists_independently_of_tab_restore() {
         let mut value = Settings::decode("version=1\nrestore_tabs=false\n").unwrap();

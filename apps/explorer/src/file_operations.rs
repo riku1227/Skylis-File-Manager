@@ -1,9 +1,6 @@
 //! Native file mutations. File operations outlive navigation; the OS progress dialog owns
 //! cancellation. Unlike a preview or folder-size scan, dropping the receiver must not stop
 //! a user-requested move halfway through. There is at most one mutation worker per process.
-pub use crate::file_operation_progress::{
-    OperationProgress, progress_snapshot, subscribe_progress,
-};
 use anyhow::Context as _;
 use std::{
     path::{Path, PathBuf},
@@ -49,10 +46,6 @@ pub enum TransferOutcome {
 pub type TransferResult = Result<TransferOutcome, String>;
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
-pub fn has_active() -> bool {
-    ACTIVE.load(Ordering::Acquire)
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DeleteKind {
     Recycle,
@@ -95,6 +88,8 @@ pub fn delete(
             let result = prepare_deletion(&paths)
                 .and_then(|paths| execute_deletion(&paths, kind, owner))
                 .map_err(|error| format!("{error:#}"));
+            drop(_progress);
+            drop(_guard);
             let _ = sender.try_send(result);
         })
     {
@@ -366,6 +361,8 @@ pub fn transfer(
             let result = prepare(&paths, &destination)
                 .and_then(|prepared| execute(&prepared, kind, owner))
                 .map_err(|error| format!("{error:#}"));
+            drop(_progress);
+            drop(_guard);
             let _ = sender.try_send(result);
         })
     {

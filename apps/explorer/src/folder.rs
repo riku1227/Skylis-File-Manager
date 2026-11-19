@@ -90,8 +90,7 @@ pub struct FolderView {
     name_editor: Option<name_editor::NameEditor>,
     archive_index: Option<std::sync::Arc<explorer_core::archive::ArchiveIndex>>,
     archive_dialog: Option<archives::ArchiveDialog>,
-    archive_jobs: Entity<crate::archive_jobs::ArchiveJobs>,
-    transfer_progress: Entity<transfers::TransferProgress>,
+    operations: Entity<crate::operation_center::OperationCenter>,
     menu_presence:
         crate::motion::Presence<(ContextMenu, Vec<(&'static str, context_menu::Command)>)>,
     pane_generation: usize,
@@ -339,11 +338,8 @@ impl FolderView {
             cache
         };
         cx.observe(&media, |_, _, cx| cx.notify()).detach();
-        let archive_jobs = crate::archive_jobs::init(cx);
-        cx.observe(&archive_jobs, |_, _, cx| cx.notify()).detach();
-        let transfer_progress = transfers::transfer_progress(cx);
-        cx.observe(&transfer_progress, |_, _, cx| cx.notify())
-            .detach();
+        let operations = crate::operation_center::init(cx);
+        cx.observe(&operations, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             descendants: name_search::SearchState::new(!deferred),
             pending_select_path: None,
@@ -371,8 +367,7 @@ impl FolderView {
             name_editor: None,
             archive_index: None,
             archive_dialog: None,
-            archive_jobs,
-            transfer_progress,
+            operations,
             menu_presence: Default::default(),
             pane_generation: 0,
             pane_revealed_at: None,
@@ -813,7 +808,7 @@ impl FolderView {
             .map(|&i| &self.entries[i])
     }
 
-    fn selected_name(&self) -> Option<String> {
+    pub(crate) fn selected_name(&self) -> Option<String> {
         if self.is_home() {
             self.selected.and_then(|i| {
                 self.home_places()
@@ -848,8 +843,46 @@ impl FolderView {
         cx.notify();
     }
 
-    fn navigate_to(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn navigate_to(
+        &mut self,
+        path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.navigate(Location::Folder(path), window, cx);
+    }
+
+    pub(crate) fn navigate_to_and_select(
+        &mut self,
+        path: PathBuf,
+        select: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let location = Location::Folder(path);
+        let same = &location == self.history.current();
+        if same && select.is_none() {
+            return;
+        }
+        self.gallery_override = None;
+        if !same {
+            self.history.push(location.clone(), self.selected_name());
+        }
+        self.clear_query(window, cx);
+        if same
+            && !self.loading
+            && let Some(name) = select.as_deref()
+            && let Some(ix) = self
+                .visible
+                .iter()
+                .position(|&i| self.entries[i].name == name)
+        {
+            self.select(ix, cx);
+            self.scroll_to_entry(ix, ScrollStrategy::Center);
+            cx.notify();
+            return;
+        }
+        self.load(location, select, cx);
     }
 
     fn navigate(&mut self, location: Location, window: &mut Window, cx: &mut Context<Self>) {
@@ -2606,7 +2639,7 @@ impl FolderView {
             .into_any_element()
     }
 
-    fn render_status(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_status(&self, t: Theme, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .items_center()
@@ -2672,6 +2705,12 @@ impl FolderView {
                         .child("隠しファイル表示中"),
                 )
             })
+            .children(crate::explorer::activity::render_pill(
+                &self.operations,
+                window.window_handle().window_id(),
+                t,
+                cx,
+            ))
     }
 }
 impl Drop for FolderView {
@@ -3032,34 +3071,6 @@ impl Render for FolderView {
             .when(self.recursive_search(), |d| {
                 d.child(self.render_search_bar(t, cx))
             })
-            .child(self.render_status(t, cx))
-            .when_some(
-                self.transfer_progress.read(cx).latest.clone(),
-                |d, progress| {
-                    let percent = if progress.work_total == 0 {
-                        String::new()
-                    } else {
-                        format!(
-                            " · {}%",
-                            (u64::from(progress.work_done) * 100 / u64::from(progress.work_total))
-                                .min(100)
-                        )
-                    };
-                    d.child(
-                        div()
-                            .px(px(14.))
-                            .py(px(8.))
-                            .text_size(px(12.))
-                            .bg(t.c("surface.chrome"))
-                            .child(format!(
-                                "{}{percent} · {} · 中止はWindowsの進捗ウィンドウから",
-                                progress.label,
-                                progress.current_item.unwrap_or_else(|| "準備中…".into())
-                            )),
-                    )
-                },
-            )
-            .child(self.render_archive_jobs(t, cx))
             .when(self.is_archive(), |d| {
                 d.child(self.render_archive_bar(t, cx))
             })
@@ -3078,6 +3089,7 @@ impl Render for FolderView {
                     },
                 )
             })
+            .child(self.render_status(t, window, cx))
             .when(self.menu_presence.mounted(), |d| {
                 d.child(self.render_context_menu(t, cx))
             })

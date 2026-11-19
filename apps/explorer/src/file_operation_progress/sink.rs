@@ -3,7 +3,7 @@ use windows::{
         System::Com::CoTaskMemFree,
         UI::Shell::{
             IFileOperation, IFileOperationProgressSink, IFileOperationProgressSink_Impl,
-            IShellItem, SIGDN_NORMALDISPLAY,
+            IShellItem, SIGDN_FILESYSPATH, SIGDN_NORMALDISPLAY,
         },
     },
     core::{HRESULT, PCWSTR, Ref, Result, implement},
@@ -42,12 +42,18 @@ impl Sink_Impl {
         let name = item
             .as_ref()
             .and_then(|item| unsafe {
-                let name = item.GetDisplayName(SIGDN_NORMALDISPLAY).ok()?;
+                let name = item
+                    .GetDisplayName(SIGDN_FILESYSPATH)
+                    .or_else(|_| item.GetDisplayName(SIGDN_NORMALDISPLAY))
+                    .ok()?;
                 let value = name.to_string().ok();
                 CoTaskMemFree(Some(name.0.cast()));
                 value
             })
-            .map(|name| name.chars().take(1024).collect());
+            .map(|mut name| {
+                name.truncate(name.floor_char_boundary(32 * 1024));
+                name
+            });
         super::item(label, name);
     }
 }

@@ -1,5 +1,7 @@
 use super::*;
-use gpui::{Bounds, Pixels, Point, WindowHandle, point, size};
+#[cfg(test)]
+use gpui::size;
+use gpui::{Bounds, Pixels, Point, WindowHandle, point};
 
 #[derive(Clone)]
 pub(super) struct TabDrag {
@@ -233,7 +235,13 @@ impl Explorer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.tabs.len() == 1 && crate::file_operations::has_active() {
+        if self.tabs.len() == 1
+            && self
+                .activity
+                .center
+                .read(cx)
+                .native_owned_by(w.window_handle().window_id())
+        {
             self.tab_error =
                 Some("ファイル操作中は、最後のタブを別のウィンドウへ移動できません。".into());
             cx.notify();
@@ -262,7 +270,13 @@ impl Explorer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.tabs.len() == 1 && crate::file_operations::has_active() {
+        if self.tabs.len() == 1
+            && self
+                .activity
+                .center
+                .read(cx)
+                .native_owned_by(w.window_handle().window_id())
+        {
             self.tab_error =
                 Some("ファイル操作中は、最後のタブを別のウィンドウへ移動できません。".into());
             cx.notify();
@@ -310,7 +324,14 @@ impl Explorer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if crate::file_operations::has_active() {
+        if cx.windows().iter().any(|handle| {
+            *handle != w.window_handle()
+                && self
+                    .activity
+                    .center
+                    .read(cx)
+                    .native_owned_by(handle.window_id())
+        }) {
             self.tab_error =
                 Some("ファイル操作が完了してからウィンドウをまとめてください。".into());
             cx.notify();

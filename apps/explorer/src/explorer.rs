@@ -6,6 +6,7 @@ use crate::{
 };
 use explorer_core::location::Location;
 use gpui::{App, Context, Entity, FocusHandle, Focusable, Window, div, prelude::*, px, svg};
+pub(crate) mod activity;
 mod settings_panel;
 mod tab_motion;
 mod tab_workflows;
@@ -14,8 +15,7 @@ pub(crate) use tab_workflows::bind_keys as bind_workflow_keys;
 use tabs::TabDrag;
 
 fn operations_pending(cx: &App) -> bool {
-    crate::file_operations::has_active()
-        || crate::archive_jobs::shared(cx).is_some_and(|jobs| jobs.read(cx).has_active())
+    crate::operation_center::shared(cx).is_some_and(|center| center.read(cx).has_active())
 }
 
 pub(crate) fn request_quit(cx: &mut App) {
@@ -24,9 +24,25 @@ pub(crate) fn request_quit(cx: &mut App) {
         cx.quit();
         return;
     }
+    let activity_target = (!properties_open)
+        .then(|| {
+            crate::operation_center::shared(cx)
+                .and_then(|center| center.read(cx).target_window(None))
+                .and_then(|handle| handle.downcast::<Explorer>())
+        })
+        .flatten();
+    let mut shown = false;
     for handle in cx.windows() {
         if let Some(handle) = handle.downcast::<Explorer>() {
-            let _ = handle.update(cx, |view, _, cx| {
+            let show_here = !properties_open
+                && (activity_target == Some(handle) || (activity_target.is_none() && !shown));
+            if show_here {
+                shown = true;
+            }
+            let _ = handle.update(cx, |view, window, cx| {
+                if show_here {
+                    view.show_activity(window, cx);
+                }
                 view.tab_error = Some(if properties_open {
                     "プロパティ画面を閉じてから終了してください。"
                 } else { "ファイル操作が進行中です。完了を待つか、処理をキャンセルしてから終了してください。" }.into());
@@ -47,6 +63,7 @@ pub struct Explorer {
     icons: Entity<ShellIcons>,
     preferences: Entity<crate::settings::Preferences>,
     settings_open: bool,
+    activity: activity::ActivityState,
     settings_category: usize,
     settings_presence: crate::motion::Presence<()>,
     settings_content_generation: usize,
@@ -211,10 +228,16 @@ impl Explorer {
     ) -> Self {
         let weak = cx.entity().downgrade();
         window.on_window_should_close(cx, move |w, cx| {
-            let last_properties_owner = crate::native_shell::properties_active()
-                && cx.windows().iter().filter(|handle| handle.downcast::<Explorer>().is_some()).count() <= 1;
-            if operations_pending(cx) || last_properties_owner {
+            let last = cx.windows().iter().filter(|handle| handle.downcast::<Explorer>().is_some()).count() <= 1;
+            let last_properties_owner = last && crate::native_shell::properties_active();
+            let native_owner = crate::operation_center::shared(cx).is_some_and(|center| {
+                center.read(cx).native_owned_by(w.window_handle().window_id())
+            });
+            if (last && operations_pending(cx)) || native_owner || last_properties_owner {
                 let _ = weak.update(cx, |this, cx| {
+                    if !last_properties_owner {
+                        this.show_activity(w, cx);
+                    }
                     this.tab_error = Some(if last_properties_owner {
                         "プロパティ画面を閉じてから最後のウィンドウを閉じてください。"
                     } else { "ファイル操作が進行中です。完了を待つか、処理をキャンセルしてから閉じてください。" }.into());
@@ -268,6 +291,9 @@ impl Explorer {
             .detach();
         cx.observe_window_activation(window, |this, window, cx| {
             if window.is_window_active() {
+                this.activity.center.update(cx, |center, cx| {
+                    center.activate_window(window.window_handle(), cx);
+                });
                 crate::motion_preferences::refresh(cx);
                 cx.notify();
             }
@@ -298,6 +324,7 @@ impl Explorer {
             last_saved_theme: preferences.read(cx).value.theme,
             preferences,
             settings_open: false,
+            activity: activity::ActivityState::new(window, cx),
             settings_category: 0,
             settings_presence: Default::default(),
             settings_content_generation: 0,
@@ -414,11 +441,13 @@ impl Render for Explorer {
         ) {
             window.request_animation_frame();
         }
+        self.sync_activity(window, cx);
         let tabs = self.render_tab_strip(t, window, cx);
         div()
             .id("explorer")
             .relative()
-            .key_context("ExplorerTabs")
+            .when(!self.activity.modal(), |d| d.key_context("ExplorerTabs"))
+            .on_action(cx.listener(Self::toggle_activity))
             .size_full()
             .flex()
             .flex_col()
@@ -460,12 +489,12 @@ impl Render for Explorer {
                 }
             }))
             .on_action(cx.listener(|this, action, w, cx| {
-                if !this.settings_open {
+                if !this.settings_open && !this.activity.modal() {
                     this.detach_tab(action, w, cx);
                 }
             }))
             .on_action(cx.listener(|this, action, w, cx| {
-                if !this.settings_open {
+                if !this.settings_open && !this.activity.modal() {
                     this.merge_windows(action, w, cx);
                 }
             }))
@@ -480,8 +509,10 @@ impl Render for Explorer {
                 }
             }))
             .on_action(cx.listener(|this, _: &crate::OpenPermissions, w, cx| {
-                if cfg!(target_os = "macos") {
-                    this.select_settings_category(4);
+                if cfg!(target_os = "macos") && !this.activity.modal() {
+                    this.select_settings_category(
+                        settings_panel::SettingsCategory::MacPermissions.index(),
+                    );
                     this.settings_open = true;
                     this.tabs[this.active].update(cx, |tab, cx| tab.pause_name_search(cx));
                     this.settings_scroll.set_offset(gpui::point(px(0.), px(0.)));
@@ -490,8 +521,12 @@ impl Render for Explorer {
                 }
             }))
             .on_action(cx.listener(|this, _: &OpenSettings, w, cx| {
+                if this.activity.modal() {
+                    return;
+                }
                 this.settings_open = !this.settings_open;
                 if this.settings_open {
+                    this.close_activity(w, cx);
                     crate::motion_preferences::refresh(cx);
                     this.tabs[this.active].update(cx, |tab, cx| {
                         tab.pause_name_search(cx);
@@ -507,41 +542,49 @@ impl Render for Explorer {
                 cx.notify();
             }))
             .on_action(cx.listener(|this, action, w, cx| {
-                if !this.settings_open {
+                if !this.settings_open && !this.activity.modal() {
                     this.new_tab(action, w, cx);
                 }
             }))
-            .on_action(cx.listener(Self::new_window))
+            .on_action(cx.listener(|this, action, window, cx| {
+                if !this.activity.modal() {
+                    this.new_window(action, window, cx);
+                }
+            }))
             .on_action(
                 cx.listener(|this, _: &tab_workflows::ReopenClosedTab, w, cx| {
-                    this.reopen_closed_tab(w, cx)
+                    if !this.activity.modal() {
+                        this.reopen_closed_tab(w, cx);
+                    }
                 }),
             )
             .on_action(cx.listener(|this, _: &tab_workflows::DuplicateTab, w, cx| {
-                this.duplicate_tab_at(this.active, w, cx)
+                if !this.settings_open && !this.activity.modal() {
+                    this.duplicate_tab_at(this.active, w, cx);
+                }
             }))
             .on_action(cx.listener(|this, action, w, cx| {
-                if !this.settings_open {
+                if !this.settings_open && !this.activity.modal() {
                     this.close_tab(action, w, cx);
                 }
             }))
             .on_action(cx.listener(|this, action, w, cx| {
-                if !this.settings_open {
+                if !this.settings_open && !this.activity.modal() {
                     this.next_tab(action, w, cx);
                 }
             }))
             .on_action(cx.listener(|this, action, w, cx| {
-                if !this.settings_open {
+                if !this.settings_open && !this.activity.modal() {
                     this.prev_tab(action, w, cx);
                 }
             }))
             .on_action(cx.listener(|this, action, w, cx| {
-                if !this.settings_open {
+                if !this.settings_open && !this.activity.modal() {
                     this.cycle_theme(action, w, cx);
                 }
             }))
             .on_action(cx.listener(|this, action, w, cx| {
-                if !this.settings_open {
+                if !this.settings_open && !this.activity.modal() {
                     this.density(action, w, cx);
                 }
             }))
@@ -565,15 +608,15 @@ impl Render for Explorer {
                         d.child(window_controls(window.is_maximized(), true, t))
                     }),
             )
+            .when_some(self.tab_error.clone(), |d, message| {
+                d.child(div().px(px(12.)).py(px(6.)).child(message))
+            })
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .child(self.tabs[self.active].clone()),
             )
-            .when_some(self.tab_error.clone(), |d, message| {
-                d.child(div().px(px(12.)).py(px(6.)).child(message))
-            })
             .when(self.preferences.read(cx).value.performance_overlay, |d| {
                 d.child(self.diagnostics.clone())
             })
@@ -583,6 +626,8 @@ impl Render for Explorer {
             .when(self.settings_presence.mounted(), |d| {
                 d.child(gpui::deferred(self.render_settings(t, window, cx)).with_priority(3))
             })
+            .children(self.render_activity_popup(t, window, cx))
+            .children(self.render_activity_sheet(t, cx))
             .into_any_element()
     }
 }
@@ -1059,6 +1104,46 @@ mod tests {
     }
 
     #[gpui::test]
+    fn file_operation_settings_preserve_platform_and_startup_categories(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use settings_panel::SettingsCategory;
+        let window = settings_key_window(cx);
+        let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+        let file_operations = SettingsCategory::FileOperations.index();
+        let startup = SettingsCategory::Startup.index();
+        if cfg!(windows) {
+            assert!(SettingsCategory::WindowsIntegration.index() < file_operations);
+        }
+        if cfg!(target_os = "macos") {
+            assert!(SettingsCategory::MacPermissions.index() < file_operations);
+        }
+        assert_eq!(file_operations + 1, startup);
+        cx.simulate_keystrokes(window.into(), "up");
+        cx.simulate_keystrokes(window.into(), "up");
+        click_setting(&mut visual, "file-transfer-engine-1");
+        click_setting(&mut visual, "activity-display-1");
+        window
+            .read_with(cx, |probe, cx| {
+                let view = probe.explorer.read(cx);
+                assert_eq!(view.settings_category, file_operations);
+                let value = &view.preferences.read(cx).value;
+                assert_eq!(
+                    value.file_transfer_engine,
+                    crate::settings_data::FileTransferEngine::OsDialog
+                );
+                assert_eq!(
+                    value.activity_display,
+                    crate::settings_data::ActivityDisplay::Window
+                );
+            })
+            .unwrap();
+        cx.simulate_keystrokes(window.into(), "down");
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        assert!(visual.debug_bounds("settings-row-restore-tabs").is_some());
+    }
+
+    #[gpui::test]
     fn settings_categories_only_change_visible_content(cx: &mut gpui::TestAppContext) {
         let window = settings_key_window(cx);
         let before = window
@@ -1134,11 +1219,7 @@ mod tests {
                 p.explorer.read(cx).preferences.read(cx).value.clone()
             })
             .unwrap();
-        let last_category = if cfg!(any(windows, target_os = "macos")) {
-            5
-        } else {
-            4
-        };
+        let last_category = settings_panel::SettingsCategory::Startup.index();
         for (key, category) in [("up", last_category), ("down", 0), ("down", 1)] {
             cx.simulate_keystrokes(window.into(), key);
             window

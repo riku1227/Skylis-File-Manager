@@ -175,10 +175,10 @@ impl Drop for ArchiveDialog {
 
 impl FolderView {
     pub(super) fn observe_archive_jobs(&mut self, cx: &mut Context<Self>) {
-        let jobs = self.archive_jobs.clone();
+        let jobs = self.operations.clone();
         cx.subscribe(
             &jobs,
-            |view, _, completion: &crate::archive_jobs::ArchiveCompletion, cx| {
+            |view, _, completion: &crate::operation_center::ArchiveCompletion, cx| {
                 if view.path().is_some_and(|path| {
                     completion
                         .affected_parents
@@ -199,166 +199,6 @@ impl FolderView {
             },
         )
         .detach();
-    }
-
-    pub(super) fn render_archive_jobs(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
-        use crate::archive_jobs::JobStatus;
-        let mut snapshots = self.archive_jobs.read(cx).snapshot();
-        if snapshots.is_empty() {
-            return div().into_any_element();
-        }
-        let queued = self.archive_jobs.read(cx).pending_count();
-        let active = snapshots
-            .iter()
-            .filter(|job| job.status.is_active())
-            .count();
-        snapshots.sort_by_key(|job| match job.status {
-            JobStatus::Running | JobStatus::Cancelling => 0,
-            JobStatus::Queued => 1,
-            _ => 2,
-        });
-        let jobs = self.archive_jobs.clone();
-        div()
-            .id("archive-job-history")
-            .max_h(px(180.))
-            .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .gap(px(5.))
-            .px(px(14.))
-            .py(px(8.))
-            .text_size(px(12.))
-            .bg(t.c("surface.chrome"))
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .text_color(t.c("text.muted"))
-                    .child(if active == 0 {
-                        "圧縮・解凍".to_owned()
-                    } else {
-                        format!("圧縮・解凍の処理: {active} 件 · 待機 {queued} 件")
-                    })
-                    .child(
-                        div()
-                            .id("dismiss-archive-jobs")
-                            .cursor_pointer()
-                            .child("完了した処理を閉じる")
-                            .on_click(move |_, _, cx| {
-                                jobs.update(cx, |jobs, cx| jobs.dismiss_finished(cx));
-                            }),
-                    ),
-            )
-            .children(snapshots.into_iter().map(|job| {
-                let running = matches!(
-                    job.status,
-                    JobStatus::Queued | JobStatus::Running | JobStatus::Cancelling
-                );
-                let status = match job.status {
-                    JobStatus::Queued => "待機中",
-                    JobStatus::Running => "処理中",
-                    JobStatus::Cancelling => "中止しています",
-                    JobStatus::Completed => "完了",
-                    JobStatus::Failed => "失敗",
-                    JobStatus::Cancelled => "中止",
-                };
-                let kind = match job.kind {
-                    crate::archive_jobs::ArchiveJobKind::Create(ArchiveFormat::Zip) => "ZIP圧縮",
-                    crate::archive_jobs::ArchiveJobKind::Create(ArchiveFormat::SevenZip) => {
-                        "7z圧縮"
-                    }
-                    crate::archive_jobs::ArchiveJobKind::Extract => "解凍",
-                };
-                let detail = format!(
-                    "{kind}: {}\n{}",
-                    job.destination.display(),
-                    job.error
-                        .clone()
-                        .or_else(|| job.progress.as_ref().map(|p| p.current_name.clone()))
-                        .unwrap_or_default()
-                );
-                let progress = job
-                    .progress
-                    .as_ref()
-                    .map(|p| {
-                        if let Some(total) = p.total_bytes {
-                            format!(
-                                " · {} / {}",
-                                format::size(p.processed_bytes),
-                                format::size(total)
-                            )
-                        } else {
-                            format!(" · {}", format::size(p.processed_bytes))
-                        }
-                    })
-                    .unwrap_or_default();
-                let mut row = div().flex().items_center().gap(px(12.)).child(
-                    div()
-                        .id(("archive-job-label", job.id as usize))
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .tooltip(move |_, cx| {
-                            cx.new(|_| Tip {
-                                text: detail.clone(),
-                                theme: t,
-                            })
-                            .into()
-                        })
-                        .text_color(t.c(if job.error.is_some() {
-                            "danger.fg"
-                        } else {
-                            "text.secondary"
-                        }))
-                        .child(format!(
-                            "{} · {status}{progress}{}",
-                            job.label,
-                            job.error
-                                .as_ref()
-                                .map(|e| format!(" · {e}"))
-                                .unwrap_or_default()
-                        )),
-                );
-                if running {
-                    let jobs = self.archive_jobs.clone();
-                    row = row.child(
-                        div()
-                            .id(("cancel-archive-job", job.id as usize))
-                            .cursor_pointer()
-                            .text_color(t.c("accent.fg"))
-                            .child("中止")
-                            .on_click(move |_, _, cx| {
-                                jobs.update(cx, |jobs, cx| {
-                                    jobs.cancel(job.id, cx);
-                                });
-                            }),
-                    );
-                } else if let Some(output) = job.output {
-                    row = row.child(
-                        div()
-                            .id(("open-archive-output", job.id as usize))
-                            .cursor_pointer()
-                            .text_color(t.c("accent.fg"))
-                            .child("保存先を開く")
-                            .on_click(cx.listener(move |this, _, w, cx| {
-                                if let Some(parent) = output.parent() {
-                                    let location = Location::Folder(parent.to_path_buf());
-                                    this.history.push(location.clone(), this.selected_name());
-                                    this.clear_query(w, cx);
-                                    this.load(
-                                        location,
-                                        output
-                                            .file_name()
-                                            .map(|n| n.to_string_lossy().into_owned()),
-                                        cx,
-                                    );
-                                }
-                            })),
-                    );
-                }
-                row
-            }))
-            .into_any_element()
     }
 
     pub(super) fn load_archive(&mut self, source: PathBuf, prefix: String, cx: &mut Context<Self>) {
@@ -578,11 +418,12 @@ impl FolderView {
             return;
         }
         let operation = dialog.operation.clone();
-        let jobs = self.archive_jobs.clone();
+        let jobs = self.operations.clone();
+        let owner = window.window_handle();
         match operation {
             Operation::Create { paths, format } => {
                 match jobs.update(cx, |jobs, cx| {
-                    jobs.submit_create(paths, destination, format, cx)
+                    jobs.submit_create(paths, destination, format, window.window_handle(), cx)
                 }) {
                     Ok(_) => {
                         self.archive_dialog = None;
@@ -619,7 +460,7 @@ impl FolderView {
                         }
                         let result = result.and_then(|index| {
                             jobs.update(cx, |jobs, cx| {
-                                jobs.submit_extract(index, selected, destination, cx)
+                                jobs.submit_extract(index, selected, destination, owner, cx)
                             })
                         });
                         match result {
