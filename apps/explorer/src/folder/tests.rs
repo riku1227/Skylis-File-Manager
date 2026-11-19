@@ -210,7 +210,7 @@ fn pinned_remove_is_keyboard_reachable_and_returns_to_files(cx: &mut gpui::TestA
     });
     let window = workflow_window(cx);
     window.update(cx, |v, w, cx| w.focus(&v.focus, cx)).unwrap();
-    cx.simulate_keystrokes(window.into(), "tab tab");
+    cx.simulate_keystrokes(window.into(), "tab tab tab");
     window
         .update(cx, |v, w, cx| {
             let focused = w.focused(cx);
@@ -585,7 +585,7 @@ fn display_popup_owns_bound_file_keys_and_tabs_out(cx: &mut gpui::TestAppContext
         .unwrap();
     cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))
         .unwrap();
-    cx.simulate_keystrokes(window.into(), "tab down right down right enter space");
+    cx.simulate_keystrokes(window.into(), "tab tab down right down right enter space");
     window
         .read_with(cx, |view, _| {
             assert!(view.display_settings.open);

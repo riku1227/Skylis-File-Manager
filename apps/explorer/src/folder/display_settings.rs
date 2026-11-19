@@ -175,7 +175,9 @@ impl FolderView {
                     cx.stop_propagation();
                 }
                 "tab" => {
-                    if !event.keystroke.modifiers.shift && !this.pinned.is_empty() {
+                    if event.keystroke.modifiers.shift {
+                        w.focus(&this.activity_trigger_focus, cx);
+                    } else if !this.pinned.is_empty() {
                         w.focus(&this.pin_remove_focus[0], cx);
                     } else {
                         w.focus(&this.focus, cx);

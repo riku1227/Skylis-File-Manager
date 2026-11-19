@@ -75,6 +75,8 @@ impl Settings {
                 "high_refresh_rate" => settings.high_refresh_rate = boolean()?,
                 "smooth_scroll" => settings.smooth_scroll = boolean()?,
                 "performance_overlay" => settings.performance_overlay = boolean()?,
+                // Version 1 files may contain the retired progress presentation options.
+                "file_transfer_engine" | "activity_display" => (),
                 "pin" => {
                     let path = decode_pin(value)?;
                     if !settings.pinned_folders.iter().any(|p| same_pin(p, &path)) {
@@ -176,6 +178,23 @@ fn decode_pin(value: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn retired_progress_modes_are_ignored_on_load_and_omitted_on_save() {
+        for engine in ["os_integrated", "os_dialog"] {
+            for display in ["status_bar", "window"] {
+                let value = Settings::decode(&format!(
+                    "version=1\nfile_transfer_engine={engine}\nactivity_display={display}\nshow_hidden=true\n"
+                ))
+                .unwrap();
+                assert!(value.show_hidden);
+                let saved = value.encode();
+                assert!(!saved.contains("file_transfer_engine="));
+                assert!(!saved.contains("activity_display="));
+                assert_eq!(Settings::decode(&saved).unwrap(), value);
+            }
+        }
+    }
+
     #[test]
     fn hidden_visibility_migrates_off_and_persists_independently_of_tab_restore() {
         let mut value = Settings::decode("version=1\nrestore_tabs=false\n").unwrap();

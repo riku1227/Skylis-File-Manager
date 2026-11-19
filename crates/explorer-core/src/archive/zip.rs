@@ -249,6 +249,7 @@ pub(super) fn create(
     for source in sources {
         check_cancel(work.cancel)?;
         work.state.current_name.clone_from(&source.entry.path);
+        work.state.current_source = Some(source.path.clone());
         let mut options = SimpleFileOptions::default()
             .compression_method(CompressionMethod::Deflated)
             .compression_level(Some(6))

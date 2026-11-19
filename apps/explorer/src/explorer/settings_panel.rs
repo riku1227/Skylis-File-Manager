@@ -2,6 +2,54 @@ use super::*;
 use crate::motion;
 use gpui::{Animation, AnimationExt};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SettingsCategory {
+    Appearance,
+    Folders,
+    Motion,
+    Developer,
+    WindowsIntegration,
+    MacPermissions,
+    Startup,
+}
+
+fn categories() -> Vec<(
+    SettingsCategory,
+    &'static str,
+    &'static str,
+    std::ops::Range<usize>,
+)> {
+    use SettingsCategory::*;
+    let mut pages = vec![
+        (Appearance, "外観と表示", "icons/desktop.svg", 0..2),
+        (
+            Folders,
+            "フォルダーと一覧",
+            "icons/folder-outline.svg",
+            2..5,
+        ),
+        (Motion, "描画とスクロール", "icons/activity.svg", 5..7),
+        (Developer, "開発者向け", "icons/code.svg", 7..8),
+    ];
+    if cfg!(windows) {
+        pages.push((WindowsIntegration, "Windows連携", "icons/link.svg", 8..8));
+    }
+    if cfg!(target_os = "macos") {
+        pages.push((MacPermissions, "macOSアクセス権限", "icons/link.svg", 8..8));
+    }
+    pages.push((Startup, "起動", "icons/desktop.svg", 8..9));
+    pages
+}
+
+impl SettingsCategory {
+    pub(super) fn index(self) -> usize {
+        categories()
+            .iter()
+            .position(|(category, ..)| *category == self)
+            .expect("settings category available on this platform")
+    }
+}
+
 impl Explorer {
     pub(super) fn select_settings_category(&mut self, category: usize) {
         if self.settings_category != category {
@@ -137,22 +185,10 @@ impl Explorer {
                 "無効"
             },
         ));
-        let mut categories = vec![
-            ("外観と表示", "icons/desktop.svg", 0..2),
-            ("フォルダーと一覧", "icons/folder-outline.svg", 2..5),
-            ("描画とスクロール", "icons/activity.svg", 5..7),
-            ("開発者向け", "icons/code.svg", 7..8),
-        ];
-        if cfg!(windows) {
-            categories.push(("Windows連携", "icons/link.svg", 8..8));
-        }
-        if cfg!(target_os = "macos") {
-            categories.push(("macOSアクセス権限", "icons/link.svg", 8..8));
-        }
-        categories.push(("起動", "icons/desktop.svg", 8..9));
+        let categories = categories();
         let category_count = categories.len();
         let setting_count = rows.len();
-        let numbered_page = !categories[self.settings_category].2.is_empty();
+        let numbered_page = !categories[self.settings_category].3.is_empty();
         let mut nav = div()
             .id("settings-navigation")
             .w(px(if narrow { 124. } else { 166. }))
@@ -163,7 +199,7 @@ impl Explorer {
             .bg(t.c("surface.chrome"))
             .border_r_1()
             .border_color(t.c("border.subtle"));
-        for (index, (title, icon, _)) in categories.iter().enumerate() {
+        for (index, (_, title, icon, _)) in categories.iter().enumerate() {
             nav = nav.child(
                 div()
                     .id(("settings-category", index))
@@ -201,7 +237,7 @@ impl Explorer {
                     })),
             );
         }
-        let (title, _, range) = &categories[self.settings_category];
+        let (category, title, _, range) = &categories[self.settings_category];
         let mut body = div()
             .id(("settings-body", self.settings_category))
             .track_scroll(&self.settings_scroll)
@@ -230,7 +266,7 @@ impl Explorer {
                         .child(error),
                 )
             });
-        if cfg!(windows) && self.settings_category == 4 {
+        if *category == SettingsCategory::WindowsIntegration {
             use crate::folder_integration::Integration;
             body = body.child(div().text_color(t.c("text.secondary")).child("現在のユーザーに適用します。それぞれ個別に元へ戻せます。登録後はSkylisの実行ファイルを移動しないでください。"))
                 .when_some(integration_error, |d, error| d.child(div().mt(px(12.)).text_color(t.c("danger.fg")).child(error)));
@@ -385,7 +421,7 @@ impl Explorer {
                 );
             }
         }
-        if cfg!(target_os = "macos") && self.settings_category == 4 {
+        if *category == SettingsCategory::MacPermissions {
             use crate::macos_permissions::{Action, Observation};
             let observation = self.tabs[self.active]
                 .read(cx)
@@ -665,25 +701,16 @@ impl Explorer {
     }
 
     fn change_preference(&mut self, index: usize, cx: &mut Context<Self>) {
-        let category = match index {
-            0..=1 => 0,
-            2..=4 => 1,
-            5..=6 => 2,
-            7 => 3,
-            _ => {
-                if cfg!(any(windows, target_os = "macos")) {
-                    5
-                } else {
-                    4
-                }
-            }
+        use SettingsCategory::*;
+        let (category, first) = match index {
+            0..=1 => (Appearance, 0),
+            2..=4 => (Folders, 2),
+            5..=6 => (Motion, 5),
+            7 => (Developer, 7),
+            8 => (Startup, 8),
+            _ => return,
         };
-        self.select_settings_category(category);
-        let first = if index == 8 {
-            8
-        } else {
-            [0, 2, 5, 7][self.settings_category]
-        };
+        self.select_settings_category(category.index());
         let session_error = crate::session::error(cx).is_some();
         let error_row = usize::from(self.preferences.read(cx).error.is_some() || session_error);
         self.settings_scroll

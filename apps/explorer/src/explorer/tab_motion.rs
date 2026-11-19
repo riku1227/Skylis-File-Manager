@@ -174,6 +174,21 @@ impl TabStripMotion {
         self.insertion_at(x, |width| window.pixel_snap(width))
     }
 
+    pub(super) fn live_tab_at(&self, x: Pixels, window: &Window) -> Option<EntityId> {
+        let snap = |width| window.pixel_snap(width);
+        let mut offset = px(0.);
+        for slot in &self.slots {
+            let edge = offset + slot.pitch(&snap);
+            if x >= offset && x < edge {
+                // A folded tab is clipped to its visible face; its trailing gap is inert.
+                return (!slot.closing && x < offset + snap(px(TAB_WIDTH * slot.fraction())))
+                    .then_some(slot.id);
+            }
+            offset = edge;
+        }
+        None
+    }
+
     fn insertion_at(&self, x: Pixels, snap: impl Fn(Pixels) -> Pixels) -> usize {
         let mut offset = px(0.);
         let mut live = 0;

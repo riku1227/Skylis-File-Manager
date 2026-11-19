@@ -216,6 +216,7 @@ pub(super) fn create(
     for source in sources {
         check_cancel(work.cancel)?;
         work.state.current_name.clone_from(&source.entry.path);
+        work.state.current_source = Some(source.path.clone());
         let mut entry = if source.entry.is_dir {
             sevenz_rust2::ArchiveEntry::new_directory(&source.entry.path)
         } else {

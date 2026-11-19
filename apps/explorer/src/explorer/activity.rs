@@ -1,0 +1,1283 @@
+use super::*;
+use crate::{
+    motion::{self, Presence},
+    operation_center::{
+        self, JobBackend, JobKind, JobSnapshot, JobStatus, OperationCenter, PermanentDeleteReason,
+        ProgressMeasure, PromptAction, PromptId, PromptKind, PromptRequest, PromptResponse,
+        TotalState,
+    },
+};
+use gpui::{
+    Anchor, AnyElement, AnyWindowHandle, Div, MouseButton, PathBuilder, Pixels, Point, Stateful,
+    actions, point,
+};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
+const CONFIRM_DELAY: Duration = Duration::from_millis(400);
+const TITLE: &str = "ファイル操作";
+
+actions!(activity, [ToggleActivity]);
+
+pub(crate) fn bind_trigger_keys(cx: &mut App) {
+    cx.bind_keys(
+        [
+            "enter",
+            "space",
+            "up",
+            "down",
+            "left",
+            "right",
+            "home",
+            "end",
+            "pageup",
+            "pagedown",
+            "shift-up",
+            "shift-down",
+            "shift-left",
+            "shift-right",
+            "shift-home",
+            "shift-end",
+            "shift-pageup",
+            "shift-pagedown",
+            "delete",
+            "shift-delete",
+            "f2",
+            "shift-f10",
+            "menu",
+        ]
+        .map(|key| gpui::KeyBinding::new(key, gpui::NoAction, Some("ActivityTrigger"))),
+    );
+}
+
+pub(super) struct ActivityState {
+    pub center: Entity<OperationCenter>,
+    pub popup_open: bool,
+    popup: Presence<()>,
+    popup_focus: FocusHandle,
+    popup_previous: Option<FocusHandle>,
+    prompt: Option<PromptSheet>,
+    sheet: Presence<PromptSheet>,
+    sheet_focus: FocusHandle,
+    sheet_previous: Option<FocusHandle>,
+}
+
+#[derive(Clone)]
+struct PromptSheet {
+    request: PromptRequest,
+    shown_at: Instant,
+    selected: usize,
+    apply_to_all: bool,
+}
+
+impl ActivityState {
+    pub(super) fn new(window: &Window, cx: &mut Context<Explorer>) -> Self {
+        let center = operation_center::init(cx);
+        let handle = window.window_handle();
+        center.update(cx, |center, _| center.register_window(handle));
+        cx.observe(&center, |_, _, cx| cx.notify()).detach();
+        Self {
+            center,
+            popup_open: false,
+            popup: Presence::default(),
+            popup_focus: cx.focus_handle(),
+            popup_previous: None,
+            prompt: None,
+            sheet: Presence::default(),
+            sheet_focus: cx.focus_handle(),
+            sheet_previous: None,
+        }
+    }
+
+    pub(super) fn modal(&self) -> bool {
+        self.prompt.is_some()
+    }
+}
+
+#[derive(Default)]
+struct ActivitySummary {
+    running: u32,
+    progress_sum: u32,
+    unknown_progress: bool,
+    queued: u32,
+    cancelling: u32,
+    paused: u32,
+    decisions: u32,
+    errors: u32,
+}
+
+impl ActivitySummary {
+    fn read(center: &OperationCenter) -> Self {
+        Self::from_jobs(
+            center
+                .snapshots()
+                .map(|job| (job.status, job.percent, job.unread_error)),
+        )
+    }
+
+    fn from_jobs(jobs: impl IntoIterator<Item = (JobStatus, Option<u8>, bool)>) -> Self {
+        let mut summary = Self::default();
+        for (status, percent, unread_error) in jobs {
+            match status {
+                JobStatus::Running => {
+                    summary.running += 1;
+                    if let Some(percent) = percent {
+                        summary.progress_sum += u32::from(percent);
+                    } else {
+                        summary.unknown_progress = true;
+                    }
+                }
+                JobStatus::Queued => summary.queued += 1,
+                JobStatus::Paused => summary.paused += 1,
+                JobStatus::WaitingForUser(_) => summary.decisions += 1,
+                JobStatus::Cancelling => summary.cancelling += 1,
+                _ if !status.is_active() && unread_error => summary.errors += 1,
+                _ => {}
+            }
+        }
+        summary
+    }
+
+    fn average(&self) -> Option<u32> {
+        if self.running == 0 || self.unknown_progress {
+            return None;
+        }
+        Some((self.progress_sum + self.running / 2) / self.running)
+    }
+
+    fn description(&self) -> String {
+        let mut text = if let Some(average) = self.average() {
+            format!("実行中 {} 件の平均進捗 {average}%", self.running)
+        } else if self.running > 0 {
+            format!("実行中 {} 件 · 進捗が不明な操作があります", self.running)
+        } else {
+            "実行中の操作はありません".into()
+        };
+        for (count, label) in [
+            (self.queued, "待機中"),
+            (self.paused, "一時停止中"),
+            (self.cancelling, "中止処理中"),
+            (self.decisions, "要確認"),
+            (self.errors, "未確認のエラー"),
+        ] {
+            if count > 0 {
+                text.push_str(&format!(" · {label} {count} 件"));
+            }
+        }
+        text
+    }
+}
+
+pub(crate) fn render_trigger(
+    center: &Entity<OperationCenter>,
+    focus: &FocusHandle,
+    window: &Window,
+    t: Theme,
+    cx: &App,
+) -> impl IntoElement {
+    let summary = ActivitySummary::read(center.read(cx));
+    let label = format!("{TITLE} · {}", summary.description());
+    let pending = summary.queued + summary.cancelling + summary.paused > 0;
+    let handle = window.window_handle();
+    let bounds_center = center.clone();
+    div()
+        .id("activity-trigger")
+        .debug_selector(|| "activity-trigger".into())
+        .role(gpui::Role::Button)
+        .aria_label(label.clone())
+        .tooltip(move |_, cx| cx.new(|_| ActivityTip(label.clone(), t)).into())
+        .track_focus(focus)
+        .tab_index(0)
+        .key_context("ActivityTrigger")
+        .relative()
+        .size(px(36.))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(8.))
+        .cursor_pointer()
+        .hover(|d| d.bg(t.c("state.hover")))
+        .focus(|d| d.bg(t.c("surface.chip-selected")))
+        .child(
+            gpui::canvas(
+                move |bounds, window, cx| {
+                    if bounds_center
+                        .read(cx)
+                        .record_trigger_bounds(handle.window_id(), bounds)
+                        && let Some(explorer) = handle.downcast::<Explorer>()
+                    {
+                        // The Explorer overlay reads the last layout's anchor.
+                        window.on_next_frame(move |_, cx| {
+                            let _ = explorer.update(cx, |this, _, cx| {
+                                if this.activity.popup.mounted() {
+                                    cx.notify();
+                                }
+                            });
+                        });
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0()
+            .size_full(),
+        )
+        .child(
+            div()
+                .relative()
+                .size(px(24.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .border_1()
+                .border_color(t.c("meter.track"))
+                .when_some(
+                    summary.average().filter(|percent| *percent > 0),
+                    |d, percent| d.child(progress_arc(0., percent as f32 / 100., t)),
+                )
+                .when(summary.unknown_progress, |d| {
+                    d.child(progress_arc(0., 0.15, t))
+                        .child(progress_arc(0.21, 0.08, t))
+                })
+                .when(summary.running > 0, |d| {
+                    d.text_size(px(11.))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(t.c("accent.fg"))
+                        .child(summary.running.to_string())
+                })
+                .when(summary.running == 0 && pending, |d| {
+                    d.text_color(t.c("text.secondary")).child("…")
+                })
+                .when(summary.running == 0 && !pending, |d| {
+                    d.child(
+                        svg()
+                            .path("icons/activity.svg")
+                            .size(px(12.))
+                            .text_color(t.c("text.muted")),
+                    )
+                }),
+        )
+        .when(summary.decisions > 0, |d| {
+            d.child(alert_badge("activity-decision-badge", "!", "meter.warn", t).top(px(0.)))
+        })
+        .when(summary.errors > 0, |d| {
+            d.child(alert_badge("activity-error-badge", "×", "danger.fg", t).bottom(px(0.)))
+        })
+        .on_key_down(|event, window, cx| {
+            if matches!(event.keystroke.key.as_str(), "enter" | "space")
+                && !event.keystroke.modifiers.modified()
+            {
+                window.prevent_default();
+                cx.stop_propagation();
+                if !event.is_held {
+                    window.dispatch_action(Box::new(ToggleActivity), cx);
+                }
+            }
+        })
+        .on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleActivity), cx))
+}
+
+fn alert_badge(id: &'static str, symbol: &'static str, color: &str, t: Theme) -> Stateful<Div> {
+    div()
+        .id(id)
+        .debug_selector(move || id.into())
+        .absolute()
+        .right(px(0.))
+        .size(px(14.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .border_1()
+        .border_color(t.c(color))
+        .bg(t.c("surface.dialog"))
+        .text_color(t.c("text.primary"))
+        .text_size(px(10.))
+        .font_weight(gpui::FontWeight::BOLD)
+        .child(symbol)
+}
+
+fn progress_arc(start: f32, length: f32, t: Theme) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| {
+            let center: Point<Pixels> = bounds.center();
+            let radius = px(10.5);
+            let at = |turn: f32| {
+                let angle = (turn - 0.25) * std::f32::consts::TAU;
+                center + point(radius * angle.cos(), radius * angle.sin())
+            };
+            let mut path = PathBuilder::stroke(px(2.));
+            path.move_to(at(start));
+            // Splitting the sweep also handles a full ring, where the endpoints coincide.
+            for fraction in [0.5, 1.] {
+                path.arc_to(
+                    point(radius, radius),
+                    px(0.),
+                    false,
+                    true,
+                    at(start + fraction * length),
+                );
+            }
+            if let Ok(path) = path.build() {
+                window.paint_path(path, t.c("accent.fg"));
+            }
+        },
+    )
+    .absolute()
+    .inset_0()
+    .size_full()
+}
+
+impl Explorer {
+    pub(super) fn show_activity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.activity.modal() {
+            return;
+        }
+        if self.settings_open {
+            self.close_settings(window, cx);
+        }
+        if self.activity.popup_open {
+            return;
+        }
+        self.activity.popup_open = true;
+        self.activity.popup_previous = window.focused(cx);
+        window.focus(&self.activity.popup_focus, cx);
+        cx.notify();
+    }
+
+    pub(super) fn close_activity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.activity.popup_open {
+            return;
+        }
+        self.activity.popup_open = false;
+        let previous = self.activity.popup_previous.take();
+        if self.activity.popup_focus.contains_focused(window, cx) {
+            let focus = previous.unwrap_or_else(|| self.tabs[self.active].focus_handle(cx));
+            window.focus(&focus, cx);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn toggle_activity(
+        &mut self,
+        _: &ToggleActivity,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.activity.modal() || self.settings_open {
+            return;
+        }
+        if self.activity.popup_open {
+            self.close_activity(window, cx);
+        } else {
+            self.show_activity(window, cx);
+        }
+    }
+
+    pub(super) fn sync_activity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let now = cx.background_executor().now();
+        let request = self
+            .activity
+            .center
+            .read(cx)
+            .prompt_for(window.window_handle());
+        if request.as_ref().map(|r| r.id) != self.activity.prompt.as_ref().map(|p| p.request.id) {
+            if let Some(request) = request {
+                if self.activity.prompt.is_none() {
+                    self.close_activity(window, cx);
+                    self.activity.sheet_previous = window.focused(cx);
+                }
+                self.activity.prompt = Some(PromptSheet {
+                    request,
+                    shown_at: now,
+                    selected: 0,
+                    apply_to_all: false,
+                });
+                window.focus(&self.activity.sheet_focus, cx);
+            } else {
+                self.activity.prompt = None;
+                let focus = self
+                    .activity
+                    .sheet_previous
+                    .take()
+                    .unwrap_or_else(|| self.tabs[self.active].focus_handle(cx));
+                window.focus(&focus, cx);
+            }
+        }
+        if self.activity.popup_open && !self.settings_open && window.is_window_active() {
+            let center = self.activity.center.clone();
+            if center.read(cx).snapshots().any(|job| job.unread_error) {
+                cx.defer(move |cx| center.update(cx, |center, cx| center.acknowledge_errors(cx)));
+            }
+        }
+        let reduce = cx.reduce_motion();
+        let popup = self.activity.popup.sync(
+            self.activity.popup_open.then_some(()),
+            motion::POPUP,
+            now,
+            reduce,
+        );
+        let sheet =
+            self.activity
+                .sheet
+                .sync(self.activity.prompt.clone(), motion::MODAL, now, reduce);
+        if popup || sheet {
+            window.request_animation_frame();
+        }
+    }
+
+    pub(super) fn render_activity_popup(
+        &self,
+        t: Theme,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let shown = self.activity.popup.shown()?;
+        let viewport = window.viewport_size();
+        let anchor = self
+            .activity
+            .center
+            .read(cx)
+            .trigger_bounds(window.window_handle().window_id())?;
+        let margin = px(8.);
+        let top = anchor.bottom() + px(6.);
+        let width = px(420.).min((viewport.width - margin * 2.).max(px(1.)));
+        let height = px(470.).min((viewport.height - top - margin).max(px(1.)));
+        let position = point(anchor.right(), top - px(4. * (1. - shown.progress)));
+        let summary = ActivitySummary::read(self.activity.center.read(cx));
+        let child = div()
+            .id("activity-popover")
+            .debug_selector(|| "activity-popover".into())
+            .w(width)
+            .max_h(height)
+            .flex()
+            .flex_col()
+            .rounded(px(10.))
+            .border_1()
+            .border_color(t.c("border.dialog"))
+            .bg(t.c("surface.dialog"))
+            .shadow_lg()
+            .overflow_hidden()
+            .occlude()
+            .opacity(shown.progress)
+            .when(shown.live, |d| {
+                d.track_focus(&self.activity.popup_focus)
+                    .tab_group()
+                    .tab_stop(false)
+                    .on_mouse_down_out(cx.listener(
+                        |this, event: &gpui::MouseDownEvent, window, cx| {
+                            if this.activity.popup_open
+                                && !this
+                                    .activity
+                                    .center
+                                    .read(cx)
+                                    .trigger_bounds(window.window_handle().window_id())
+                                    .is_some_and(|bounds| bounds.contains(&event.position))
+                            {
+                                this.close_activity(window, cx);
+                            }
+                        },
+                    ))
+                    .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                        if event.keystroke.modifiers.control
+                            || event.keystroke.modifiers.alt
+                            || event.keystroke.modifiers.platform
+                        {
+                            return;
+                        }
+                        match event.keystroke.key.as_str() {
+                            "escape" => this.close_activity(window, cx),
+                            "up" => window.focus_prev(cx),
+                            "down" => window.focus_next(cx),
+                            "tab" if event.keystroke.modifiers.shift => window.focus_prev(cx),
+                            "tab" => window.focus_next(cx),
+                            _ => return,
+                        }
+                        cx.stop_propagation();
+                    }))
+            })
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .p(px(10.))
+                    .gap(px(5.))
+                    .border_b_1()
+                    .border_color(t.c("border.subtle"))
+                    .child(
+                        div()
+                            .flex_1()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(TITLE),
+                    )
+                    .child(
+                        icon_button("activity-close", "icons/x.svg", true, t)
+                            .role(gpui::Role::Button)
+                            .aria_label("ファイル操作を閉じる")
+                            .when(shown.live, |d| {
+                                keyboard_button(d, t).on_click(cx.listener(
+                                    |this, _, window, cx| this.close_activity(window, cx),
+                                ))
+                            }),
+                    ),
+            )
+            .when(self.activity.center.read(cx).has_active(), |d| {
+                d.child(
+                    div()
+                        .id("activity-ring-summary")
+                        .debug_selector(|| "activity-ring-summary".into())
+                        .px(px(10.))
+                        .py(px(8.))
+                        .border_b_1()
+                        .border_color(t.c("border.subtle"))
+                        .text_color(t.c("text.secondary"))
+                        .child(summary.description()),
+                )
+            })
+            .child(ActivityList::render(
+                &self.activity.center,
+                shown.live,
+                window.window_handle(),
+                t,
+                cx,
+            ))
+            .when(!shown.live, |d| d.child(motion::ghost_shield()));
+        Some(
+            gpui::deferred(
+                gpui::anchored()
+                    .anchor(Anchor::TopRight)
+                    .position(position)
+                    .snap_to_window_with_margin(margin)
+                    .child(child),
+            )
+            .with_priority(2)
+            .into_any_element(),
+        )
+    }
+
+    fn answer_prompt(&mut self, prompt: PromptId, action: PromptAction, cx: &mut Context<Self>) {
+        let Some(sheet) = &self.activity.prompt else {
+            return;
+        };
+        if sheet.request.id != prompt {
+            return;
+        }
+        let response = PromptResponse {
+            job: sheet.request.job,
+            prompt: sheet.request.id,
+            action,
+            apply_to_all: action != PromptAction::Cancel && sheet.apply_to_all,
+        };
+        self.activity
+            .center
+            .update(cx, |center, cx| center.respond(response, cx));
+    }
+
+    fn prompt_key(&mut self, event: &gpui::KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
+        let now = cx.background_executor().now();
+        let Some(sheet) = &mut self.activity.prompt else {
+            return;
+        };
+        let actions = sheet.request.kind.actions();
+        let prompt = sheet.request.id;
+        match event.keystroke.key.as_str() {
+            "escape" => self.answer_prompt(prompt, PromptAction::Cancel, cx),
+            "tab" | "right" | "left" => {
+                let backwards = event.keystroke.key == "left" || event.keystroke.modifiers.shift;
+                let len = actions.len() + usize::from(sheet.request.kind.allow_apply_to_all());
+                sheet.selected = (sheet.selected + if backwards { len - 1 } else { 1 }) % len;
+                cx.notify();
+            }
+            "enter" | "space"
+                if !event.is_held
+                    && now.saturating_duration_since(sheet.shown_at) >= CONFIRM_DELAY =>
+            {
+                if let Some(&action) = actions.get(sheet.selected) {
+                    self.answer_prompt(prompt, action, cx);
+                } else {
+                    sheet.apply_to_all = !sheet.apply_to_all;
+                    cx.notify();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub(super) fn render_activity_sheet(
+        &self,
+        t: Theme,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let shown = self.activity.sheet.shown()?;
+        let sheet = shown.content;
+        let prompt = sheet.request.id;
+        let (title, detail) = match &sheet.request.kind {
+            PromptKind::ConfirmPermanentDelete {
+                representative,
+                items,
+                reason,
+                known_bytes,
+            } => {
+                let title = match reason {
+                    PermanentDeleteReason::RecycleUnavailable => {
+                        "ゴミ箱へ移動できません — 完全に削除しますか？"
+                    }
+                    PermanentDeleteReason::Explicit => "完全に削除しますか？",
+                };
+                let name = representative
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| representative.display().to_string());
+                let summary = match known_bytes {
+                    Some(bytes) => {
+                        format!(
+                            "{items} 項目（合計 {}） · {name}",
+                            explorer_core::format::size(*bytes)
+                        )
+                    }
+                    None => format!("{items} 項目 · {name}"),
+                };
+                let mut lines = Vec::new();
+                if *reason == PermanentDeleteReason::RecycleUnavailable {
+                    lines.push(
+                        "ゴミ箱へ移動できない項目があるため、完全に削除する必要があります。"
+                            .to_string(),
+                    );
+                }
+                lines.push(summary);
+                if let Some(location) = representative
+                    .parent()
+                    .map(|parent| format!("場所  {}", parent.display()))
+                {
+                    lines.push(location);
+                }
+                (title, lines.join("\n"))
+            }
+            PromptKind::FileConflict {
+                source,
+                destination,
+                ..
+            } => (
+                "同じ名前の項目があります",
+                format!(
+                    "転送元  {}\n保存先  {}",
+                    source.display(),
+                    destination.display()
+                ),
+            ),
+            PromptKind::ItemError { item, message } => (
+                "操作を続けられません",
+                format!("{}\n{message}", item.display()),
+            ),
+        };
+        let panel = div()
+            .id("activity-confirmation-sheet")
+            .debug_selector(|| "activity-confirmation-sheet".into())
+            .role(gpui::Role::Dialog)
+            .aria_label(title)
+            .when(shown.live, |d| {
+                d.track_focus(&self.activity.sheet_focus)
+                    .on_key_down(cx.listener(Self::prompt_key))
+            })
+            .w(px(490.))
+            .max_w_full()
+            .max_h_full()
+            .overflow_y_scroll()
+            .p(px(18.))
+            .rounded(px(10.))
+            .border_1()
+            .border_color(t.c("border.dialog"))
+            .bg(t.c("surface.dialog"))
+            .shadow_lg()
+            .child(
+                div()
+                    .text_size(px(16.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child(title),
+            )
+            .child(
+                div()
+                    .my(px(12.))
+                    .text_color(t.c("text.secondary"))
+                    .child(detail),
+            )
+            .child(
+                div().flex().flex_wrap().gap(px(8.)).children(
+                    sheet
+                        .request
+                        .kind
+                        .actions()
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(index, action)| {
+                            let label = match action {
+                                PromptAction::Cancel => "中止",
+                                PromptAction::Confirm => "完全に削除する",
+                                PromptAction::Skip => "スキップ",
+                                PromptAction::Replace => "置換",
+                                PromptAction::KeepBoth => "両方残す",
+                                PromptAction::Retry => "再試行",
+                            };
+                            button("activity-confirm-action", label, t)
+                                .id(("confirm-action", index))
+                                .debug_selector(move || {
+                                    format!("activity-confirm-action-{index}").into()
+                                })
+                                .when(action == PromptAction::Confirm, |d| {
+                                    d.bg(t.c("danger.solid")).text_color(t.c("text.on-accent"))
+                                })
+                                .when(sheet.selected == index, |d| {
+                                    d.border_color(t.c("accent.fg")).aria_active_descendant()
+                                })
+                                .when(shown.live, |d| {
+                                    d.on_click(cx.listener(move |this, _, _, cx| {
+                                        this.answer_prompt(prompt, action, cx)
+                                    }))
+                                })
+                        }),
+                ),
+            )
+            .when(sheet.request.kind.allow_apply_to_all(), |d| {
+                d.child(
+                    button(
+                        "activity-apply-all",
+                        if sheet.apply_to_all {
+                            "✓ 以降の競合にも適用"
+                        } else {
+                            "以降の競合にも適用"
+                        },
+                        t,
+                    )
+                    .mt(px(10.))
+                    .when(sheet.selected == sheet.request.kind.actions().len(), |d| {
+                        d.border_color(t.c("accent.fg"))
+                    })
+                    .when(shown.live, |d| {
+                        d.on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(sheet) = &mut this.activity.prompt {
+                                sheet.apply_to_all = !sheet.apply_to_all;
+                                cx.notify();
+                            }
+                        }))
+                    }),
+                )
+            });
+        Some(
+            gpui::deferred(
+                div()
+                    .id("activity-confirmation-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .occlude()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .p(px(16.))
+                    .bg(t.c("surface.backdrop"))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        panel
+                            .relative()
+                            .top(px(-motion::MODAL_OFFSET * (1. - shown.progress))),
+                    )
+                    .opacity(shown.progress)
+                    .when(!shown.live, |d| d.child(motion::ghost_shield())),
+            )
+            .with_priority(5)
+            .into_any_element(),
+        )
+    }
+}
+
+fn button(id: &'static str, label: &'static str, t: Theme) -> Stateful<Div> {
+    button_with_id(id, move || id.into(), label, t)
+}
+
+fn job_button(prefix: &'static str, job: u64, label: &'static str, t: Theme) -> Stateful<Div> {
+    button_with_id(
+        (prefix, job as usize),
+        move || format!("{prefix}-{job}"),
+        label,
+        t,
+    )
+}
+
+fn button_with_id(
+    id: impl Into<gpui::ElementId>,
+    debug: impl Fn() -> String + 'static,
+    label: &'static str,
+    t: Theme,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .debug_selector(debug)
+        .role(gpui::Role::Button)
+        .aria_label(label)
+        .px(px(8.))
+        .py(px(4.))
+        .rounded(px(5.))
+        .border_1()
+        .border_color(t.c("button.border"))
+        .bg(t.c("button.bg"))
+        .hover(|d| d.bg(t.c("state.hover")))
+        .cursor_pointer()
+        .child(label)
+}
+
+fn keyboard_button(button: Stateful<Div>, t: Theme) -> Stateful<Div> {
+    button
+        .tab_index(0)
+        .focus(|d| d.bg(t.c("surface.chip-selected")))
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ActivitySection {
+    Decisions,
+    Errors,
+    Running,
+    Queued,
+    Completed,
+    Cancelled,
+}
+
+impl ActivitySection {
+    const ORDER: [(Self, &'static str, &'static str); 6] = [
+        (Self::Decisions, "要確認", "activity-decisions-heading"),
+        (Self::Errors, "問題があった操作", "activity-errors-heading"),
+        (Self::Running, "進行中", "activity-running-heading"),
+        (Self::Queued, "待機中", "activity-queued-heading"),
+        (
+            Self::Completed,
+            "完了した操作",
+            "activity-completed-heading",
+        ),
+        (
+            Self::Cancelled,
+            "中止した操作",
+            "activity-cancelled-heading",
+        ),
+    ];
+
+    fn for_status(status: JobStatus) -> Self {
+        match status {
+            JobStatus::WaitingForUser(_) => Self::Decisions,
+            JobStatus::Running | JobStatus::Paused | JobStatus::Cancelling => Self::Running,
+            JobStatus::Queued => Self::Queued,
+            JobStatus::Completed => Self::Completed,
+            JobStatus::Failed | JobStatus::CompletedWithIssues => Self::Errors,
+            JobStatus::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
+struct ActivityList;
+
+impl ActivityList {
+    fn render(
+        center: &Entity<OperationCenter>,
+        interactive: bool,
+        window_handle: AnyWindowHandle,
+        t: Theme,
+        cx: &App,
+    ) -> AnyElement {
+        let jobs = center.read(cx);
+        let mut list = div()
+            .id("activity-list")
+            .debug_selector(|| "activity-list".into())
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .p(px(10.))
+            .text_size(px(12.));
+        let waiting_for_user = jobs
+            .snapshots()
+            .any(|job| matches!(job.status, JobStatus::WaitingForUser(_)));
+        for (section, title, selector) in ActivitySection::ORDER {
+            let mut matching = jobs
+                .snapshots()
+                .filter(|job| ActivitySection::for_status(job.status) == section)
+                .peekable();
+            if matching.peek().is_none() {
+                continue;
+            }
+            list = list
+                .child(
+                    div()
+                        .id(selector)
+                        .debug_selector(move || selector.into())
+                        .mb(px(5.))
+                        .text_size(px(13.))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(title),
+                )
+                .children(matching.map(|job| {
+                    Self::card(center, job, interactive, window_handle, waiting_for_user, t)
+                }));
+        }
+        if jobs.snapshots().next().is_none() {
+            list = list.child(
+                div()
+                    .text_color(t.c("text.muted"))
+                    .child("ファイル操作はありません"),
+            );
+        }
+        let center = center.clone();
+        let finished = jobs.snapshots().any(|job| !job.status.is_active());
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(list)
+            .when(finished, |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .justify_end()
+                        .px(px(10.))
+                        .py(px(6.))
+                        .border_t_1()
+                        .border_color(t.c("border.subtle"))
+                        .child(button("activity-clear", "履歴を消す", t).when(
+                            interactive,
+                            |button| {
+                                keyboard_button(button, t).on_click(move |_, _, cx| {
+                                    center.update(cx, |center, cx| center.dismiss_finished(cx))
+                                })
+                            },
+                        )),
+                )
+            })
+            .into_any_element()
+    }
+
+    fn card(
+        center: &Entity<OperationCenter>,
+        job: &JobSnapshot,
+        interactive: bool,
+        window_handle: AnyWindowHandle,
+        waiting_for_user: bool,
+        t: Theme,
+    ) -> impl IntoElement {
+        let title = match job.kind {
+            JobKind::Copy => "コピー",
+            JobKind::Move => "移動",
+            JobKind::CopyOrMove => "コピーまたは移動",
+            JobKind::CopyAndMove => "コピーと移動",
+            JobKind::Trash => "ゴミ箱へ移動",
+            JobKind::PermanentDelete => "完全に削除",
+            JobKind::ArchiveCreate(explorer_core::archive::ArchiveFormat::Zip) => "ZIP 圧縮",
+            JobKind::ArchiveCreate(explorer_core::archive::ArchiveFormat::SevenZip) => "7z 圧縮",
+            JobKind::ArchiveExtract => "解凍",
+        };
+        let status = match job.status {
+            JobStatus::Queued => "待機中",
+            JobStatus::Running => "進行中",
+            JobStatus::Paused => "一時停止中",
+            JobStatus::Cancelling => "中止しています",
+            JobStatus::WaitingForUser(_) => "操作元のウィンドウで確認してください",
+            JobStatus::Completed => "✓ 完了",
+            JobStatus::CompletedWithIssues => "! 一部失敗",
+            JobStatus::Failed => "× 失敗",
+            JobStatus::Cancelled => "中止",
+        };
+        let completed = job.status == JobStatus::Completed;
+        let tone = match job.status {
+            JobStatus::Completed => Some(t.c("success.fg")),
+            JobStatus::CompletedWithIssues | JobStatus::Failed => Some(t.c("danger.fg")),
+            _ => None,
+        };
+        let id = job.id;
+        let status = div()
+            .id(("activity-job-status", id.0 as usize))
+            .when(completed, |d| {
+                d.debug_selector(move || format!("activity-completed-status-{}", id.0).into())
+            })
+            .text_color(t.c("text.secondary"))
+            .when_some(tone, |d, tone| {
+                d.px(px(7.))
+                    .py(px(2.))
+                    .rounded_full()
+                    .bg(tone.opacity(0.12))
+                    .text_color(tone)
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+            })
+            .child(status);
+        let card = div()
+            .id(("activity-job", id.0 as usize))
+            .flex()
+            .flex_col()
+            .mb(px(8.))
+            .p(px(8.))
+            .rounded(px(6.))
+            .bg(t.c("surface.raised"))
+            .border_1()
+            .border_color(t.c("border.subtle"))
+            .when(completed, |d| {
+                d.bg(t.c("success.fg").opacity(0.07))
+                    .border_color(t.c("success.fg").opacity(0.24))
+            })
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(6.))
+                    .child(div().font_weight(gpui::FontWeight::SEMIBOLD).child(title))
+                    .child(status),
+            );
+        if matches!(job.status, JobStatus::WaitingForUser(_)) {
+            return card;
+        }
+
+        let cancel_center = center.clone();
+        let open_target = if matches!(
+            job.status,
+            JobStatus::Completed | JobStatus::CompletedWithIssues
+        ) {
+            job.output
+                .as_ref()
+                .and_then(|output| {
+                    output.parent().map(|parent| {
+                        (
+                            parent.to_path_buf(),
+                            output
+                                .file_name()
+                                .map(|name| name.to_string_lossy().into_owned()),
+                        )
+                    })
+                })
+                .or_else(|| job.destination.clone().map(|path| (path, None)))
+        } else {
+            None
+        };
+        card.when(job.status == JobStatus::Queued && waiting_for_user, |d| {
+            d.child(
+                div()
+                    .mt(px(2.))
+                    .text_color(t.c("text.muted"))
+                    .child("前の操作が確認待ちです"),
+            )
+        })
+        .when_some(job.progress.current_item.clone(), |d, path| {
+            let name = std::path::Path::new(&path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+            d.child(
+                div()
+                    .id(("activity-current-item", id.0 as usize))
+                    .truncate()
+                    .text_color(t.c("text.muted"))
+                    .when(completed, |d| {
+                        d.text_color(t.c("text.primary"))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                    })
+                    .child(name)
+                    .tooltip(move |_, cx| cx.new(|_| ActivityTip(path.clone(), t)).into()),
+            )
+        })
+        .when_some(job.destination.as_ref(), |d, path| {
+            let path = path.to_string_lossy().into_owned();
+            d.child(path_text(("activity-destination", id.0 as usize), path, t))
+        })
+        .when(
+            job.status.is_active() && job.status != JobStatus::Queued,
+            |d| d.child(Self::progress(job, t)),
+        )
+        .when(job.issue_count > 0, |d| {
+            let count = job.issue_count;
+            d.child(
+                div()
+                    .text_color(t.c("danger.fg"))
+                    .child(format!("問題 {count} 件")),
+            )
+            .children(job.issues().iter().take(3).map(|issue| {
+                let text = issue.item.as_ref().map_or_else(
+                    || issue.message.clone(),
+                    |item| format!("{item} · {}", issue.message),
+                );
+                div().text_color(t.c("danger.fg")).child(text)
+            }))
+        })
+        .when(
+            job.cancellable && job.status != JobStatus::Cancelling,
+            |d| {
+                d.child(
+                    job_button("activity-cancel", id.0, "中止", t)
+                        .mt(px(6.))
+                        .self_start()
+                        .when(interactive, |button| {
+                            keyboard_button(button, t).on_click(move |_, _, cx| {
+                                cancel_center.update(cx, |center, cx| center.cancel(id, cx));
+                            })
+                        }),
+                )
+            },
+        )
+        .when(
+            job.status == JobStatus::Running
+                && !job.cancellable
+                && job.backend == JobBackend::OsDelegated,
+            |d| {
+                d.child(
+                    div()
+                        .text_color(t.c("text.muted"))
+                        .child("Finder に委譲中 · アプリからの中止には対応していません"),
+                )
+            },
+        )
+        .when_some(open_target, |d, (folder, select)| {
+            d.child(
+                job_button("activity-open-destination", id.0, "保存先を開く", t)
+                    .mt(px(6.))
+                    .self_start()
+                    .when(interactive, |button| {
+                        keyboard_button(button, t).on_click(move |_, _, cx| {
+                            open_destination(window_handle, folder.clone(), select.clone(), cx)
+                        })
+                    }),
+            )
+        })
+    }
+
+    fn progress(job: &JobSnapshot, t: Theme) -> AnyElement {
+        let note = match job.progress.measure {
+            ProgressMeasure::Measured {
+                bytes_done,
+                bytes_total: TotalState::Known(total),
+                ..
+            } => {
+                format!(
+                    "{} / {}",
+                    explorer_core::format::size(bytes_done),
+                    explorer_core::format::size(total)
+                )
+            }
+            ProgressMeasure::Measured {
+                items_done,
+                items_total: TotalState::Known(total),
+                bytes_total: TotalState::Unknown,
+                ..
+            } => format!("{items_done} / {total} 項目"),
+            ProgressMeasure::Measured {
+                bytes_done,
+                items_done,
+                ..
+            } => {
+                format!(
+                    "{} · {} 項目",
+                    explorer_core::format::size(bytes_done),
+                    items_done
+                )
+            }
+            ProgressMeasure::Relative { work_total, .. } if work_total > 0 => {
+                "Windows からの進捗".into()
+            }
+            _ => "進捗の詳細を取得できません".into(),
+        };
+        let label = if job.progress.hydrating_cloud_likely {
+            "クラウドから取得中の可能性があります".into()
+        } else {
+            note
+        };
+        div()
+            .mt(px(4.))
+            .text_color(t.c("text.muted"))
+            .child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .child(label)
+                    .when_some(job.percent, |d, percent| d.child(format!("{percent}%"))),
+            )
+            .child(
+                div()
+                    .mt(px(3.))
+                    .h(px(4.))
+                    .rounded(px(2.))
+                    .bg(t.c("surface.field"))
+                    .when_some(job.percent, |d, percent| {
+                        d.child(
+                            div()
+                                .h_full()
+                                .w(gpui::relative(f32::from(percent) / 100.))
+                                .rounded(px(2.))
+                                .bg(t.c("accent.fg")),
+                        )
+                    })
+                    .when(job.percent.is_none(), |d| {
+                        d.child(
+                            div()
+                                .h_full()
+                                .w(px(18.))
+                                .rounded(px(2.))
+                                .bg(t.c("accent.fg").opacity(0.6)),
+                        )
+                    }),
+            )
+            .into_any_element()
+    }
+}
+
+fn path_text(id: impl Into<gpui::ElementId>, path: String, t: Theme) -> impl IntoElement {
+    div()
+        .id(id)
+        .truncate()
+        .text_color(t.c("text.secondary"))
+        .child(path.clone())
+        .tooltip(move |_, cx| cx.new(|_| ActivityTip(path.clone(), t)).into())
+}
+
+struct ActivityTip(String, Theme);
+impl Render for ActivityTip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .p(px(6.))
+            .max_w(px(540.))
+            .rounded(px(5.))
+            .bg(self.1.c("surface.dialog"))
+            .border_1()
+            .border_color(self.1.c("border.dialog"))
+            .text_color(self.1.c("text.primary"))
+            .child(self.0.clone())
+    }
+}
+
+fn open_destination(
+    window_handle: AnyWindowHandle,
+    path: PathBuf,
+    select: Option<String>,
+    cx: &mut App,
+) {
+    let Some(target) = window_handle.downcast::<Explorer>() else {
+        return;
+    };
+    cx.defer(move |cx| {
+        let _ = target.update(cx, |view, window, cx| {
+            if view.activity.modal() {
+                return;
+            }
+            if view.settings_open {
+                view.close_settings(window, cx);
+            }
+            view.close_activity(window, cx);
+            view.tabs[view.active].update(cx, |tab, cx| {
+                tab.navigate_to_and_select(path, select, window, cx)
+            });
+            window.activate_window();
+        });
+    });
+}
+
+#[cfg(test)]
+mod tests;

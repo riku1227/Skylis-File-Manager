@@ -1,15 +1,10 @@
-//! Native file mutations. File operations outlive navigation; the OS progress dialog owns
-//! cancellation. Unlike a preview or folder-size scan, dropping the receiver must not stop
-//! a user-requested move halfway through. There is at most one mutation worker per process.
-pub use crate::file_operation_progress::{
-    OperationProgress, progress_snapshot, subscribe_progress,
-};
+//! Native file operations. OperationCenter admits jobs and calls these adapters on workers.
+use crate::operation_center::JobWorker;
 use anyhow::Context as _;
-use std::{
-    path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::path::{Path, PathBuf};
 
+#[cfg(windows)]
+mod windows;
 #[cfg(windows)]
 mod windows_io;
 #[cfg(windows)]
@@ -42,21 +37,17 @@ mod volume;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TransferOutcome {
     Completed,
+    CompletedWithIssues,
     /// Some items may already have changed. Refresh every affected listing.
     Aborted,
 }
 
 pub type TransferResult = Result<TransferOutcome, String>;
-static ACTIVE: AtomicBool = AtomicBool::new(false);
-
-pub fn has_active() -> bool {
-    ACTIVE.load(Ordering::Acquire)
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DeleteKind {
     Recycle,
-    /// Windows presents its explicit permanent-deletion warning before executing.
+    /// Requires explicit confirmation before executing.
     Permanent,
 }
 
@@ -64,65 +55,73 @@ pub fn supports_delete(kind: DeleteKind) -> bool {
     cfg!(windows) || (cfg!(target_os = "macos") && kind == DeleteKind::Recycle)
 }
 
-/// Queues one selection snapshot. Filesystem validation and all native calls run on the
-/// worker. A failed/rejected batch is never retried as a different deletion kind.
-pub fn delete(
-    paths: Vec<PathBuf>,
+pub(crate) fn delete(
+    paths: &[PathBuf],
     kind: DeleteKind,
-    window: &gpui::Window,
-) -> anyhow::Result<async_channel::Receiver<TransferResult>> {
-    validate_delete_arguments(&paths)?;
-    anyhow::ensure!(
-        supports_delete(kind),
-        "このOSでは指定した削除方法に対応していません"
-    );
-    let owner = native_owner(window)?;
-    if ACTIVE
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        anyhow::bail!("ファイル操作が進行中です。完了またはキャンセル後に操作してください");
-    }
-    let (sender, receiver) = async_channel::bounded(1);
-    if let Err(error) = std::thread::Builder::new()
-        .name("file-delete".into())
-        .spawn(move || {
-            let _guard = ActiveGuard;
-            let _progress = crate::file_operation_progress::begin(match kind {
-                DeleteKind::Recycle => "ゴミ箱へ移動",
-                DeleteKind::Permanent => "削除",
-            });
-            let result = prepare_deletion(&paths)
-                .and_then(|paths| execute_deletion(&paths, kind, owner))
-                .map_err(|error| format!("{error:#}"));
-            let _ = sender.try_send(result);
+    worker: &mut JobWorker,
+) -> TransferResult {
+    (|| {
+        anyhow::ensure!(
+            supports_delete(kind),
+            "このOSでは指定した削除方法に対応していません"
+        );
+        let paths = prepare_deletion(paths)?;
+        if worker.is_cancelled() {
+            return Ok(TransferOutcome::Aborted);
+        }
+        #[cfg(windows)]
+        {
+            windows::delete(&paths, kind, worker)
+        }
+        #[cfg(target_os = "macos")]
+        {
+            macos_trash(&paths, worker)
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            let _ = paths;
+            anyhow::bail!("このOSの削除にはまだ対応していません")
+        }
+    })()
+    .map_err(|error: anyhow::Error| format!("{error:#}"))
+}
+
+#[cfg(any(windows, test))]
+pub(crate) fn confirm_permanent_delete(
+    paths: &[PathBuf],
+    reason: crate::operation_center::PermanentDeleteReason,
+    worker: &mut JobWorker,
+    delete: impl FnOnce(&[PathBuf], &mut JobWorker) -> anyhow::Result<TransferOutcome>,
+) -> anyhow::Result<TransferOutcome> {
+    use crate::operation_center::{PromptAction, PromptKind};
+    let Some(representative) = paths.first().cloned() else {
+        return Ok(TransferOutcome::Completed);
+    };
+    let known_bytes = (paths.len() <= 256)
+        .then(|| {
+            paths.iter().try_fold(0u64, |acc, path| {
+                let meta = std::fs::symlink_metadata(path).ok()?;
+                meta.is_file().then(|| acc.saturating_add(meta.len()))
+            })
         })
-    {
-        ACTIVE.store(false, Ordering::Release);
-        return Err(error).context("削除を開始できません");
+        .flatten();
+    let response = worker.prompt(PromptKind::ConfirmPermanentDelete {
+        representative,
+        items: paths.len() as u64,
+        reason,
+        known_bytes,
+    });
+    if worker.is_cancelled() {
+        return Ok(TransferOutcome::Aborted);
     }
-    Ok(receiver)
+    let response = response.context("完全削除を確認できるウィンドウがありません")?;
+    if response.action != PromptAction::Confirm {
+        return Ok(TransferOutcome::Aborted);
+    }
+    delete(paths, worker)
 }
 
-fn native_owner(window: &gpui::Window) -> anyhow::Result<isize> {
-    #[cfg(windows)]
-    {
-        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-        let handle = HasWindowHandle::window_handle(window)
-            .map_err(|error| anyhow::anyhow!("ウィンドウを取得できません: {error}"))?;
-        let RawWindowHandle::Win32(raw) = handle.as_raw() else {
-            anyhow::bail!("Windowsウィンドウが必要です");
-        };
-        Ok(raw.hwnd.get())
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = window;
-        Ok(0)
-    }
-}
-
-fn validate_delete_arguments(paths: &[PathBuf]) -> anyhow::Result<()> {
+pub(crate) fn validate_delete_arguments(paths: &[PathBuf]) -> anyhow::Result<()> {
     anyhow::ensure!(!paths.is_empty(), "削除する項目がありません");
     for path in paths {
         anyhow::ensure!(path.is_absolute(), "削除には絶対パスが必要です");
@@ -187,199 +186,103 @@ fn prepare_deletion(paths: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
         .collect())
 }
 
-fn execute_deletion(
-    paths: &[PathBuf],
-    kind: DeleteKind,
-    owner: isize,
-) -> anyhow::Result<TransferOutcome> {
-    #[cfg(windows)]
-    {
-        windows_delete(paths, kind, owner)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = owner;
-        anyhow::ensure!(
-            kind == DeleteKind::Recycle,
-            "macOSの完全削除にはまだ対応していません"
-        );
-        macos_trash(paths)
-    }
-    #[cfg(not(any(windows, target_os = "macos")))]
-    {
-        let _ = (paths, kind, owner);
-        anyhow::bail!("このOSの削除にはまだ対応していません")
-    }
-}
-
-#[cfg(windows)]
-fn windows_delete_flags(kind: DeleteKind) -> windows::Win32::UI::Shell::FILEOPERATION_FLAGS {
-    use windows::Win32::UI::Shell::*;
-    // WANTNUKEWARNING asks before destruction if recycling is unavailable, even when
-    // Explorer's normal recycle confirmation is disabled. Do not answer Yes on its behalf.
-    match kind {
-        DeleteKind::Recycle => {
-            FOFX_RECYCLEONDELETE | FOF_ALLOWUNDO | FOFX_ADDUNDORECORD | FOF_WANTNUKEWARNING
-        }
-        DeleteKind::Permanent => FOF_WANTNUKEWARNING,
-    }
-}
-
-#[cfg(windows)]
-fn windows_delete(
-    paths: &[PathBuf],
-    kind: DeleteKind,
-    owner: isize,
-) -> anyhow::Result<TransferOutcome> {
-    use windows::{
-        Win32::{
-            Foundation::HWND,
-            System::{
-                Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
-                Ole::{OleInitialize, OleUninitialize},
-            },
-            UI::{Shell::*, WindowsAndMessaging::IsWindow},
-        },
-        core::PCWSTR,
+#[cfg(target_os = "macos")]
+fn macos_trash(paths: &[PathBuf], worker: &JobWorker) -> anyhow::Result<TransferOutcome> {
+    use crate::operation_center::JobIssue;
+    use std::{
+        ffi::{CStr, CString, c_char},
+        os::unix::ffi::OsStrExt,
     };
-    struct Apartment;
-    impl Drop for Apartment {
-        fn drop(&mut self) {
-            unsafe {
-                OleUninitialize();
-            }
-        }
+
+    unsafe extern "C" {
+        fn skylis_trash_item(path: *const c_char, error: *mut c_char, capacity: usize) -> bool;
     }
-    unsafe {
-        OleInitialize(None)?;
-    }
-    let _apartment = Apartment;
-    let owner = HWND(owner as *mut std::ffi::c_void);
-    anyhow::ensure!(
-        unsafe { IsWindow(Some(owner)).as_bool() },
-        "操作元のウィンドウが閉じられました"
-    );
-    unsafe {
-        let operation: IFileOperation =
-            CoCreateInstance(&FileOperation, None, CLSCTX_INPROC_SERVER)?;
-        operation.SetOwnerWindow(owner)?;
-        operation.SetOperationFlags(windows_delete_flags(kind))?;
-        // Progress observation is optional; failure must never change native file behavior.
-        let _progress_sink = crate::file_operation_progress::Subscription::new(&operation).ok();
-        // Build every Shell item before submitting work, so a malformed later item does
-        // not cause an earlier item to be deleted before validation has completed.
-        let items: Vec<IShellItem> = paths
-            .iter()
-            .map(|path| {
-                let wide = crate::native_shell::windows_path_wide(path)?;
-                SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)
-                    .with_context(|| format!("Shellが項目を開けません: {}", path.display()))
-            })
-            .collect::<anyhow::Result<_>>()?;
-        for item in &items {
-            operation.DeleteItem(item, None)?;
-        }
-        let result = operation.PerformOperations();
-        if operation.GetAnyOperationsAborted()?.as_bool() {
+
+    for (index, path) in paths.iter().enumerate() {
+        if worker.is_cancelled() {
             return Ok(TransferOutcome::Aborted);
         }
-        result.context("削除が完了しませんでした。一部の項目は処理済みの可能性があります")?;
+        report_delete_items(worker, paths.len(), index, Some(path));
+        let path_bytes = CString::new(path.as_os_str().as_bytes())?;
+        let mut error = [0 as c_char; 1024];
+        if !unsafe { skylis_trash_item(path_bytes.as_ptr(), error.as_mut_ptr(), error.len()) } {
+            let details = unsafe { CStr::from_ptr(error.as_ptr()) }.to_string_lossy();
+            worker.issue(JobIssue {
+                item: Some(path.to_string_lossy().into_owned()),
+                message: if details.is_empty() {
+                    "ゴミ箱へ移動できませんでした".into()
+                } else {
+                    details.into_owned()
+                },
+            });
+        }
+        report_delete_items(worker, paths.len(), index + 1, Some(path));
     }
     Ok(TransferOutcome::Completed)
 }
 
-#[cfg(target_os = "macos")]
-fn macos_trash(paths: &[PathBuf]) -> anyhow::Result<TransferOutcome> {
-    // Pass paths as argv, never interpolate them into AppleScript or shell source.
-    // Finder's delete command moves items to Trash; there is no permanent-delete retry.
-    const SCRIPT: &str = r#"on run argv
-        with timeout of 86400 seconds
-        try
-            repeat with sourcePath in argv
-                set sourceItem to (POSIX file (contents of sourcePath))
-                tell application "Finder" to delete sourceItem
-            end repeat
-            return "completed"
-        on error errorText number errorNumber
-            if errorNumber is -128 then return "aborted"
-            error errorText number errorNumber
-        end try
-        end timeout
-    end run"#;
-    let output = std::process::Command::new("/usr/bin/osascript")
-        .arg("-e")
-        .arg(SCRIPT)
-        .arg("--")
-        .args(paths)
-        .output()
-        .context("Finderの削除を開始できません")?;
-    anyhow::ensure!(
-        output.status.success(),
-        "Finderの削除に失敗しました: {}",
-        String::from_utf8_lossy(&output.stderr).trim()
-    );
-    match String::from_utf8_lossy(&output.stdout).trim() {
-        "completed" => Ok(TransferOutcome::Completed),
-        "aborted" => Ok(TransferOutcome::Aborted),
-        _ => anyhow::bail!("Finderの削除結果を確認できません"),
-    }
+#[cfg(any(windows, target_os = "macos"))]
+fn report_delete_items(worker: &JobWorker, total: usize, done: usize, current: Option<&Path>) {
+    use crate::operation_center::{JobProgress, ProgressMeasure, TotalState};
+    worker.report(JobProgress {
+        measure: ProgressMeasure::Measured {
+            bytes_done: 0,
+            bytes_total: TotalState::Unknown,
+            items_done: done as u64,
+            items_total: TotalState::Known(total as u64),
+            bytes_per_sec: None,
+            eta_seconds: None,
+        },
+        current_item: current.map(|path| path.to_string_lossy().into_owned()),
+        ..JobProgress::default()
+    });
 }
 
-pub fn transfer(
-    paths: Vec<PathBuf>,
-    destination: PathBuf,
+pub(crate) fn transfer(
+    paths: &[PathBuf],
+    destination: &Path,
     kind: TransferKind,
-    window: &gpui::Window,
-) -> anyhow::Result<async_channel::Receiver<TransferResult>> {
-    validate_arguments(&paths, &destination)?;
-    #[cfg(windows)]
-    let owner = {
-        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-        let handle = HasWindowHandle::window_handle(window)
-            .map_err(|error| anyhow::anyhow!("ウィンドウを取得できません: {error}"))?;
-        let RawWindowHandle::Win32(raw) = handle.as_raw() else {
-            anyhow::bail!("Windowsウィンドウが必要です");
-        };
-        raw.hwnd.get()
-    };
-    #[cfg(not(windows))]
-    let owner = {
-        let _ = window;
-        0_isize
-    };
-    if ACTIVE
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        anyhow::bail!("ファイル操作が進行中です。完了またはキャンセル後に操作してください");
-    }
-    let (sender, receiver) = async_channel::bounded(1);
-    if let Err(error) = std::thread::Builder::new()
-        .name("file-transfer".into())
-        .spawn(move || {
-            let _guard = ActiveGuard;
-            let _progress = crate::file_operation_progress::begin(match kind {
-                TransferKind::Copy => "コピー",
-                TransferKind::Move => "移動",
-                TransferKind::Automatic => "ファイル操作",
-            });
-            let result = prepare(&paths, &destination)
-                .and_then(|prepared| execute(&prepared, kind, owner))
-                .map_err(|error| format!("{error:#}"));
-            let _ = sender.try_send(result);
-        })
-    {
-        ACTIVE.store(false, Ordering::Release);
-        return Err(error).context("ファイル操作を開始できません");
-    }
-    Ok(receiver)
-}
+    worker: &mut JobWorker,
+) -> TransferResult {
+    (|| {
+        let prepared = prepare(paths, destination)?;
+        if worker.is_cancelled() {
+            return Ok(TransferOutcome::Aborted);
+        }
+        #[cfg(windows)]
+        {
+            windows::transfer(&prepared, kind, worker)
+        }
+        #[cfg(target_os = "macos")]
+        {
+            if kind != TransferKind::Automatic {
+                return macos_transfer(&prepared, kind);
+            }
 
-struct ActiveGuard;
-impl Drop for ActiveGuard {
-    fn drop(&mut self) {
-        ACTIVE.store(false, Ordering::Release);
-    }
+            let kinds: Vec<_> = prepared
+                .paths
+                .iter()
+                .map(|path| volume::resolve(kind, path, &prepared.destination))
+                .collect();
+            worker.report_transfer_kind(kinds.iter().copied());
+            for (path, resolved) in prepared.paths.iter().zip(kinds) {
+                let single = Prepared {
+                    paths: vec![path.clone()],
+                    destination: prepared.destination.clone(),
+                };
+                if macos_transfer(&single, resolved)? == TransferOutcome::Aborted {
+                    return Ok(TransferOutcome::Aborted);
+                }
+            }
+            Ok(TransferOutcome::Completed)
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            let _ = (prepared, kind);
+            anyhow::bail!("このOSのファイル操作にはまだ対応していません")
+        }
+    })()
+    .map_err(|error: anyhow::Error| format!("{error:#}"))
 }
 
 struct Prepared {
@@ -387,7 +290,7 @@ struct Prepared {
     destination: PathBuf,
 }
 
-fn validate_arguments(paths: &[PathBuf], destination: &Path) -> anyhow::Result<()> {
+pub(crate) fn validate_arguments(paths: &[PathBuf], destination: &Path) -> anyhow::Result<()> {
     anyhow::ensure!(!paths.is_empty(), "コピー・移動する項目がありません");
     for path in paths.iter().map(PathBuf::as_path).chain(Some(destination)) {
         anyhow::ensure!(path.is_absolute(), "コピー・移動には絶対パスが必要です");
@@ -459,117 +362,8 @@ fn prepare(paths: &[PathBuf], destination: &Path) -> anyhow::Result<Prepared> {
     })
 }
 
-fn execute(
-    prepared: &Prepared,
-    kind: TransferKind,
-    owner: isize,
-) -> anyhow::Result<TransferOutcome> {
-    #[cfg(windows)]
-    {
-        windows_transfer(prepared, kind, owner)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = owner;
-        macos_transfer(prepared, kind)
-    }
-    #[cfg(not(any(windows, target_os = "macos")))]
-    {
-        let _ = (prepared, kind, owner);
-        anyhow::bail!("このOSのファイル操作にはまだ対応していません")
-    }
-}
-
-#[cfg(windows)]
-fn windows_transfer(
-    prepared: &Prepared,
-    kind: TransferKind,
-    owner: isize,
-) -> anyhow::Result<TransferOutcome> {
-    use std::ffi::c_void;
-    use windows::{
-        Win32::{
-            Foundation::HWND,
-            System::{
-                Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
-                Ole::{OleInitialize, OleUninitialize},
-            },
-            UI::{Shell::*, WindowsAndMessaging::IsWindow},
-        },
-        core::PCWSTR,
-    };
-    struct Apartment;
-    impl Drop for Apartment {
-        fn drop(&mut self) {
-            unsafe {
-                OleUninitialize();
-            }
-        }
-    }
-    unsafe {
-        OleInitialize(None)?;
-    }
-    let _apartment = Apartment;
-    let owner = HWND(owner as *mut c_void);
-    anyhow::ensure!(
-        unsafe { IsWindow(Some(owner)).as_bool() },
-        "操作元のウィンドウが閉じられました"
-    );
-    let shell_item = |path: &Path| -> anyhow::Result<IShellItem> {
-        let wide = crate::native_shell::windows_path_wide(path)?;
-        unsafe { SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None) }
-            .with_context(|| format!("Shellが項目を開けません: {}", path.display()))
-    };
-    unsafe {
-        let operation: IFileOperation =
-            CoCreateInstance(&FileOperation, None, CLSCTX_INPROC_SERVER)?;
-        operation.SetOwnerWindow(owner)?;
-        // Keep native conflict/progress/error UI. Never set FOF_NOCONFIRMATION, which would
-        // silently answer Yes to replacement prompts. Windows manages metadata and records
-        // native undo information; Skylis does not yet expose an application Undo command.
-        operation.SetOperationFlags(FOFX_ADDUNDORECORD | FOF_NOCONFIRMMKDIR)?;
-        let _progress_sink = crate::file_operation_progress::Subscription::new(&operation).ok();
-        let destination = shell_item(&prepared.destination)?;
-        for path in &prepared.paths {
-            let source = shell_item(path)?;
-            match volume::resolve(kind, path, &prepared.destination) {
-                TransferKind::Copy => {
-                    operation.CopyItem(&source, &destination, PCWSTR::null(), None)?
-                }
-                TransferKind::Move => {
-                    operation.MoveItem(&source, &destination, PCWSTR::null(), None)?
-                }
-                TransferKind::Automatic => unreachable!("volume policy resolves automatic intent"),
-            }
-        }
-        let result = operation.PerformOperations();
-        // PerformOperations may return S_OK for a cancelled operation. Query either way.
-        let aborted = operation.GetAnyOperationsAborted()?;
-        if aborted.as_bool() {
-            return Ok(TransferOutcome::Aborted);
-        }
-        result
-            .context("ファイル操作が完了しませんでした。一部の項目は処理済みの可能性があります")?;
-    }
-    Ok(TransferOutcome::Completed)
-}
-
 #[cfg(target_os = "macos")]
 fn macos_transfer(prepared: &Prepared, kind: TransferKind) -> anyhow::Result<TransferOutcome> {
-    if kind == TransferKind::Automatic {
-        // 同じバッチ内の別ボリュームも、項目ごとに既定動作を選ぶ。
-        for path in &prepared.paths {
-            let resolved = volume::resolve(kind, path, &prepared.destination);
-            let single = Prepared {
-                paths: vec![path.clone()],
-                destination: prepared.destination.clone(),
-            };
-            if macos_transfer(&single, resolved)? == TransferOutcome::Aborted {
-                return Ok(TransferOutcome::Aborted);
-            }
-        }
-        return Ok(TransferOutcome::Completed);
-    }
     // A fixed script receives paths only as argv: quoting and shell syntax in filenames cannot
     // become executable code. Finder preserves macOS metadata. Replacement stays disabled.
     // macOS may ask for Automation permission; denial is reported to the application.
@@ -636,7 +430,7 @@ fn macos_transfer(prepared: &Prepared, kind: TransferKind) -> anyhow::Result<Tra
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
 
     struct Fixture(PathBuf);
@@ -759,7 +553,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn prepared_deletion_sources_can_be_opened_by_windows_shell() {
-        use windows::{
+        use ::windows::{
             Win32::{
                 System::Ole::{OleInitialize, OleUninitialize},
                 UI::Shell::{IShellItem, SHCreateItemFromParsingName},
@@ -793,23 +587,5 @@ mod tests {
             std::fs::read_to_string(fixture_file).unwrap(),
             "preserve this file"
         );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn recycle_and_permanent_delete_keep_explicit_destruction_warnings() {
-        use windows::Win32::UI::Shell::*;
-        let recycle = windows_delete_flags(DeleteKind::Recycle);
-        let permanent = windows_delete_flags(DeleteKind::Permanent);
-        assert_ne!(recycle.0 & FOFX_RECYCLEONDELETE.0, 0);
-        assert_ne!(recycle.0 & FOF_ALLOWUNDO.0, 0);
-        assert_eq!(
-            permanent.0 & (FOFX_RECYCLEONDELETE | FOF_ALLOWUNDO | FOFX_ADDUNDORECORD).0,
-            0
-        );
-        for flags in [recycle, permanent] {
-            assert_ne!(flags.0 & FOF_WANTNUKEWARNING.0, 0);
-            assert_eq!(flags.0 & FOF_NOCONFIRMATION.0, 0);
-        }
     }
 }
