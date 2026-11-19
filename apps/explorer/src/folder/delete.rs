@@ -1,5 +1,4 @@
-//! Selection-based deletion. The Windows adapter owns permanent-delete confirmation;
-//! keeping one native confirmation preserves system-specific recycle/elevation warnings.
+//! Selection-based deletion through the shared operation center.
 use super::*;
 use crate::file_operations::DeleteKind;
 

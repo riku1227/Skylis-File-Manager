@@ -5,6 +5,7 @@ mod diagnostics;
 mod directory_watch;
 mod explorer;
 mod file_open;
+#[cfg(windows)]
 mod file_operation_progress;
 mod folder;
 mod folder_integration;

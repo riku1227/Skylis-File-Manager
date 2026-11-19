@@ -40,7 +40,7 @@ pub(crate) enum JobBackend {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // Pausing and per-item issue results are produced by later I/O backends.
+#[allow(dead_code)] // Pausing is for a later backend.
 pub(crate) enum JobStatus {
     Queued,
     Running,
@@ -227,8 +227,7 @@ pub(crate) struct JobSnapshot {
     pub cancellable: bool,
     pub unread_error: bool,
     pub issue_count: usize,
-    issues: Vec<JobIssue>,
-    issue_bytes: usize,
+    pub(super) issues: JobIssues,
 }
 
 impl JobSnapshot {
@@ -255,8 +254,7 @@ impl JobSnapshot {
             cancellable,
             unread_error: false,
             issue_count: 0,
-            issues: Vec::new(),
-            issue_bytes: 0,
+            issues: JobIssues::default(),
         }
     }
 
@@ -281,19 +279,34 @@ impl JobSnapshot {
         {
             self.percent = Some(100);
         }
-        self.unread_error = matches!(status, JobStatus::Failed | JobStatus::CompletedWithIssues);
+        self.unread_error = self.issue_count != 0
+            || matches!(status, JobStatus::Failed | JobStatus::CompletedWithIssues);
     }
 
     pub fn issues(&self) -> &[JobIssue] {
-        &self.issues
+        &self.issues.items
     }
 
-    pub(super) fn add_issue(&mut self, mut issue: JobIssue) {
-        self.issue_count = self.issue_count.saturating_add(1);
-        if self.issues.len() >= ISSUE_LIMIT || self.issue_bytes >= ISSUE_BYTES_LIMIT {
+    pub(super) fn add_issue(&mut self, issue: JobIssue) {
+        self.issues.add(issue);
+        self.issue_count = self.issues.count;
+    }
+}
+
+#[derive(Default)]
+pub(super) struct JobIssues {
+    items: Vec<JobIssue>,
+    bytes: usize,
+    pub(super) count: usize,
+}
+
+impl JobIssues {
+    pub(super) fn add(&mut self, mut issue: JobIssue) {
+        self.count = self.count.saturating_add(1);
+        if self.items.len() >= ISSUE_LIMIT || self.bytes >= ISSUE_BYTES_LIMIT {
             return;
         }
-        let remaining = ISSUE_BYTES_LIMIT - self.issue_bytes;
+        let remaining = ISSUE_BYTES_LIMIT - self.bytes;
         let item_bytes = issue.item.as_ref().map_or(0, String::len);
         let total_bytes = item_bytes.saturating_add(issue.message.len());
         if total_bytes > remaining {
@@ -316,8 +329,8 @@ impl JobSnapshot {
             .message
             .len()
             .saturating_add(issue.item.as_ref().map_or(0, String::len));
-        self.issues.push(issue);
-        self.issue_bytes += bytes;
+        self.items.push(issue);
+        self.bytes += bytes;
     }
 }
 
@@ -337,12 +350,20 @@ fn truncate_with_ellipsis(text: &mut String, budget: usize) {
     text.push('…');
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PermanentDeleteReason {
+    Explicit,
+    RecycleUnavailable,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // Native Phase 0 operations continue using their existing OS prompts.
+#[allow(dead_code)] // Other prompt kinds are for later backends.
 pub(crate) enum PromptKind {
     ConfirmPermanentDelete {
         representative: PathBuf,
         items: u64,
+        reason: PermanentDeleteReason,
+        known_bytes: Option<u64>,
     },
     FileConflict {
         source: PathBuf,

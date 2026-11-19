@@ -2,8 +2,9 @@ use super::*;
 use crate::{
     motion::{self, Presence},
     operation_center::{
-        self, JobBackend, JobKind, JobSnapshot, JobStatus, OperationCenter, ProgressMeasure,
-        PromptAction, PromptId, PromptKind, PromptRequest, PromptResponse, TotalState,
+        self, JobBackend, JobKind, JobSnapshot, JobStatus, OperationCenter, PermanentDeleteReason,
+        ProgressMeasure, PromptAction, PromptId, PromptKind, PromptRequest, PromptResponse,
+        TotalState,
     },
     settings_data::ActivityDisplay,
 };
@@ -493,10 +494,44 @@ impl Explorer {
             PromptKind::ConfirmPermanentDelete {
                 representative,
                 items,
-            } => (
-                "完全に削除しますか？",
-                format!("{items} 項目 · {}", representative.display()),
-            ),
+                reason,
+                known_bytes,
+            } => {
+                let title = match reason {
+                    PermanentDeleteReason::RecycleUnavailable => {
+                        "ゴミ箱へ移動できません — 完全に削除しますか？"
+                    }
+                    PermanentDeleteReason::Explicit => "完全に削除しますか？",
+                };
+                let name = representative
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| representative.display().to_string());
+                let summary = match known_bytes {
+                    Some(bytes) => {
+                        format!(
+                            "{items} 項目（合計 {}） · {name}",
+                            explorer_core::format::size(*bytes)
+                        )
+                    }
+                    None => format!("{items} 項目 · {name}"),
+                };
+                let mut lines = Vec::new();
+                if *reason == PermanentDeleteReason::RecycleUnavailable {
+                    lines.push(
+                        "ゴミ箱へ移動できない項目があるため、完全に削除する必要があります。"
+                            .to_string(),
+                    );
+                }
+                lines.push(summary);
+                if let Some(location) = representative
+                    .parent()
+                    .map(|parent| format!("場所  {}", parent.display()))
+                {
+                    lines.push(location);
+                }
+                (title, lines.join("\n"))
+            }
             PromptKind::FileConflict {
                 source,
                 destination,
@@ -695,6 +730,9 @@ impl ActivityList {
             .overflow_y_scroll()
             .p(px(10.))
             .text_size(px(12.));
+        let waiting_for_user = jobs
+            .snapshots()
+            .any(|job| matches!(job.status, JobStatus::WaitingForUser(_)));
         let mut finished = false;
         for (section, title) in ["要確認", "進行中", "待機中", "最近の操作"]
             .into_iter()
@@ -715,9 +753,16 @@ impl ActivityList {
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .child(title),
                 )
-                .children(
-                    matching.map(|job| Self::card(center, job, interactive, clicked_window, t)),
-                );
+                .children(matching.map(|job| {
+                    Self::card(
+                        center,
+                        job,
+                        interactive,
+                        clicked_window,
+                        waiting_for_user,
+                        t,
+                    )
+                }));
         }
         if jobs.snapshots().next().is_none() {
             list = list.child(
@@ -767,6 +812,7 @@ impl ActivityList {
         job: &JobSnapshot,
         interactive: bool,
         clicked_window: Option<AnyWindowHandle>,
+        waiting_for_user: bool,
         t: Theme,
     ) -> impl IntoElement {
         let title = match job.kind {
@@ -830,6 +876,14 @@ impl ActivityList {
                     .child(title)
                     .child(div().text_color(t.c("text.secondary")).child(status)),
             )
+            .when(job.status == JobStatus::Queued && waiting_for_user, |d| {
+                d.child(
+                    div()
+                        .mt(px(2.))
+                        .text_color(t.c("text.muted"))
+                        .child("前の操作が確認待ちです"),
+                )
+            })
             .when_some(job.destination.as_ref(), |d, path| {
                 let path = path.to_string_lossy().into_owned();
                 d.child(path_text(("activity-destination", id.0 as usize), path, t))
@@ -882,7 +936,9 @@ impl ActivityList {
                 },
             )
             .when(
-                job.status.is_active() && matches!(job.backend, JobBackend::OsDelegated { .. }),
+                job.status == JobStatus::Running
+                    && !job.cancellable
+                    && matches!(job.backend, JobBackend::OsDelegated { .. }),
                 |d| {
                     d.child(div().text_color(t.c("text.muted")).child(if cfg!(windows) {
                         "中止は Windows の進捗ウィンドウから"
@@ -924,6 +980,12 @@ impl ActivityList {
                     explorer_core::format::size(total)
                 )
             }
+            ProgressMeasure::Measured {
+                items_done,
+                items_total: TotalState::Known(total),
+                bytes_total: TotalState::Unknown,
+                ..
+            } => format!("{items_done} / {total} 項目"),
             ProgressMeasure::Measured {
                 bytes_done,
                 items_done,

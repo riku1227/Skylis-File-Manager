@@ -274,7 +274,7 @@ impl Explorer {
             body = body
                 .child(div().mb(px(8.)).child("ファイル転送エンジン"))
                 .child(div().flex().flex_wrap().gap(px(6.)).children([
-                    (FileTransferEngine::OsIntegrated, "標準連携（ライン1）"),
+                    (FileTransferEngine::OsIntegrated, "標準連携"),
                     (FileTransferEngine::OsDialog, "OS標準ダイアログ（退避用）"),
                 ].into_iter().enumerate().map(|(index, (engine, label))| {
                     setting_choice("file-transfer-engine", index, label, engine == value.file_transfer_engine, t)
@@ -283,7 +283,22 @@ impl Explorer {
                         }))
                 })))
                 .child(div().mt(px(8.)).text_color(t.c("text.muted"))
-                    .child("現在はどちらの設定でも従来のOS連携で実行します。独自転送エンジンは今後の段階実装で追加予定です。"))
+                    .child({
+                        #[cfg(windows)]
+                        {
+                            "標準連携では、通常のコピー・移動・削除の進捗と中止をアプリ内で操作できます（競合・権限昇格・エラー時は Windows のダイアログを表示します）。OS標準ダイアログを選ぶと、従来の Windows 進捗ウィンドウで操作します。"
+                        }
+                        #[cfg(target_os = "macos")]
+                        {
+                            "macOSでは、ゴミ箱への移動をアプリ内で進捗表示・中止できます。コピーと移動はFinderに委譲します。"
+                        }
+                        #[cfg(not(any(windows, target_os = "macos")))]
+                        {
+                            "このOSではネイティブファイル転送・削除は未対応です。"
+                        }
+                    }))
+                .child(div().mt(px(4.)).text_color(t.c("text.muted"))
+                    .child("独自転送エンジンは今後の段階実装で追加予定です。"))
                 .child(div().mt(px(24.)).mb(px(8.)).child("アクティビティ表示"))
                 .child(div().flex().flex_wrap().gap(px(6.)).children([
                     (ActivityDisplay::StatusBar, "アプリ内（ステータスバー）"),

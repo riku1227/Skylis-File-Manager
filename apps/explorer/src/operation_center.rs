@@ -1,16 +1,17 @@
 //! App-owned job ledger. Blocking I/O and prompt waits run on workers.
+mod leases;
 mod model;
+mod transfer;
 
-use crate::{
-    file_operation_progress,
-    file_operations::{self, DeleteKind, TransferKind, TransferOutcome, TransferResult},
-};
+use crate::file_operations::{self, DeleteKind, TransferKind, TransferOutcome, TransferResult};
+use crate::settings_data::FileTransferEngine;
 use async_channel::{Receiver, Sender, bounded};
 use explorer_core::archive::{self, ArchiveFormat, ArchiveIndex};
 use gpui::{
     AnyWindowHandle, App, AppContext, Bounds, Context, Entity, EventEmitter, Global, Pixels, Point,
     Window, WindowId,
 };
+use leases::PathLease;
 pub(crate) use model::*;
 use std::{
     cell::RefCell,
@@ -19,6 +20,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use transfer::TransferCommand;
 
 const PENDING_ARCHIVES: usize = 4;
 const RETAINED_JOBS: usize = 32;
@@ -76,7 +78,11 @@ pub(crate) struct OperationCenter {
     pending: VecDeque<ArchiveCommand>,
     archive_running: Option<JobId>,
     archive_worker: Option<Sender<ArchiveCommand>>,
-    native: Option<JobId>,
+    transfer_pending: VecDeque<TransferCommand>,
+    transfer_running: Option<JobId>,
+    #[cfg(windows)]
+    native_owner: Option<(WindowId, std::sync::Weak<()>)>,
+    transfer_completions: usize,
     completions: VecDeque<ArchiveCompletion>,
     windows: Vec<AnyWindowHandle>,
     pill_bounds: RefCell<HashMap<WindowId, Bounds<Pixels>>>,
@@ -88,42 +94,13 @@ struct Record {
     job: JobSnapshot,
     cancel: Option<CancelToken>,
     prompt: Option<(PromptRequest, Sender<PromptResponse>)>,
+    lease: PathLease,
 }
 
 impl EventEmitter<ArchiveCompletion> for OperationCenter {}
 
 impl OperationCenter {
     fn new(cx: &mut Context<Self>) -> Self {
-        let receiver = file_operation_progress::subscribe_progress();
-        cx.spawn(async move |this, cx| {
-            while receiver.recv().await.is_ok() {
-                let progress = file_operation_progress::progress_snapshot();
-                if this
-                    .update(cx, |center, cx| {
-                        if let Some(id) = center.native
-                            && let Some(progress) = progress
-                        {
-                            center.update_progress(
-                                id,
-                                JobProgress {
-                                    measure: ProgressMeasure::Relative {
-                                        work_done: progress.work_done,
-                                        work_total: progress.work_total,
-                                    },
-                                    current_item: progress.current_item,
-                                    hydrating_cloud_likely: false,
-                                },
-                                cx,
-                            );
-                        }
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        })
-        .detach();
         cx.on_app_quit(|this, _| {
             this.cancel_workers();
             async {}
@@ -136,7 +113,11 @@ impl OperationCenter {
             pending: VecDeque::new(),
             archive_running: None,
             archive_worker: None,
-            native: None,
+            transfer_pending: VecDeque::new(),
+            transfer_running: None,
+            #[cfg(windows)]
+            native_owner: None,
+            transfer_completions: 0,
             completions: VecDeque::new(),
             windows: Vec::new(),
             pill_bounds: RefCell::new(HashMap::new()),
@@ -154,15 +135,17 @@ impl OperationCenter {
     }
 
     pub fn native_owned_by(&self, window: WindowId) -> bool {
-        cfg!(windows)
-            && self.native.is_some_and(|id| {
-                self.snapshots().any(|job| {
-                    job.id == id
-                        && job
-                            .origin
-                            .is_some_and(|origin| origin.window_id() == window)
-                })
-            })
+        #[cfg(windows)]
+        {
+            self.native_owner
+                .as_ref()
+                .is_some_and(|(id, owner)| *id == window && owner.upgrade().is_some())
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = window;
+            false
+        }
     }
 
     pub fn register_window(&mut self, window: AnyWindowHandle) {
@@ -182,6 +165,17 @@ impl OperationCenter {
     pub fn unregister_window(&mut self, id: WindowId, cx: &mut Context<Self>) {
         self.windows.retain(|window| window.window_id() != id);
         self.pill_bounds.borrow_mut().remove(&id);
+        if self.windows.is_empty() {
+            let prompted: Vec<JobId> = self
+                .jobs
+                .iter()
+                .filter(|record| record.prompt.is_some())
+                .map(|record| record.job.id)
+                .collect();
+            for job in prompted {
+                self.cancel(job, cx);
+            }
+        }
         if self
             .activity_window
             .is_some_and(|window| window.window_id() == id)
@@ -240,7 +234,7 @@ impl OperationCenter {
             .snapshots()
             .filter(|job| job.status.is_active())
             .count();
-        if self.completions.len() + active >= RETAINED_JOBS {
+        if self.completions.len() + self.transfer_completions + active >= RETAINED_JOBS {
             return Err("完了した操作を更新中です。少し待ってからお試しください".into());
         }
         let id = JobId(self.next_id);
@@ -271,6 +265,7 @@ impl OperationCenter {
             ),
             cancel,
             prompt: None,
+            lease: PathLease::default(),
         });
         cx.notify();
         Ok(id)
@@ -298,8 +293,10 @@ impl OperationCenter {
         cx: &mut Context<Self>,
     ) -> Result<JobId, String> {
         let parent = destination.parent().map(PathBuf::from);
-        self.submit_archive(
+        let lease = PathLease::archive(&paths, Some(&destination));
+        self.submit_archive_with_lease(
             JobKind::ArchiveCreate(format),
+            lease,
             parent,
             origin,
             move |worker| {
@@ -320,8 +317,10 @@ impl OperationCenter {
         origin: AnyWindowHandle,
         cx: &mut Context<Self>,
     ) -> Result<JobId, String> {
-        self.submit_archive(
+        let lease = PathLease::archive(std::slice::from_ref(&index.source), Some(&parent));
+        self.submit_archive_with_lease(
             JobKind::ArchiveExtract,
+            lease,
             Some(parent.clone()),
             origin,
             move |worker| {
@@ -334,9 +333,22 @@ impl OperationCenter {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn submit_archive(
         &mut self,
         kind: JobKind,
+        destination: Option<PathBuf>,
+        origin: AnyWindowHandle,
+        execute: impl FnOnce(&mut JobWorker) -> Result<PathBuf, String> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) -> Result<JobId, String> {
+        self.submit_archive_with_lease(kind, PathLease::default(), destination, origin, execute, cx)
+    }
+
+    fn submit_archive_with_lease(
+        &mut self,
+        kind: JobKind,
+        lease: PathLease,
         destination: Option<PathBuf>,
         origin: AnyWindowHandle,
         execute: impl FnOnce(&mut JobWorker) -> Result<PathBuf, String> + Send + 'static,
@@ -357,46 +369,17 @@ impl OperationCenter {
             Some(cancel.clone()),
             cx,
         )?;
-        let (events, receiver) = bounded(1);
+        self.record(id).expect("new archive job").lease = lease;
         let (finished, terminal) = bounded(1);
-        let mailbox = Arc::new(Mutex::new(None));
+        let worker = self.job_worker(id, cancel, cx);
         self.pending.push_back(ArchiveCommand {
             id,
             finished,
             execute: Box::new(execute),
             affected_parents: destination.into_iter().collect(),
-            worker: JobWorker {
-                cancel,
-                mailbox: mailbox.clone(),
-                events,
-                last_publish: None,
-                newest: None,
-            },
+            worker,
         });
-        self.start_next(cx);
-
-        cx.spawn(async move |this, cx| {
-            while let Ok(event) = receiver.recv().await {
-                if this
-                    .update(cx, |center, cx| match event {
-                        WorkerEvent::Progress => {
-                            let progress =
-                                mailbox.lock().unwrap_or_else(|err| err.into_inner()).take();
-                            if let Some(progress) = progress {
-                                center.update_progress(id, progress, cx);
-                            }
-                        }
-                        WorkerEvent::Prompt(kind, response) => {
-                            center.install_prompt(id, kind, response, cx)
-                        }
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        })
-        .detach();
+        self.start_ready(cx);
         cx.spawn(async move |this, cx| {
             let result = terminal.recv().await;
             let _ = this.update(cx, |center, cx| match result {
@@ -423,16 +406,52 @@ impl OperationCenter {
         Ok(id)
     }
 
-    fn start_next(&mut self, cx: &mut Context<Self>) {
+    fn start_ready(&mut self, cx: &mut Context<Self>) {
+        self.start_archive(cx);
+        self.start_transfer(cx);
+    }
+
+    fn waits_for_other_lane(
+        &self,
+        id: JobId,
+        other_running: Option<JobId>,
+        waiting: impl Iterator<Item = JobId>,
+    ) -> bool {
+        let lease = &self
+            .jobs
+            .iter()
+            .find(|record| record.job.id == id)
+            .expect("queued job retained")
+            .lease;
+        other_running
+            .into_iter()
+            .chain(waiting.filter(|earlier| earlier.0 < id.0))
+            .any(|other| {
+                self.jobs
+                    .iter()
+                    .any(|record| record.job.id == other && lease.conflicts(&record.lease))
+            })
+    }
+
+    fn start_archive(&mut self, cx: &mut Context<Self>) {
         if self.archive_running.is_some() {
             return;
         }
-        while let Some(command) = self.pending.pop_front() {
-            let id = command.id;
+        let mut failed = false;
+        while let Some(id) = self.pending.front().map(|command| command.id) {
+            if self.waits_for_other_lane(
+                id,
+                self.transfer_running,
+                self.transfer_pending.iter().map(|command| command.id),
+            ) {
+                break;
+            }
+            let command = self.pending.pop_front().expect("ready archive job");
             if self.archive_worker.is_none() {
                 match start_archive_worker() {
                     Ok(worker) => self.archive_worker = Some(worker),
                     Err(error) => {
+                        failed = true;
                         self.record_archive_completion(
                             id,
                             ArchiveCompletion {
@@ -460,6 +479,7 @@ impl OperationCenter {
                     break;
                 }
                 Err(err) => {
+                    failed = true;
                     if err.is_closed() {
                         self.archive_worker = None;
                     }
@@ -476,6 +496,9 @@ impl OperationCenter {
                 }
             }
         }
+        if failed {
+            self.start_transfer(cx);
+        }
     }
 
     fn finish_archive(
@@ -490,7 +513,7 @@ impl OperationCenter {
         }
         self.archive_running = None;
         self.record_archive_completion(id, completion, cx);
-        self.start_next(cx);
+        self.start_ready(cx);
     }
 
     fn record_archive_completion(
@@ -502,6 +525,7 @@ impl OperationCenter {
         if let Some(mut record) = self.take_record(id) {
             record.prompt.take();
             record.cancel.take();
+            record.lease = PathLease::default();
             record.job.output = completion.output.as_ref().ok().cloned();
             record.job.finish(
                 match &completion.output {
@@ -560,7 +584,25 @@ impl OperationCenter {
                 },
                 cx,
             );
+        } else if let Some(index) = self
+            .transfer_pending
+            .iter()
+            .position(|command| command.id == id)
+        {
+            let command = self
+                .transfer_pending
+                .remove(index)
+                .expect("queued transfer");
+            self.finish_transfer(
+                id,
+                command.result,
+                Ok(TransferOutcome::Aborted),
+                None,
+                Default::default(),
+                cx,
+            );
         }
+        self.start_ready(cx);
         cx.notify();
         true
     }
@@ -629,94 +671,41 @@ impl OperationCenter {
         sent
     }
 
-    pub fn transfer(
-        &mut self,
-        paths: Vec<PathBuf>,
-        destination: PathBuf,
-        kind: TransferKind,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> Result<Receiver<TransferResult>, String> {
-        self.submit_native(kind.into(), Some(destination.clone()), window, cx, || {
-            file_operations::transfer(paths, destination, kind, window)
-        })
-    }
-
-    pub fn delete(
-        &mut self,
-        paths: Vec<PathBuf>,
-        kind: DeleteKind,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> Result<Receiver<TransferResult>, String> {
-        let job = match kind {
-            DeleteKind::Recycle => JobKind::Trash,
-            DeleteKind::Permanent => JobKind::PermanentDelete,
-        };
-        self.submit_native(job, None, window, cx, || {
-            file_operations::delete(paths, kind, window)
-        })
-    }
-
-    fn submit_native(
-        &mut self,
-        kind: JobKind,
-        destination: Option<PathBuf>,
-        window: &Window,
-        cx: &mut Context<Self>,
-        launch: impl FnOnce() -> anyhow::Result<Receiver<TransferResult>>,
-    ) -> Result<Receiver<TransferResult>, String> {
-        if self.native.is_some() {
-            return Err(
-                "ファイル操作が進行中です。完了またはキャンセル後に操作してください".into(),
-            );
-        }
-        let engine = cx
-            .try_global::<crate::settings::SharedPreferences>()
-            .map(|prefs| prefs.0.read(cx).value.file_transfer_engine)
-            .unwrap_or_default();
-        let id = self.insert(
-            kind,
-            JobBackend::OsDelegated { reason: engine },
-            destination,
-            window.window_handle(),
-            None,
-            cx,
-        )?;
-        let worker_result = match launch() {
-            Ok(result) => result,
-            Err(error) => {
-                let error = error.to_string();
-                if let Some(record) = self.record(id) {
-                    record.job.finish(JobStatus::Failed, Some(error.clone()));
-                }
-                return Err(error);
-            }
-        };
-        self.native = Some(id);
-        self.record(id).expect("new job").job.status = JobStatus::Running;
-        let (sender, result) = bounded(1);
+    fn job_worker(&self, id: JobId, cancel: CancelToken, cx: &mut Context<Self>) -> JobWorker {
+        let (events, receiver) = bounded(1);
+        let worker = JobWorker::new(cancel, events);
+        let progress = worker.progress.clone();
         cx.spawn(async move |this, cx| {
-            let outcome = worker_result.recv().await.unwrap_or_else(|_| {
-                Err("ファイル操作の結果を取得できませんでした。元と保存先を確認してください".into())
-            });
-            let _ = this.update(cx, |center, cx| {
-                center.native = None;
-                if let Some(mut record) = center.take_record(id) {
-                    let (status, issue) = match &outcome {
-                        Ok(TransferOutcome::Completed) => (JobStatus::Completed, None),
-                        Ok(TransferOutcome::Aborted) => (JobStatus::Cancelled, None),
-                        Err(error) => (JobStatus::Failed, Some(error.clone())),
-                    };
-                    record.job.finish(status, issue);
-                    center.jobs.push_back(record);
+            while let Ok(event) = receiver.recv().await {
+                if this
+                    .update(cx, |center, cx| match event {
+                        WorkerEvent::Progress => {
+                            let sample = progress
+                                .try_lock()
+                                .ok()
+                                .and_then(|mut state| state.mailbox.take());
+                            if let Some(sample) = sample {
+                                center.update_progress(id, sample, cx);
+                            }
+                        }
+                        WorkerEvent::Prompt(kind, response) => {
+                            if !center.windows.is_empty() {
+                                center.install_prompt(id, kind, response, cx);
+                            }
+                        }
+                        #[cfg(windows)]
+                        WorkerEvent::Owner(excluded, response) => {
+                            center.resolve_owner(id, &excluded, response, cx)
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
                 }
-                cx.notify();
-            });
-            let _ = sender.try_send(outcome);
+            }
         })
         .detach();
-        Ok(result)
+        worker
     }
 }
 
@@ -739,6 +728,8 @@ struct ArchiveCommand {
 enum WorkerEvent {
     Progress,
     Prompt(PromptKind, Sender<PromptResponse>),
+    #[cfg(windows)]
+    Owner(Vec<WindowId>, Sender<Option<transfer::NativeOwner>>),
 }
 
 fn start_archive_worker() -> Result<Sender<ArchiveCommand>, String> {
@@ -766,7 +757,7 @@ fn start_archive_worker() -> Result<Sender<ArchiveCommand>, String> {
                         affected_parents,
                         cancelled,
                     },
-                    worker.newest,
+                    worker.latest_progress(),
                 ));
             }
         })
@@ -774,41 +765,75 @@ fn start_archive_worker() -> Result<Sender<ArchiveCommand>, String> {
     Ok(commands)
 }
 
+#[derive(Clone)]
 pub(crate) struct JobWorker {
     cancel: CancelToken,
-    mailbox: Arc<Mutex<Option<JobProgress>>>,
+    progress: Arc<Mutex<WorkerProgress>>,
+    issues: Arc<Mutex<JobIssues>>,
     events: Sender<WorkerEvent>,
+}
+
+#[derive(Default)]
+struct WorkerProgress {
+    mailbox: Option<JobProgress>,
     last_publish: Option<Instant>,
     newest: Option<JobProgress>,
 }
 
 impl JobWorker {
-    fn report(&mut self, progress: JobProgress) {
+    fn new(cancel: CancelToken, events: Sender<WorkerEvent>) -> Self {
+        Self {
+            cancel,
+            progress: Default::default(),
+            issues: Default::default(),
+            events,
+        }
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.core.is_cancelled()
+    }
+
+    pub fn report(&self, progress: JobProgress) {
         self.report_at(progress, Instant::now());
     }
 
-    fn report_at(&mut self, progress: JobProgress, now: Instant) {
-        if let Some(previous) = &self.newest {
-            self.newest = Some(progress.normalized(previous));
-        } else {
-            self.newest = Some(progress.normalized(&JobProgress::default()));
-        }
-        if self
+    fn latest_progress(&self) -> Option<JobProgress> {
+        self.progress
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .newest
+            .clone()
+    }
+
+    fn report_at(&self, progress: JobProgress, now: Instant) {
+        let mut state = self.progress.lock().unwrap_or_else(|err| err.into_inner());
+        state.newest =
+            Some(progress.normalized(state.newest.as_ref().unwrap_or(&JobProgress::default())));
+        if state
             .last_publish
             .is_none_or(|last| now.duration_since(last) >= PROGRESS_INTERVAL)
         {
-            *self.mailbox.lock().unwrap_or_else(|err| err.into_inner()) = self.newest.clone();
-            self.last_publish = Some(now);
+            state.mailbox = state.newest.clone();
+            state.last_publish = Some(now);
+            drop(state);
             let _ = self.events.try_send(WorkerEvent::Progress);
         }
     }
 
-    /// Future I/O backends use this on the worker, before any destructive step.
-    #[allow(dead_code)]
+    pub fn issue(&self, issue: JobIssue) {
+        self.issues
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .add(issue);
+    }
+
     pub fn prompt(&mut self, kind: PromptKind) -> Option<PromptResponse> {
-        if let Some(newest) = &self.newest {
-            *self.mailbox.lock().unwrap_or_else(|err| err.into_inner()) = Some(newest.clone());
-            self.last_publish = Some(Instant::now());
+        if let Some(newest) = self.latest_progress() {
+            let mut state = self.progress.lock().unwrap_or_else(|err| err.into_inner());
+            state.mailbox = Some(newest);
+            state.last_publish = Some(Instant::now());
+            drop(state);
             let _ = self.events.try_send(WorkerEvent::Progress);
         }
         let (sender, receiver) = bounded(1);

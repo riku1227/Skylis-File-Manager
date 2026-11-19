@@ -535,6 +535,9 @@ impl FolderView {
                 .unwrap_or_else(|_| Err("ファイル操作の結果を取得できませんでした".into()));
             let text = match result {
                 Ok(TransferOutcome::Completed) => completed.into(),
+                Ok(TransferOutcome::CompletedWithIssues) => {
+                    "一部の操作に問題がありました。アクティビティを確認してください".into()
+                }
                 Ok(TransferOutcome::Aborted) => {
                     "ファイル操作を中止しました。一部は完了している場合があります".into()
                 }
@@ -609,6 +612,7 @@ impl FolderView {
                     let _ = cut_sequence;
                     let text = clipboard_error.unwrap_or_else(|| match result {
                                 Ok(TransferOutcome::Completed) => match kind { TransferKind::Copy => "ファイルをコピーしました", TransferKind::Move => "ファイルを移動しました", TransferKind::Automatic => "ファイルを転送しました" }.into(),
+                                Ok(TransferOutcome::CompletedWithIssues) => "一部の操作に問題がありました。アクティビティを確認してください".into(),
                                 Ok(TransferOutcome::Aborted) => "ファイル操作を中止しました。一部は完了している場合があります".into(),
                                 Err(error) => error,
                             });
@@ -1164,6 +1168,14 @@ mod tests {
         );
         assert_eq!(
             cut_sequence_to_clear(TransferKind::Move, &Ok(TransferOutcome::Aborted), Some(42)),
+            None
+        );
+        assert_eq!(
+            cut_sequence_to_clear(
+                TransferKind::Move,
+                &Ok(TransferOutcome::CompletedWithIssues),
+                Some(42)
+            ),
             None
         );
         assert_eq!(
