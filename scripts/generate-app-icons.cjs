@@ -5,11 +5,13 @@ const path = require('node:path');
 const sharp = require(process.argv[2] || 'sharp');
 const root = path.resolve(__dirname, '../apps/explorer/assets/branding');
 const sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024];
+const smallMaxSize = 40;
 
 (async () => {
   const frames = new Map();
   for (const size of sizes) {
-    const png = await sharp(path.join(root, 'skylis.svg'), { density: 192 })
+    const source = size <= smallMaxSize ? 'skylis-small.svg' : 'skylis.svg';
+    const png = await sharp(path.join(root, source), { density: 192 })
       .resize(size, size).png().toBuffer();
     frames.set(size, png);
     fs.writeFileSync(path.join(root, `skylis-${size}.png`), png);
@@ -47,5 +49,5 @@ const sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024];
   header.write('icns', 0, 4, 'ascii');
   header.writeUInt32BE(8 + chunks.reduce((sum, chunk) => sum + chunk.length, 0), 4);
   fs.writeFileSync(path.join(root, 'skylis.icns'), Buffer.concat([header, ...chunks]));
-  console.log(`Generated ${sizes.length} PNGs, ${icoSizes.length}-frame ICO and ICNS.`);
+  console.log(`Generated ${sizes.length} PNGs (<=40px optical small, >=48px base), ${icoSizes.length}-frame ICO and ICNS.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1515,7 +1515,7 @@ mod tests {
     fn settings_modal_closes_at_once_and_fades_out_as_an_inert_ghost(
         cx: &mut gpui::TestAppContext,
     ) {
-        cx.update(|cx| cx.set_reduce_motion(false));
+        cx.update(|cx| crate::motion_preferences::set_reduce_motion_for_test(cx, false));
         let window = settings_key_window(cx);
         let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
         let presence = |cx: &mut gpui::VisualTestContext| {
@@ -1569,13 +1569,14 @@ mod tests {
                 .executor()
                 .advance_clock(std::time::Duration::from_millis(16));
         }
-        visual.dispatch_action(OpenSettings);
-        visual.update(|w, cx| w.draw(cx).clear(cx));
         let (progress, live) = presence(&mut visual).unwrap();
         assert!(
-            live && progress > 0.05 && progress < 0.95,
-            "resumed at {progress}"
+            !live && progress > 0.05 && progress < 0.95,
+            "expected a fading ghost, found progress {progress}, live {live}"
         );
+        visual.dispatch_action(OpenSettings);
+        visual.update(|w, cx| w.draw(cx).clear(cx));
+        assert_eq!(presence(&mut visual), Some((progress, true)));
         settle_frames(&mut visual);
         assert_eq!(presence(&mut visual), Some((1., true)));
     }
