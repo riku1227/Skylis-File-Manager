@@ -21,6 +21,8 @@ pub use cache::ReduceMotionStatus;
 struct MotionPreferences {
     reduce_motion: Cached<bool>,
     wheel_scroll_lines: Cached<u32>,
+    #[cfg(test)]
+    reduce_motion_override: Option<bool>,
 }
 
 impl Global for MotionPreferences {}
@@ -32,7 +34,13 @@ pub fn init(cx: &mut App) {
 
 /// Re-sample on activation or settings opening. No polling task is installed.
 pub fn refresh(cx: &mut App) {
+    #[cfg(not(test))]
     let reduce_motion = platform::reduce_motion();
+    #[cfg(test)]
+    let reduce_motion = cx
+        .try_global::<MotionPreferences>()
+        .and_then(|preferences| preferences.reduce_motion_override)
+        .map_or_else(platform::reduce_motion, Ok);
     let wheel_scroll_lines = platform::wheel_scroll_lines();
     let preferences = cx.default_global::<MotionPreferences>();
     update_sample(
@@ -62,6 +70,14 @@ pub fn reduce_motion_status(cx: &App) -> ReduceMotionStatus {
 pub fn wheel_scroll_lines(cx: &App) -> Option<u32> {
     cx.try_global::<MotionPreferences>()
         .and_then(|preferences| preferences.wheel_scroll_lines.wheel_scroll_lines())
+}
+
+/// Keep the initial motion policy and subsequent refreshes deterministic in UI tests.
+#[cfg(test)]
+pub fn set_reduce_motion_for_test(cx: &mut App, reduce_motion: bool) {
+    cx.default_global::<MotionPreferences>()
+        .reduce_motion_override = Some(reduce_motion);
+    cx.set_reduce_motion(reduce_motion);
 }
 
 /// Supply deterministic OS normalization in input tests without changing the OS.
