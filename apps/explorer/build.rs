@@ -3,9 +3,24 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/branding/skylis.ico");
     println!("cargo:rerun-if-changed=src/shell_handoff/windows.cpp");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
-        embed_resource::compile("app.rc", embed_resource::NONE)
+        let version_defines = [
+            ("CARGO_PKG_VERSION_MAJOR", "SKYLIS_VERSION_MAJOR", false),
+            ("CARGO_PKG_VERSION_MINOR", "SKYLIS_VERSION_MINOR", false),
+            ("CARGO_PKG_VERSION_PATCH", "SKYLIS_VERSION_PATCH", false),
+            ("CARGO_PKG_VERSION", "SKYLIS_VERSION_STRING", true),
+        ]
+        .map(|(env, name, quoted)| {
+            println!("cargo:rerun-if-env-changed={env}");
+            let value = std::env::var(env).expect("Cargo package version");
+            if quoted {
+                format!("{name}=\"{value}\"")
+            } else {
+                format!("{name}={value}")
+            }
+        });
+        embed_resource::compile("app.rc", &version_defines)
             .manifest_required()
-            .expect("failed to embed Skylis application icon");
+            .expect("failed to embed Skylis application resources");
         cc::Build::new()
             .cpp(true)
             .file("src/shell_handoff/windows.cpp")
