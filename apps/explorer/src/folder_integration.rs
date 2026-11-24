@@ -812,7 +812,7 @@ mod tests {
     }
     fn changes() -> Vec<Change> {
         plan(if cfg!(windows) {
-            Path::new("C:\\Program Files\\Skylis\\explorer.exe")
+            Path::new("C:\\Program Files\\Skylis\\skylis.exe")
         } else {
             Path::new("/opt/Skylis/explorer")
         })
@@ -822,7 +822,7 @@ mod tests {
     fn capabilities_have_independent_journals_and_do_not_reindex_v1() {
         let registry = Fake::default();
         let exe = if cfg!(windows) {
-            Path::new("C:\\Program Files\\Skylis\\explorer.exe")
+            Path::new("C:\\Program Files\\Skylis\\skylis.exe")
         } else {
             Path::new("/opt/Skylis/explorer")
         };
@@ -876,7 +876,7 @@ mod tests {
     fn extension_restoration_preserves_foreign_commands_and_their_journal() {
         let registry = Fake::default();
         let exe = if cfg!(windows) {
-            Path::new("C:\\Skylis\\explorer.exe")
+            Path::new("C:\\Skylis\\skylis.exe")
         } else {
             Path::new("/opt/skylis")
         };

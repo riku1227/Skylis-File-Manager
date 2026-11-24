@@ -31,11 +31,11 @@ cargo fmt --all -- --check
 
 初回はGPUIや画像処理ライブラリなどもコンパイルするため、時間がかかります。`--locked`は依存の意図しない更新を防ぎます。通常のビルドで`cargo update`を実行する必要はありません。
 
-成功すると`target/release/explorer.exe`が生成されます。
+成功すると`target/release/skylis.exe`が生成されます。
 
 ```powershell
-.\target\release\explorer.exe
-.\target\release\explorer.exe --theme dark --path "C:\Users"
+.\target\release\skylis.exe
+.\target\release\skylis.exe --theme dark --path "C:\Users"
 ```
 
 開発中の型チェックには`cargo check --workspace --locked`、デバッグ実行には`cargo run --locked -p explorer`を使えます。

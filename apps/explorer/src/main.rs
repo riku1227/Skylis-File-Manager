@@ -183,10 +183,9 @@ fn main() {
             operation_center::init(cx);
             if startup.is_empty() {
                 let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
-                cx.open_window(
-                    window_chrome::window_options(bounds, "Explorer"),
-                    |w, cx| cx.new(|cx| explorer::Explorer::new(w, cx)),
-                )
+                cx.open_window(window_chrome::window_options(bounds, "Skylis"), |w, cx| {
+                    cx.new(|cx| explorer::Explorer::new(w, cx))
+                })
                 .expect("failed to open window");
             } else {
                 let restore = !session::explicit_launch(launch_request::current());

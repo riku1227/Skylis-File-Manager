@@ -15,7 +15,7 @@ cargo run --release -p explorer -- --theme light --path "C:\Users"
 cargo run --release -p explorer -- --theme dark --path "C:\Users"
 ```
 
-ビルド後のアプリは `target/release/explorer.exe`。内部のcrate名・実行ファイル名は現時点では `explorer` です。`--theme` は `light` / `dark` / `system`、省略時はOS設定。`--path` を省略すると、ドライブの空き容量と主要フォルダーを並べたホーム画面を開きます。
+ビルド後のアプリは `target/release/skylis.exe`。Cargoのパッケージ名は `explorer` です。`--theme` は `light` / `dark` / `system`、省略時はOS設定。`--path` を省略すると、ドライブの空き容量と主要フォルダーを並べたホーム画面を開きます。
 
 ## 操作
 
