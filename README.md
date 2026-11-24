@@ -70,6 +70,10 @@ Windowsの設定「Windows連携」でフォルダー起動、Win+E、Skylisへ�
 
 アンインストーラーは、ファイルの削除前に、連携を登録した Windows ユーザーとして `skylis.exe --restore-integration` を実行してください。Windows連携を画面を開かずに復元し、結果を標準エラー出力へ書き込みます。
 
+## 不具合の報告
+
+内部エラー（Rust のパニック）が発生したときは、Windows の `%LOCALAPPDATA%\Skylis\logs\`（未設定の場合は設定ファイルと同じ場所の `logs`）、macOS の `~/Library/Logs/Skylis/` にログを保存します。ファイル名は UTC の発生時刻とプロセス ID を含む `crash-YYYYMMDD-HHMMSS-<pid>.log` です。最近の20ファイルを保持します。不具合を報告するときは、再現手順と該当するログを添えてください。
+
 ## ライセンス
 
 [Apache License 2.0](LICENSE)。取り込んだ第三者ソースの出典とライセンスは [licenses/README.md](licenses/README.md) を参照してください。

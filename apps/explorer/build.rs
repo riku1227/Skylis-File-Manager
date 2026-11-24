@@ -1,4 +1,6 @@
 fn main() {
+    let target = std::env::var("TARGET").expect("Cargo build target");
+    println!("cargo:rustc-env=SKYLIS_BUILD_TARGET={target}");
     println!("cargo:rerun-if-changed=app.rc");
     println!("cargo:rerun-if-changed=assets/branding/skylis.ico");
     println!("cargo:rerun-if-changed=src/shell_handoff/windows.cpp");

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod archive_jobs;
 mod assets;
+mod crash_report;
 mod diagnostics;
 mod directory_watch;
 mod explorer;
@@ -78,6 +79,7 @@ mod actions {
 use actions::*;
 use gpui::{App, Bounds, KeyBinding, prelude::*, px, size};
 fn main() {
+    crash_report::install();
     let request = launch_request::current();
     if request.restore_integration {
         std::process::exit(folder_integration::restore_from_command_line());
