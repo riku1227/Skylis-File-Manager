@@ -80,11 +80,15 @@ use actions::*;
 use gpui::{App, Bounds, KeyBinding, prelude::*, px, size};
 fn main() {
     crash_report::install();
-    let request = launch_request::current();
-    if request.restore_integration {
-        std::process::exit(folder_integration::restore_from_command_line());
+    match launch_request::restore_integration_command(std::env::args_os().skip(1)) {
+        Some(Ok(())) => std::process::exit(folder_integration::restore_from_command_line()),
+        Some(Err(error)) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+        None => {}
     }
-    if request.shell_command_server {
+    if launch_request::current().shell_command_server {
         shell_handoff::run_command_server();
         return;
     }
