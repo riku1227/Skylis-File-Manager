@@ -78,6 +78,18 @@ mod actions {
 }
 use actions::*;
 use gpui::{App, Bounds, KeyBinding, prelude::*, px, size};
+
+#[cfg(windows)]
+fn mark_running_for_uninstall() -> Option<std::os::windows::io::OwnedHandle> {
+    use std::os::windows::io::{FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+
+    // The uninstaller checks for this marker. Every process may hold a handle.
+    let name: Vec<u16> = "Local\\Skylis.Running\0".encode_utf16().collect();
+    let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    (!handle.is_null()).then(|| unsafe { OwnedHandle::from_raw_handle(handle) })
+}
+
 fn main() {
     crash_report::install();
     match launch_request::restore_integration_command(std::env::args_os().skip(1)) {
@@ -88,6 +100,8 @@ fn main() {
         }
         None => {}
     }
+    #[cfg(windows)]
+    let _running = mark_running_for_uninstall();
     if launch_request::current().shell_command_server {
         shell_handoff::run_command_server();
         return;
