@@ -119,6 +119,12 @@ OS 設定に追従するテーマと、<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</
 | Windows 10 / 11（x64） | メインの対応環境 |
 | macOS（Apple Silicon） | ローカルビルドの `.app` で動作。公証済みの配布物はまだありません |
 
+### Windows でのインストールとアンインストール
+
+`Skylis-<version>-x64-setup.exe` を実行すると、管理者権限なしで現在の Windows ユーザーにインストールできます。既定の場所は `%LOCALAPPDATA%\Programs\Skylis` です。スタートメニューにショートカットが追加され、デスクトップへの追加も選べます。インストーラーをソースから作成する手順は [README_DEV.ja.md](README_DEV.ja.md#windows-インストーラーのビルド) を参照してください。
+
+アンインストールするには、Skylis を閉じて、Windows の **［設定］→［アプリ］→［インストールされているアプリ］**（Windows 10 では **［アプリと機能］**）から削除します。アンインストーラーは、アプリを削除する前に Windows のフォルダー連携の復元を試みます。`%APPDATA%\Skylis\settings.conf` などのユーザー設定はそのまま残ります。
+
 ### ソースからビルド（Windows）
 
 [Rust](https://www.rust-lang.org/tools/install) と Visual Studio の「C++ によるデスクトップ開発」を用意して、次を実行します。
@@ -202,7 +208,7 @@ macOS では、タブ・検索・パス入力・コピー＆ペーストなど�
 - <kbd>Win</kbd>+<kbd>E</kbd> で Skylis を開く
 - エクスプローラーの背景メニューに「**Skylis へ切り替え**」を追加
 
-いずれも設定画面からいつでも元に戻せます。他のアプリが `explorer.exe` を直接起動する場合は対象外です。アンインストール前に連携を戻すには、`skylis.exe --restore-integration` を実行してください。
+いずれも設定画面からいつでも元に戻せます。他のアプリが `explorer.exe` を直接起動する場合は対象外です。ソースからビルドした Skylis を直接使っている場合は、実行ファイルを移動・削除する前に `skylis.exe --restore-integration` を実行してください。
 
 ## 🐞 不具合の報告
 

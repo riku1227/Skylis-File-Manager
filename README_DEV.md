@@ -40,8 +40,8 @@ All GPUI dependencies are declared once in the root `Cargo.toml`. `gpui-fast` an
 │   ├── app.rc / build.rs   # Windows resources (icon and version info)
 ├── crates/explorer-core/   # UI-independent logic (listing, sorting, history, search, archives)
 ├── vendor/                 # Patched dependency sources (gpui-fast, sevenz-rust2)
-├── packaging/              # macOS Info.plist and the license notice template
-├── scripts/                # macOS build and signing, icon and license generation
+├── packaging/              # Windows installer, macOS Info.plist and license notice template
+├── scripts/                # Windows and macOS packaging, icon and license generation
 ├── docs/                   # Design, implementation notes and verification records
 ├── research/               # Research notes
 └── licenses/               # Licenses of vendored third-party sources
@@ -189,7 +189,7 @@ Allowed licenses and exceptions are listed in [`deny.toml`](deny.toml). Adding a
 
 ## Release artifacts
 
-- Windows: `target/release/skylis.exe` (the icon and version info are embedded from the version in `Cargo.toml`)
+- Windows: `target/release/skylis.exe` from a native release build, or `target/installer/Skylis-<version>-x64-setup.exe` from the installer build
 - macOS: `Skylis.app` (bundle ID `dev.skylis.file-manager`, locally signed; not notarized yet)
 - Third-party license notices: run the following in PowerShell 7 and ship the generated `target/dist/THIRD_PARTY_LICENSES.html` alongside the executable.
 
@@ -198,7 +198,18 @@ cargo +stable install --locked cargo-about --version 0.9.3 --features cli
 ./scripts/generate-third-party-licenses.ps1
 ```
 
-If you build an uninstaller, have it run `skylis.exe --restore-integration` as the user who enabled the integration, before deleting any files.
+### Build the Windows installer
+
+Use PowerShell 7 with the Windows MSVC build prerequisites above and Inno Setup 6.3 or later. Run these commands from the repository root.
+
+```powershell
+winget install JRSoftware.InnoSetup
+rustup target add x86_64-pc-windows-msvc
+cargo +stable install --locked cargo-about --version 0.9.3 --features cli
+./scripts/build-windows-installer.ps1
+```
+
+The script builds the x64 release, regenerates the third-party notices, and writes `target/installer/Skylis-<version>-x64-setup.exe` using the workspace version. Setup reuses the installation directory on upgrades. The per-user uninstaller runs `skylis.exe --restore-integration` before deleting files and preserves user settings.
 
 To update the app icon, edit `apps/explorer/assets/branding/skylis.svg` (and `skylis-small.svg` for small sizes), then regenerate the PNG / ICO / ICNS files with `node scripts/generate-app-icons.cjs` (requires `sharp`). Regular builds use the checked-in outputs.
 

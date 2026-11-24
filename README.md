@@ -122,6 +122,12 @@ Under “Windows integration” in Settings, make folder opening and <kbd>Win</k
 | Windows 10 / 11 (x64) | Primary platform |
 | macOS (Apple Silicon) | Runs as a locally built `.app`; no notarized release yet |
 
+### Install and uninstall on Windows
+
+Run `Skylis-<version>-x64-setup.exe` to install Skylis for your Windows account without administrator privileges. The default location is `%LOCALAPPDATA%\Programs\Skylis`. Setup adds a Start Menu shortcut and offers an optional desktop shortcut. To build the installer from source, see [README_DEV.md](README_DEV.md#build-the-windows-installer).
+
+To uninstall, close Skylis and remove it from **Settings → Apps → Installed apps** (or **Apps & features** on Windows 10). The uninstaller attempts to restore Windows folder integration before removing the app. Your settings, including `%APPDATA%\Skylis\settings.conf`, stay in place.
+
 ### Build from source (Windows)
 
 Install [Rust](https://www.rust-lang.org/tools/install) and Visual Studio's “Desktop development with C++” workload, then run:
@@ -205,7 +211,7 @@ In Settings → “Windows integration”, you can turn each of these on or off:
 - Open Skylis with <kbd>Win</kbd>+<kbd>E</kbd>
 - Add “**Switch to Skylis**” to File Explorer's background context menu
 
-Each one can be reverted from Settings at any time. Apps that launch `explorer.exe` directly are not affected. To restore the defaults before uninstalling, run `skylis.exe --restore-integration`.
+Each one can be reverted from Settings at any time. Apps that launch `explorer.exe` directly are not affected. If you run Skylis directly from a source build, run `skylis.exe --restore-integration` before moving or deleting the executable.
 
 ## 🐞 Reporting bugs
 

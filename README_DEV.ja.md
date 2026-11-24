@@ -37,8 +37,8 @@ GPUI の依存窓口はルートの `Cargo.toml` に集約しています。`gpu
 │   ├── app.rc / build.rs   # Windows リソース（アイコン・バージョン情報）
 ├── crates/explorer-core/   # UI 非依存のロジック（列挙・ソート・履歴・検索・圧縮）
 ├── vendor/                 # パッチ適用済みの依存ソース（gpui-fast, sevenz-rust2）
-├── packaging/              # macOS Info.plist、ライセンス通知テンプレート
-├── scripts/                # macOS ビルド・署名、アイコン生成、ライセンス生成
+├── packaging/              # Windows インストーラー、macOS Info.plist、ライセンス通知テンプレート
+├── scripts/                # Windows・macOS 向けパッケージ作成、アイコン生成、ライセンス生成
 ├── docs/                   # 設計・実装記録・検証結果
 ├── research/               # 調査メモ
 └── licenses/               # 取り込んだ第三者ソースのライセンス
@@ -186,7 +186,7 @@ cargo +stable deny --locked check licenses sources bans
 
 ## リリース成果物
 
-- Windows: `target/release/skylis.exe`（アイコン・バージョン情報は `Cargo.toml` の version から埋め込み）
+- Windows: 通常のリリースビルドは `target/release/skylis.exe`、インストーラーのビルドは `target/installer/Skylis-<version>-x64-setup.exe`
 - macOS: `Skylis.app`（バンドル ID `dev.skylis.file-manager`、ローカル署名。公証は未対応）
 - 第三者ライセンス通知: PowerShell 7 で以下を実行し、生成された `target/dist/THIRD_PARTY_LICENSES.html` を実行ファイルと一緒に同梱します。
 
@@ -195,7 +195,18 @@ cargo +stable install --locked cargo-about --version 0.9.3 --features cli
 ./scripts/generate-third-party-licenses.ps1
 ```
 
-アンインストーラーを作る場合は、ファイル削除の前に、連携を登録したユーザーとして `skylis.exe --restore-integration` を実行してください。
+### Windows インストーラーのビルド
+
+前述の Windows 向け MSVC ビルド環境に加え、PowerShell 7 と Inno Setup 6.3 以降が必要です。リポジトリのルートで次を実行します。
+
+```powershell
+winget install JRSoftware.InnoSetup
+rustup target add x86_64-pc-windows-msvc
+cargo +stable install --locked cargo-about --version 0.9.3 --features cli
+./scripts/build-windows-installer.ps1
+```
+
+スクリプトは x64 のリリースをビルドし、第三者ライセンス通知を再生成して、ワークスペースのバージョンを使った `target/installer/Skylis-<version>-x64-setup.exe` を出力します。アップグレード時は既存のインストール先を再利用します。ユーザー単位のアンインストーラーは、ファイルの削除前に `skylis.exe --restore-integration` を実行し、ユーザー設定を残します。
 
 アプリアイコンを更新する場合は `apps/explorer/assets/branding/skylis.svg`（小サイズは `skylis-small.svg`）を編集し、`node scripts/generate-app-icons.cjs` で PNG / ICO / ICNS を再生成します（要 `sharp`）。通常のビルドではチェックイン済みの成果物を使います。
 
