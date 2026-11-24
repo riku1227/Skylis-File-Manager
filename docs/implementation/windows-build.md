@@ -31,7 +31,7 @@ cargo fmt --all -- --check
 
 初回はGPUIや画像処理ライブラリなどもコンパイルするため、時間がかかります。`--locked`は依存の意図しない更新を防ぎます。通常のビルドで`cargo update`を実行する必要はありません。
 
-成功すると`target/release/skylis.exe`が生成されます。
+成功すると`target/release/skylis.exe`が生成されます。WindowsのMSVCビルドではC/C++ランタイムを静的にリンクするため、実行先にVisual C++再頒布可能パッケージを別途インストールする必要はありません。
 
 ```powershell
 .\target\release\skylis.exe
