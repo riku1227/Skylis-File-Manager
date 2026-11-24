@@ -8,6 +8,12 @@
       "runOnWorktreeCreate": false
     },
     {
+      "name": "installer(Windows x64)",
+      "command": "pwsh -NoProfile -File scripts/build-windows-installer.ps1",
+      "icon": "build",
+      "runOnWorktreeCreate": false
+    },
+    {
       "name": "debug(Windows x64)",
       "command": "cargo build --locked -p explorer --target x86_64-pc-windows-msvc",
       "icon": "debug",
