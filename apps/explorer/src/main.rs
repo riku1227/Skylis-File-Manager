@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod archive_jobs;
 mod assets;
+mod crash_report;
 mod diagnostics;
 mod directory_watch;
 mod explorer;
@@ -78,6 +79,15 @@ mod actions {
 use actions::*;
 use gpui::{App, Bounds, KeyBinding, prelude::*, px, size};
 fn main() {
+    crash_report::install();
+    match launch_request::restore_integration_command(std::env::args_os().skip(1)) {
+        Some(Ok(())) => std::process::exit(folder_integration::restore_from_command_line()),
+        Some(Err(error)) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+        None => {}
+    }
     if launch_request::current().shell_command_server {
         shell_handoff::run_command_server();
         return;
@@ -183,10 +193,9 @@ fn main() {
             operation_center::init(cx);
             if startup.is_empty() {
                 let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
-                cx.open_window(
-                    window_chrome::window_options(bounds, "Explorer"),
-                    |w, cx| cx.new(|cx| explorer::Explorer::new(w, cx)),
-                )
+                cx.open_window(window_chrome::window_options(bounds, "Skylis"), |w, cx| {
+                    cx.new(|cx| explorer::Explorer::new(w, cx))
+                })
                 .expect("failed to open window");
             } else {
                 let restore = !session::explicit_launch(launch_request::current());

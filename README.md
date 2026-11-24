@@ -15,7 +15,7 @@ cargo run --release -p explorer -- --theme light --path "C:\Users"
 cargo run --release -p explorer -- --theme dark --path "C:\Users"
 ```
 
-ビルド後のアプリは `target/release/explorer.exe`。内部のcrate名・実行ファイル名は現時点では `explorer` です。`--theme` は `light` / `dark` / `system`、省略時はOS設定。`--path` を省略すると、ドライブの空き容量と主要フォルダーを並べたホーム画面を開きます。
+ビルド後のアプリは `target/release/skylis.exe`。Cargoのパッケージ名は `explorer` です。`--theme` は `light` / `dark` / `system`、省略時はOS設定。`--path` を省略すると、ドライブの空き容量と主要フォルダーを並べたホーム画面を開きます。
 
 ## 操作
 
@@ -66,7 +66,13 @@ HTML試作の検証スクリプトを実行する場合は、別途Node.js・Pla
 
 UI再現を優先した開発段階です。画像サムネイル・別窓プレビュー、ファイルのコピー／移動・名前変更、新規フォルダー／テキスト作成、設定とピン留めの保存に対応しています。macOSのビルド手順・アクセス権限・検証範囲は[macOSビルドガイド](docs/implementation/macos-build.md)を参照してください。
 
-Windowsの設定「Windows連携」で通常のフォルダー起動をSkylisに変更し、元に戻せます。直接 `explorer.exe` を起動する外部アプリやWin+Eなどは対象外です。[対応範囲と復元](docs/implementation/folder-integration-and-pins.md)、[D&Dの規則と制約](docs/implementation/drag-drop.md)、[操作改善の記録](docs/implementation/interaction-refresh.md)を参照してください。
+Windowsの設定「Windows連携」でフォルダー起動、Win+E、Skylisへ切り替えを個別に設定・復元できます。外部アプリがWindows標準の `explorer.exe` を直接起動する操作は引き続き対象外です。[対応範囲と復元](docs/implementation/folder-integration-and-pins.md)、[D&Dの規則と制約](docs/implementation/drag-drop.md)、[操作改善の記録](docs/implementation/interaction-refresh.md)を参照してください。
+
+アンインストーラーは、ファイルの削除前に、連携を登録した Windows ユーザーとして `skylis.exe --restore-integration` を実行してください。Windows連携を画面を開かずに復元し、結果を標準エラー出力へ書き込みます。
+
+## 不具合の報告
+
+内部エラー（Rust のパニック）が発生したときは、Windows の `%LOCALAPPDATA%\Skylis\logs\`（未設定の場合は設定ファイルと同じ場所の `logs`）、macOS の `~/Library/Logs/Skylis/` にログを保存します。ファイル名は UTC の発生時刻とプロセス ID を含む `crash-YYYYMMDD-HHMMSS-<pid>.log` です。最近の20ファイルを保持します。不具合を報告するときは、再現手順と該当するログを添えてください。
 
 ## ライセンス
 

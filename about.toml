@@ -1,0 +1,29 @@
+accepted = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+ignore-dev-dependencies = true
+
+[private]
+ignore = true
+
+# Scoped MPL-2.0 exceptions for the GPUI platform graph. See licenses/README.md.
+[option-ext]
+accepted = ["MPL-2.0"]
+
+[cbindgen]
+accepted = ["MPL-2.0"]
+
+[dwrote]
+accepted = ["MPL-2.0"]

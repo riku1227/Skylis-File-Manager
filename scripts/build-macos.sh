@@ -26,11 +26,25 @@ ARGS=(--locked -p explorer --target "$HOST")
 cargo build "${ARGS[@]}"
 # Cargo metadata resolves relative target directories and configured target-dir.
 TARGET="$(cargo metadata --locked --no-deps --format-version 1 | /usr/bin/plutil -extract target_directory raw -o - -)"
+# The app manifest inherits its version from workspace.package.
+VERSION="$(awk '
+  /^\[workspace\.package\]/ { workspace = 1; next }
+  /^\[/ { workspace = 0 }
+  workspace && /^version[[:space:]]*=/ { split($0, fields, "\""); print fields[2]; exit }
+' "$ROOT/Cargo.toml")"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.+-]+)?$ ]] || {
+  echo 'Could not read the Skylis workspace version.' >&2
+  exit 1
+}
+# Apple requires a numeric bundle version even for Cargo prereleases.
+BUNDLE_VERSION="${VERSION%%[+-]*}"
 APP="$TARGET/$HOST/$PROFILE/Skylis.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$TARGET/$HOST/$PROFILE/explorer" "$APP/Contents/MacOS/Skylis"
+cp "$TARGET/$HOST/$PROFILE/skylis" "$APP/Contents/MacOS/Skylis"
 cp "$ROOT/packaging/macos/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/apps/explorer/assets/branding/skylis.icns" "$APP/Contents/Resources/skylis.icns"
+/usr/bin/plutil -replace CFBundleShortVersionString -string "$BUNDLE_VERSION" "$APP/Contents/Info.plist"
+/usr/bin/plutil -replace CFBundleVersion -string "$BUNDLE_VERSION" "$APP/Contents/Info.plist"
 /usr/bin/plutil -lint "$APP/Contents/Info.plist"
 /usr/bin/codesign --force --sign "$SIGNING_IDENTITY" "$APP"
 /usr/bin/codesign --verify --deep --strict "$APP"

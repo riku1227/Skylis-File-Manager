@@ -1,0 +1,36 @@
+[graph]
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+
+[licenses]
+allow = [
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
+# File-level copyleft in the GPUI platform graph. See licenses/README.md.
+exceptions = [
+    { crate = "cbindgen@=0.28.0", allow = ["MPL-2.0"] },
+    { crate = "dwrote@=0.11.5", allow = ["MPL-2.0"] },
+    { crate = "option-ext@=0.2.0", allow = ["MPL-2.0"] },
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -23,6 +23,22 @@ pub struct LaunchRequest {
     pub error: Option<String>,
 }
 
+/// Detects the headless `--restore-integration` command before normal launch parsing.
+/// It must be the only argument so a malformed uninstaller call never opens a window.
+pub fn restore_integration_command(
+    args: impl IntoIterator<Item = OsString>,
+) -> Option<Result<(), String>> {
+    let args: Vec<OsString> = args.into_iter().take_while(|arg| arg != "--").collect();
+    if !args.iter().any(|arg| arg == "--restore-integration") {
+        return None;
+    }
+    Some(if args.len() == 1 {
+        Ok(())
+    } else {
+        Err("--restore-integration は単独で指定してください".into())
+    })
+}
+
 pub fn current() -> &'static LaunchRequest {
     static REQUEST: OnceLock<LaunchRequest> = OnceLock::new();
     REQUEST.get_or_init(|| {
@@ -212,6 +228,27 @@ mod tests {
         assert!(request(&["-Embedding"]).is_err());
         assert!(request(&["--shell-command-server", "--path", "folder"]).is_err());
     }
+    #[test]
+    fn integration_restore_must_be_the_only_argument() {
+        let command = |args: &[&str]| restore_integration_command(args.iter().map(OsString::from));
+        assert_eq!(command(&["--restore-integration"]), Some(Ok(())));
+        assert_eq!(command(&[]), None);
+        assert_eq!(command(&["--path", "folder"]), None);
+        assert!(matches!(
+            command(&["--restore-integration", "--theme", "dark"]),
+            Some(Err(_))
+        ));
+        assert!(matches!(
+            command(&["--path", "folder", "--restore-integration"]),
+            Some(Err(_))
+        ));
+        assert_eq!(command(&["--", "--restore-integration"]), None);
+        // Normal launch parsing never accepts it as a GUI option.
+        assert!(request(&["--restore-integration"]).is_err());
+        let literal = request(&["--", "--restore-integration"]).unwrap();
+        assert_eq!(literal.path, Some(cwd().join("--restore-integration")));
+    }
+
     #[test]
     fn root_selection_and_empty_path_are_rejected() {
         let root = if cfg!(windows) { "C:\\" } else { "/" };

@@ -36,3 +36,37 @@ jobs:
         run: cargo +stable test --workspace --locked
       - name: Build release application
         run: cargo +stable build --release --locked -p explorer
+
+  dependency-policy:
+    name: Dependency policy
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Install Rust stable and cargo-deny
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable install --locked cargo-deny --version 0.22.0
+      - name: Check licenses, registries and dependency versions
+        run: cargo +stable deny --locked check licenses sources bans
+      - name: Check local dependency sources
+        run: |
+          # cargo-deny checks registries and Git URLs. Check path packages here.
+          $allowed = @(
+            'apps/explorer/Cargo.toml'
+            'crates/explorer-core/Cargo.toml'
+            'vendor/gpui-fast/Cargo.toml'
+            'vendor/sevenz-rust2/Cargo.toml'
+          ) | ForEach-Object { [IO.Path]::GetFullPath($_) }
+          $metadata = cargo +stable metadata --locked --format-version 1 | ConvertFrom-Json
+          foreach ($package in $metadata.packages) {
+            if ($null -eq $package.source -and $package.manifest_path -notin $allowed) {
+              throw "Unexpected local Cargo package: $($package.manifest_path)"
+            }
+          }

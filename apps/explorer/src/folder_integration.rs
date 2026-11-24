@@ -1,4 +1,4 @@
-//! Optional per-user folder association. Registry access runs only on a worker.
+//! Optional per-user folder association. Registry access runs on a worker or in the headless restore command.
 //! Each changed value has a durable journal; unrelated later changes are preserved.
 use std::path::Path;
 
@@ -404,7 +404,38 @@ pub fn query() -> Result<Status, String> {
         Err("この連携はWindowsのみ対応しています".into())
     }
 }
-pub fn set_enabled(kind: Integration, enabled: bool) -> Result<Status, String> {
+pub(crate) fn restore_from_command_line() -> i32 {
+    use std::io::Write as _;
+
+    let mut stderr = std::io::stderr().lock();
+    #[cfg(windows)]
+    {
+        let mut exit_code = 0;
+        for (kind, label) in [
+            (Integration::Folders, "フォルダー起動"),
+            (Integration::WinE, "Win+E"),
+            (Integration::Switch, "Skylisへ切り替え"),
+        ] {
+            match set_enabled(kind, false) {
+                Ok(()) => {
+                    let _ = writeln!(stderr, "{label}の復元が完了しました");
+                }
+                Err(error) => {
+                    exit_code = 1;
+                    let _ = writeln!(stderr, "{label}の復元に失敗しました: {error}");
+                }
+            }
+        }
+        exit_code
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = writeln!(stderr, "このOSでは復元するWindows連携はありません");
+        0
+    }
+}
+
+pub fn set_enabled(kind: Integration, enabled: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -430,8 +461,7 @@ pub fn set_enabled(kind: Integration, enabled: bool) -> Result<Status, String> {
                 std::ptr::null(),
             );
         }
-        result?;
-        query()
+        result
     }
     #[cfg(not(windows))]
     {
@@ -812,7 +842,7 @@ mod tests {
     }
     fn changes() -> Vec<Change> {
         plan(if cfg!(windows) {
-            Path::new("C:\\Program Files\\Skylis\\explorer.exe")
+            Path::new("C:\\Program Files\\Skylis\\skylis.exe")
         } else {
             Path::new("/opt/Skylis/explorer")
         })
@@ -822,7 +852,7 @@ mod tests {
     fn capabilities_have_independent_journals_and_do_not_reindex_v1() {
         let registry = Fake::default();
         let exe = if cfg!(windows) {
-            Path::new("C:\\Program Files\\Skylis\\explorer.exe")
+            Path::new("C:\\Program Files\\Skylis\\skylis.exe")
         } else {
             Path::new("/opt/Skylis/explorer")
         };
@@ -876,7 +906,7 @@ mod tests {
     fn extension_restoration_preserves_foreign_commands_and_their_journal() {
         let registry = Fake::default();
         let exe = if cfg!(windows) {
-            Path::new("C:\\Skylis\\explorer.exe")
+            Path::new("C:\\Skylis\\skylis.exe")
         } else {
             Path::new("/opt/skylis")
         };
@@ -913,6 +943,31 @@ mod tests {
         );
         assert_eq!(registry.0.borrow().len(), 1);
     }
+    #[test]
+    fn restore_without_journal_preserves_existing_values_for_every_kind() {
+        let fake = Fake::default();
+        let exe = if cfg!(windows) {
+            Path::new(r"C:\Skylis\skylis.exe")
+        } else {
+            Path::new("/opt/Skylis/skylis")
+        };
+        for kind in [Integration::Folders, Integration::WinE, Integration::Switch] {
+            let changes = capability_plan(kind, exe).unwrap();
+            let first = &changes[0];
+            fake.write(&first.key, first.name, Some(&Value::string("third party")))
+                .unwrap();
+            let values = fake.0.borrow().clone();
+            let keys = fake.1.borrow().clone();
+            let scoped = ScopedRegistry {
+                registry: &fake,
+                journal: journal(kind),
+            };
+            restore(&scoped, &changes).unwrap();
+            assert_eq!(*fake.0.borrow(), values);
+            assert_eq!(*fake.1.borrow(), keys);
+        }
+    }
+
     #[test]
     fn restore_keeps_third_party_changes_and_their_backup() {
         let registry = Fake::default();

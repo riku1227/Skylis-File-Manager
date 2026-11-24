@@ -286,6 +286,7 @@ impl Preferences {
                     let result = match request {
                         Some((kind, enabled)) => {
                             crate::folder_integration::set_enabled(kind, enabled)
+                                .and_then(|()| crate::folder_integration::query())
                         }
                         None => crate::folder_integration::query(),
                     };
