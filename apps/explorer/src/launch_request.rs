@@ -20,6 +20,7 @@ pub struct LaunchRequest {
     pub switch_explorer: bool,
     pub handoff_token: Option<String>,
     pub shell_command_server: bool,
+    pub restore_integration: bool,
     pub error: Option<String>,
 }
 
@@ -84,6 +85,10 @@ pub fn parse(
             })
         {
             embedding = true;
+            continue;
+        }
+        if !positional && arg == "--restore-integration" {
+            request.restore_integration = true;
             continue;
         }
         if !positional && arg == "--shell-command-server" {
@@ -212,6 +217,19 @@ mod tests {
         assert!(request(&["-Embedding"]).is_err());
         assert!(request(&["--shell-command-server", "--path", "folder"]).is_err());
     }
+    #[test]
+    fn integration_restore_is_an_explicit_flag() {
+        assert!(
+            request(&["--restore-integration"])
+                .unwrap()
+                .restore_integration
+        );
+        assert!(!request(&[]).unwrap().restore_integration);
+        let literal = request(&["--", "--restore-integration"]).unwrap();
+        assert!(!literal.restore_integration);
+        assert_eq!(literal.path, Some(cwd().join("--restore-integration")));
+    }
+
     #[test]
     fn root_selection_and_empty_path_are_rejected() {
         let root = if cfg!(windows) { "C:\\" } else { "/" };

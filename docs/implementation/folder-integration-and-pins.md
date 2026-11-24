@@ -28,3 +28,7 @@
 - [Microsoft: RegFlushKeyのアクセス権](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regflushkey)
 - [Microsoft: レジストリトランザクションと並行書き込み](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regopenkeytransactedw)
 - [Files: 既定のファイルマネージャー設定](https://www.files.community/docs/customize-settings/advanced)
+
+## コマンドから復元
+
+アンインストーラーは、ファイルの削除前に、連携を登録した Windows ユーザーとして `skylis.exe --restore-integration` を実行してください。実行ファイルを移動する前にも使えます。フォルダー起動、Win+E、Skylisへ切り替えの各連携を画面を開かずに復元し、結果を標準エラー出力へ書き込みます。未登録の場合も成功として終了コード 0 を返し、いずれかの復元に失敗した場合は残りも試したうえで終了コード 1 を返します。

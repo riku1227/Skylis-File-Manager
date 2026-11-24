@@ -78,7 +78,11 @@ mod actions {
 use actions::*;
 use gpui::{App, Bounds, KeyBinding, prelude::*, px, size};
 fn main() {
-    if launch_request::current().shell_command_server {
+    let request = launch_request::current();
+    if request.restore_integration {
+        std::process::exit(folder_integration::restore_from_command_line());
+    }
+    if request.shell_command_server {
         shell_handoff::run_command_server();
         return;
     }
