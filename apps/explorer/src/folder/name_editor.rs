@@ -1,10 +1,11 @@
-use super::name_operations::{self, NameOperation};
+use super::name_operations::{self, NewItem};
 use super::*;
 
+/// Inline filename editor. New folders and text documents are created first with a
+/// default name and then land here, so every name edit is a rename of an existing item.
 pub(super) struct NameEditor {
     pub(super) input: Entity<TextInput>,
-    operation: NameOperation,
-    title: &'static str,
+    target: PathBuf,
     origin: Location,
     pub(super) error: Option<String>,
     pending: bool,
@@ -30,20 +31,25 @@ mod tests {
                 let directory = std::env::temp_dir()
                     .join(format!("skylis-editor-model-{}", std::process::id()));
                 let target = directory.join("original.txt");
-                view.history = History::new(Location::Folder(directory));
+                view.history = History::new(Location::Folder(directory.clone()));
                 view._drive_task = None;
                 view._wsl_task = None;
                 view.grouped = false;
                 view.pane = false;
-                view.entries = vec![Entry::virtual_entry(
-                    "original.txt".into(),
-                    target.clone(),
-                    EntryKind::File,
-                    Some(1),
-                    None,
-                )];
+                view.entries = ["original.txt", "other.txt"]
+                    .into_iter()
+                    .map(|name| {
+                        Entry::virtual_entry(
+                            name.into(),
+                            directory.join(name),
+                            EntryKind::File,
+                            Some(1),
+                            None,
+                        )
+                    })
+                    .collect();
                 view.rebuild_visible(Some(&target));
-                view.begin_name_edit(NameOperation::Rename(target), window, cx);
+                view.begin_rename(target, window, cx);
             })
             .unwrap();
         window
@@ -140,20 +146,92 @@ mod tests {
                     .update(cx, |input, cx| {
                         input.set_text("../invalid".into(), false, window, cx)
                     });
-                let directory = view.path().unwrap().to_path_buf();
-                view.begin_name_edit(NameOperation::Folder(directory), window, cx);
+                let other = view.path().unwrap().join("other.txt");
+                view.begin_rename(other, window, cx);
             })
             .unwrap();
         cx.run_until_parked();
         window
             .update(cx, |view, window, cx| {
                 let editor = view.name_editor.as_ref().unwrap();
-                assert!(matches!(editor.operation, NameOperation::Folder(_)));
+                assert_eq!(editor.target.file_name().unwrap(), "other.txt");
                 assert!(!editor.pending);
                 assert!(editor.error.is_none());
                 assert!(editor.input.focus_handle(cx).is_focused(window));
             })
             .unwrap();
+    }
+
+    #[gpui::test]
+    fn new_folder_is_created_first_and_then_renamed_inline(cx: &mut gpui::TestAppContext) {
+        cx.background_executor.allow_parking();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("skylis-new-inline-{}-{unique}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(directory.join("existing.txt"), "").unwrap();
+        let created = directory.join("新しいフォルダー");
+        let window = cx.add_window(|window, cx| {
+            let icons = cx.new(ShellIcons::new);
+            FolderView::new(Location::Home, ThemeMode::Light, icons, window, cx)
+        });
+        window
+            .update(cx, |view, window, cx| {
+                window.activate_window();
+                view._drive_task = None;
+                view._wsl_task = None;
+                view.navigate(Location::Folder(directory.clone()), window, cx);
+            })
+            .unwrap();
+        let wait_until = |cx: &mut gpui::TestAppContext, done: &dyn Fn(&FolderView) -> bool| {
+            for _ in 0..200 {
+                cx.run_until_parked();
+                if window.read_with(cx, |view, _| done(view)).unwrap() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            panic!("condition not reached");
+        };
+        wait_until(cx, &|view| !view.loading);
+        window
+            .update(cx, |view, _, cx| {
+                view.create_new_item(NewItem::Folder, cx);
+            })
+            .unwrap();
+        wait_until(cx, &|view| view.name_editor.is_some());
+        assert!(created.is_dir(), "the folder exists before it is named");
+        window
+            .update(cx, |view, window, cx| {
+                let editor = view.name_editor.as_ref().unwrap();
+                assert_eq!(editor.target, created);
+                assert!(editor.input.focus_handle(cx).is_focused(window));
+                assert_eq!(editor.input.read(cx).content.as_ref(), "新しいフォルダー");
+                assert_eq!(view.selected_entry().unwrap().path, created);
+                editor.input.update(cx, |input, cx| {
+                    input.set_text("named".into(), false, window, cx)
+                });
+                view.submit_name(window, cx);
+            })
+            .unwrap();
+        wait_until(cx, &|view| view.name_editor.is_none() && !view.loading);
+        assert!(directory.join("named").is_dir());
+        assert!(!created.exists());
+        window
+            .update(cx, |view, _, cx| {
+                // Cancelling keeps the created item under its default name.
+                view.create_new_item(NewItem::Text, cx);
+            })
+            .unwrap();
+        wait_until(cx, &|view| view.name_editor.is_some());
+        window
+            .update(cx, |view, window, cx| view.cancel_name_edit(window, cx))
+            .unwrap();
+        assert!(directory.join("新しいテキスト ドキュメント.txt").is_file());
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     struct HostedEditor(Entity<FolderView>);
@@ -238,10 +316,7 @@ mod tests {
 
 impl FolderView {
     pub(super) fn inline_name_target(&self) -> Option<&Path> {
-        match &self.name_editor.as_ref()?.operation {
-            NameOperation::Rename(path) => Some(path),
-            _ => None,
-        }
+        Some(&self.name_editor.as_ref()?.target)
     }
 
     pub(super) fn render_inline_name(
@@ -315,16 +390,13 @@ impl FolderView {
         cx.notify();
     }
 
-    pub(super) fn begin_name_edit(
+    pub(super) fn begin_rename(
         &mut self,
-        operation: NameOperation,
+        target: PathBuf,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.descendants.selected.is_some() {
-            return;
-        }
-        if self.path().is_none() {
+        if self.descendants.selected.is_some() || self.path().is_none() {
             return;
         }
         if self
@@ -334,51 +406,31 @@ impl FolderView {
         {
             return;
         }
-        let (title, name) = match &operation {
-            NameOperation::Folder(_) => ("フォルダーを作成", "新しいフォルダー".to_owned()),
-            NameOperation::Text(_) => (
-                "テキスト ドキュメントを作成",
-                "新しいテキスト ドキュメント.txt".to_owned(),
-            ),
-            NameOperation::Rename(path) => (
-                "名前の変更",
-                path.file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-            ),
+        let Some(ix) = self
+            .visible
+            .iter()
+            .position(|&i| self.entries[i].path == target)
+        else {
+            return;
         };
+        let name = target
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
         self.cancel_scroll_motion();
         self.context_menu = None;
-        if let NameOperation::Rename(path) = &operation {
-            let Some(ix) = self
-                .visible
-                .iter()
-                .position(|&i| self.entries[i].path == *path)
-            else {
-                return;
-            };
-            self.select(ix, cx);
-            self.scroll_to_entry(ix, ScrollStrategy::Center);
-        }
+        self.select(ix, cx);
+        self.scroll_to_entry(ix, ScrollStrategy::Center);
         let input = cx.new(TextInput::new);
         input.update(cx, |input, cx| input.set_text(name, true, window, cx));
-        let file_name = match &operation {
-            NameOperation::Text(_) => true,
-            NameOperation::Rename(path) => self
-                .entries
-                .iter()
-                .any(|entry| &entry.path == path && !entry.is_dir_like()),
-            _ => false,
-        };
-        if file_name {
+        if !self.entries[self.visible[ix]].is_dir_like() {
             input.update(cx, |input, cx| input.select_filename_stem(cx));
         }
         window.focus(&input.focus_handle(cx), cx);
         self.name_editor = Some(NameEditor {
             input,
-            operation,
-            title,
+            target,
             origin: self.history.current().clone(),
             error: None,
             pending: false,
@@ -386,6 +438,70 @@ impl FolderView {
         });
         self.attach_name_editor_window(window, cx);
         cx.notify();
+    }
+
+    /// Explorer-style creation: a worker creates the item under the first free default
+    /// name, the folder reloads with it selected, and its name opens for inline editing.
+    /// Cancelling that edit keeps the item under its default name.
+    pub(super) fn create_new_item(&mut self, kind: NewItem, cx: &mut Context<Self>) {
+        if self.descendants.selected.is_some() {
+            return;
+        }
+        let Some(parent) = self.path().map(Path::to_path_buf) else {
+            return;
+        };
+        // An open draft commits on blur; creating meanwhile would race its reload.
+        if self.name_editor.is_some() {
+            return;
+        }
+        self.context_menu = None;
+        let origin = self.history.current().clone();
+        let worker = cx
+            .background_executor()
+            .spawn(async move { name_operations::create_new_item(&parent, kind) });
+        cx.spawn(async move |view, cx| {
+            let result = worker.await;
+            let _ = Self::with_owner(&view, cx, |view, _, cx| {
+                if *view.history.current() != origin {
+                    return;
+                }
+                match result {
+                    Ok(path) => {
+                        if view.name_editor.is_some() {
+                            // Never discard a rename started meanwhile; the watcher still
+                            // lists the new item under its default name.
+                            return;
+                        }
+                        let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+                        view.load(origin, name, cx);
+                        view.pending_rename = Some(path);
+                    }
+                    Err(error) => view.notice = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Called after each listing batch: opens the inline editor once the item is listed.
+    pub(super) fn begin_pending_rename(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = &self.pending_rename else {
+            return;
+        };
+        if !self.visible.iter().any(|&i| &self.entries[i].path == path) {
+            return;
+        }
+        let path = self.pending_rename.take().unwrap();
+        // Listing events arrive without a window; open the editor through the owner.
+        cx.spawn(async move |view, cx| {
+            let _ = Self::with_owner(&view, cx, |view, window, cx| {
+                if view.name_editor.is_none() {
+                    view.begin_rename(path, window, cx);
+                }
+            });
+        })
+        .detach();
     }
 
     pub(super) fn attach_name_editor_window(
@@ -397,9 +513,6 @@ impl FolderView {
             return;
         };
         editor._blur = None;
-        if !matches!(editor.operation, NameOperation::Rename(_)) {
-            return;
-        }
         let input_id = editor.input.entity_id();
         let owner = window.window_handle();
         editor._blur = Some(cx.on_blur(
@@ -432,7 +545,7 @@ impl FolderView {
             return;
         }
         if let Some(entry) = self.selected_entry() {
-            self.begin_name_edit(NameOperation::Rename(entry.path.clone()), window, cx);
+            self.begin_rename(entry.path.clone(), window, cx);
         }
     }
 
@@ -451,12 +564,12 @@ impl FolderView {
             return;
         }
         editor.pending = true;
-        let operation = editor.operation.clone();
+        let target = editor.target.clone();
         let origin = editor.origin.clone();
         let editor_id = editor.input.entity_id();
         let worker = cx
             .background_executor()
-            .spawn(async move { name_operations::execute(&operation, &name) });
+            .spawn(async move { name_operations::rename(&target, &name) });
         cx.spawn(async move |view, cx| {
             let result = worker.await;
             let _ = Self::with_owner(&view, cx, |view, window, cx| {
@@ -501,91 +614,5 @@ impl FolderView {
         })
         .detach();
         cx.notify();
-    }
-
-    pub(super) fn render_name_editor(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
-        let editor = self.name_editor.as_ref().unwrap();
-        editor.input.update(cx, |input, _| input.theme = t);
-        div()
-            .absolute()
-            .inset_0()
-            .occlude()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(t.c("surface.canvas").opacity(0.75))
-            .on_action(cx.listener(|this, _: &OpenSelected, window, cx| {
-                this.submit_name(window, cx);
-                cx.stop_propagation();
-            }))
-            .on_action(cx.listener(|this, _: &ClearSearch, window, cx| {
-                this.cancel_name_edit(window, cx);
-                cx.stop_propagation();
-            }))
-            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
-                match event.keystroke.key.as_str() {
-                    "enter" => this.submit_name(window, cx),
-                    "escape" => {
-                        this.cancel_name_edit(window, cx);
-                    }
-                    _ => return,
-                }
-                cx.stop_propagation();
-            }))
-            .child(
-                div()
-                    .w(px(420.))
-                    .p(px(20.))
-                    .rounded(px(8.))
-                    .bg(t.c("surface.raised"))
-                    .border_1()
-                    .border_color(t.c("border.subtle"))
-                    .shadow_md()
-                    .flex()
-                    .flex_col()
-                    .gap(px(14.))
-                    .child(editor.title)
-                    .child(
-                        div()
-                            .h(px(34.))
-                            .px(px(8.))
-                            .border_1()
-                            .border_color(t.c("border.subtle"))
-                            .child(editor.input.clone()),
-                    )
-                    .when_some(editor.error.clone(), |d, error| {
-                        d.child(div().text_color(t.c("text.muted")).child(error))
-                    })
-                    .child(
-                        div()
-                            .flex()
-                            .justify_end()
-                            .gap(px(18.))
-                            .child(
-                                div()
-                                    .id("name-cancel")
-                                    .cursor_pointer()
-                                    .child("キャンセル")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.cancel_name_edit(window, cx);
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .id("name-submit")
-                                    .cursor_pointer()
-                                    .text_color(t.c("accent.fg"))
-                                    .child(if editor.pending {
-                                        "処理中…"
-                                    } else {
-                                        "保存"
-                                    })
-                                    .on_click(
-                                        cx.listener(|this, _, w, cx| this.submit_name(w, cx)),
-                                    ),
-                            ),
-                    ),
-            )
-            .into_any_element()
     }
 }

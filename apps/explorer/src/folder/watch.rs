@@ -449,11 +449,7 @@ mod tests {
                 view.loading = false;
                 view.entries = vec![entry(&directory, "old.txt")];
                 view.rebuild_visible(Some(&directory.join("old.txt")));
-                view.begin_name_edit(
-                    name_operations::NameOperation::Rename(directory.join("old.txt")),
-                    window,
-                    cx,
-                );
+                view.begin_rename(directory.join("old.txt"), window, cx);
                 assert!(view.name_editor.is_some());
                 view.watch_state.completed =
                     Some(Ok(snapshot(view, vec![entry(&directory, "new.txt")])));

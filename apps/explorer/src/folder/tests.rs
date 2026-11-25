@@ -2170,11 +2170,10 @@ fn name_editor_consumes_enter_and_escape_before_folder_actions(cx: &mut gpui::Te
     let window = workflow_window(cx);
     window
         .update(cx, |view, window, cx| {
-            view.begin_name_edit(
-                super::name_operations::NameOperation::Folder(PathBuf::from("C:\\")),
-                window,
-                cx,
-            );
+            view.entries = workflow_entries(&["assets.rs"]);
+            view.rebuild_visible(None);
+            let target = view.entries[0].path.clone();
+            view.begin_rename(target, window, cx);
             let editor = view.name_editor.as_ref().unwrap();
             editor.input.update(cx, |input, cx| {
                 input.set_text("..".into(), false, window, cx)
@@ -2214,7 +2213,7 @@ fn rename_edits_the_filename_in_list_and_gallery_without_opening_the_file(
                 view.set_gallery(gallery, cx);
                 view.select(0, cx);
                 let target = view.selected_entry().unwrap().path.clone();
-                view.begin_name_edit(super::name_operations::NameOperation::Rename(target), w, cx);
+                view.begin_rename(target, w, cx);
                 view.name_editor
                     .as_ref()
                     .unwrap()

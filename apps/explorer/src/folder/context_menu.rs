@@ -1,4 +1,4 @@
-use super::name_operations::NameOperation;
+use super::name_operations::NewItem;
 use super::*;
 use gpui::{KeyDownEvent, Point, anchored, deferred};
 
@@ -384,7 +384,7 @@ impl FolderView {
             }
             Command::Rename => {
                 if let Some(path) = path {
-                    self.begin_name_edit(NameOperation::Rename(path), window, cx);
+                    self.begin_rename(path, window, cx);
                 }
             }
             Command::Delete => self.delete_selected(&DeleteFiles, window, cx),
@@ -398,16 +398,8 @@ impl FolderView {
             }
             Command::OpenExternal => self.open_archive_external(cx),
             Command::Properties => self.show_properties(&ShowProperties, window, cx),
-            Command::NewFolder | Command::NewText => {
-                if let Some(path) = self.path().map(Path::to_path_buf) {
-                    let operation = if matches!(command, Command::NewFolder) {
-                        NameOperation::Folder(path)
-                    } else {
-                        NameOperation::Text(path)
-                    };
-                    self.begin_name_edit(operation, window, cx);
-                }
-            }
+            Command::NewFolder => self.create_new_item(NewItem::Folder, cx),
+            Command::NewText => self.create_new_item(NewItem::Text, cx),
             Command::Pin => {
                 if let Some(path) = path {
                     self.toggle_pin_path(path, cx);

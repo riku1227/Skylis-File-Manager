@@ -66,6 +66,8 @@ impl gpui::EventEmitter<FolderEvent> for FolderView {}
 pub struct FolderView {
     descendants: name_search::SearchState,
     pending_select_path: Option<PathBuf>,
+    /// Item created with a default name; its inline editor opens once it is listed.
+    pending_rename: Option<PathBuf>,
     typeahead: keyboard::Typeahead,
     restored_display: Option<crate::session_data::SavedDisplay>,
     session_deferred: bool,
@@ -344,6 +346,7 @@ impl FolderView {
         let mut this = Self {
             descendants: name_search::SearchState::new(!deferred),
             pending_select_path: None,
+            pending_rename: None,
             typeahead: Default::default(),
             restored_display: None,
             session_deferred: deferred,
@@ -599,6 +602,7 @@ impl FolderView {
     fn load(&mut self, location: Location, select: Option<String>, cx: &mut Context<Self>) {
         self.reset_name_search();
         self.pending_select_path = None;
+        self.pending_rename = None;
         self.typeahead = Default::default();
         self.session_deferred = false;
         let restored_display = self.restored_display.take();
@@ -735,6 +739,7 @@ impl FolderView {
                         self.pending_select = None;
                     }
                 }
+                self.begin_pending_rename(cx);
             }
             ListingEvent::Done(stats) => {
                 self.permission_observation.record(Ok(()), stats.cancelled);
@@ -748,6 +753,7 @@ impl FolderView {
                 }
                 self.pending_select = None;
                 self.pending_select_path = None;
+                self.pending_rename = None;
                 self.query_search_changed(self.search.read(cx).is_composing(), cx);
             }
             ListingEvent::Failed(kind, msg) => {
@@ -2911,9 +2917,7 @@ impl Render for FolderView {
             .on_action(cx.listener(Self::show_properties))
             .on_action(cx.listener(|this, _: &NewFolderSelected, w, cx| {
                 if !this.input_focused(w, cx) {
-                    if let Some(path) = this.path().map(Path::to_path_buf) {
-                        this.begin_name_edit(name_operations::NameOperation::Folder(path), w, cx);
-                    }
+                    this.create_new_item(name_operations::NewItem::Folder, cx);
                 }
             }))
             .on_action(cx.listener(|this, _: &CopySelectedPaths, w, cx| {
@@ -3115,10 +3119,6 @@ impl Render for FolderView {
             .when(self.display_settings.presence.mounted(), |d| {
                 d.child(self.render_display_settings(t, window, cx))
             })
-            .when(
-                self.name_editor.is_some() && self.inline_name_target().is_none(),
-                |d| d.child(self.render_name_editor(t, cx)),
-            )
             .when(self.archive_dialog.is_some(), |d| {
                 d.child(self.render_archive_dialog(t, cx))
             })
