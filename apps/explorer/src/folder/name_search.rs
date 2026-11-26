@@ -94,11 +94,7 @@ mod tests {
         w.update(cx, |v, w, cx| {
             v.descendants.hits.push(hit(v));
             v.select(0, cx);
-            v.begin_name_edit(
-                name_operations::NameOperation::Rename(v.entries[0].path.clone()),
-                w,
-                cx,
-            );
+            v.begin_rename(v.entries[0].path.clone(), w, cx);
             assert!(v.name_editor.is_some());
             v.name_editor = None;
             v.select_descendant(0, cx);
@@ -107,11 +103,7 @@ mod tests {
             assert!(v.selected_entry().is_none());
             v.select_all(&SelectAllFiles, w, cx);
             assert!(v.selected.is_none());
-            v.begin_name_edit(
-                name_operations::NameOperation::Folder(v.path().unwrap().into()),
-                w,
-                cx,
-            );
+            v.create_new_item(name_operations::NewItem::Folder, cx);
             assert!(v.name_editor.is_none());
             v.extend_selection_to(0, w, cx);
             assert!(v.multi_selection.is_empty());

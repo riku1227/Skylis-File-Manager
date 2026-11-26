@@ -1,12 +1,30 @@
 //! Atomic, no-overwrite name operations, executed only by a worker.
 use std::path::{Path, PathBuf};
 
-#[derive(Clone)]
-pub(super) enum NameOperation {
-    Folder(PathBuf),
-    Text(PathBuf),
-    Rename(PathBuf),
+/// An item created with a default name and then renamed inline, as in Explorer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum NewItem {
+    Folder,
+    Text,
 }
+
+impl NewItem {
+    /// Default name for the `n`-th attempt: `新しいフォルダー`, `新しいフォルダー (2)`, ...
+    fn candidate(self, n: u32) -> String {
+        let (stem, extension) = match self {
+            Self::Folder => ("新しいフォルダー", ""),
+            Self::Text => ("新しいテキスト ドキュメント", ".txt"),
+        };
+        if n <= 1 {
+            format!("{stem}{extension}")
+        } else {
+            format!("{stem} ({n}){extension}")
+        }
+    }
+}
+
+/// Upper bound on default-name attempts so a hostile or huge folder cannot spin the worker.
+const MAX_NEW_ITEM_ATTEMPTS: u32 = 1000;
 
 pub(super) fn validate_name(name: &str) -> Result<(), String> {
     let stem = name
@@ -37,37 +55,44 @@ pub(super) fn validate_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn execute(operation: &NameOperation, name: &str) -> Result<PathBuf, String> {
-    validate_name(name)?;
-    let result = match operation {
-        NameOperation::Folder(parent) => {
-            let target = parent.join(name);
-            std::fs::create_dir(&target).map(|_| target)
-        }
-        NameOperation::Text(parent) => {
-            let target = parent.join(name);
-            std::fs::OpenOptions::new()
+/// Creates `kind` under `parent` with the first free default name. Each attempt is an
+/// exclusive create, so an item that appears concurrently is skipped, never overwritten.
+pub(super) fn create_new_item(parent: &Path, kind: NewItem) -> Result<PathBuf, String> {
+    for n in 1..=MAX_NEW_ITEM_ATTEMPTS {
+        let target = parent.join(kind.candidate(n));
+        let result = match kind {
+            NewItem::Folder => std::fs::create_dir(&target),
+            NewItem::Text => std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .open(&target)
-                .map(|_| target)
+                .map(drop),
+        };
+        match result {
+            Ok(()) => return Ok(target),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("作成できませんでした: {error}")),
         }
-        NameOperation::Rename(source) => {
-            let target = source
-                .parent()
-                .ok_or("この項目の名前は変更できません")?
-                .join(name);
-            if source == &target {
-                // The item may have disappeared while its inline editor stayed open.
-                // Validate on this worker even for a no-op, without following links.
-                return std::fs::symlink_metadata(source)
-                    .map(|_| target)
-                    .map_err(|error| format!("元の項目を確認できませんでした: {error}"));
-            }
-            rename_exclusive(source, &target).map(|_| target)
-        }
-    };
-    result.map_err(|error| format!("操作できませんでした: {error}"))
+    }
+    Err("作成できませんでした: 既定の名前がすべて使用されています".into())
+}
+
+pub(super) fn rename(source: &Path, name: &str) -> Result<PathBuf, String> {
+    validate_name(name)?;
+    let target = source
+        .parent()
+        .ok_or("この項目の名前は変更できません")?
+        .join(name);
+    if source == target {
+        // The item may have disappeared while its inline editor stayed open.
+        // Validate on this worker even for a no-op, without following links.
+        return std::fs::symlink_metadata(source)
+            .map(|_| target)
+            .map_err(|error| format!("元の項目を確認できませんでした: {error}"));
+    }
+    rename_exclusive(source, &target)
+        .map(|_| target)
+        .map_err(|error| format!("操作できませんでした: {error}"))
 }
 
 fn rename_exclusive(source: &Path, target: &Path) -> std::io::Result<()> {
@@ -140,16 +165,42 @@ mod tests {
             std::process::id(),
             std::thread::current().id()
         ));
+        let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
-        let first = execute(&NameOperation::Text(root.clone()), "first.txt").unwrap();
+        let first = root.join("first.txt");
         std::fs::write(&first, "keep").unwrap();
-        assert!(execute(&NameOperation::Text(root.clone()), "first.txt").is_err());
-        let other = execute(&NameOperation::Text(root.clone()), "other.txt").unwrap();
-        assert!(execute(&NameOperation::Rename(other.clone()), "first.txt").is_err());
+        let other = root.join("other.txt");
+        std::fs::write(&other, "").unwrap();
+        assert!(rename(&other, "first.txt").is_err());
         assert_eq!(std::fs::read_to_string(&first).unwrap(), "keep");
         assert!(other.exists());
-        let renamed = execute(&NameOperation::Rename(other), "new.txt").unwrap();
+        let renamed = rename(&other, "new.txt").unwrap();
         assert!(renamed.exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn new_items_take_the_next_free_default_name_without_overwriting() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("skylis-new-{}-{unique}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let folder = create_new_item(&root, NewItem::Folder).unwrap();
+        assert_eq!(folder, root.join("新しいフォルダー"));
+        assert!(folder.is_dir());
+        std::fs::write(root.join("新しいテキスト ドキュメント.txt"), "keep").unwrap();
+        let text = create_new_item(&root, NewItem::Text).unwrap();
+        assert_eq!(text, root.join("新しいテキスト ドキュメント (2).txt"));
+        assert!(text.is_file());
+        assert_eq!(
+            std::fs::read_to_string(root.join("新しいテキスト ドキュメント.txt")).unwrap(),
+            "keep"
+        );
+        let second = create_new_item(&root, NewItem::Folder).unwrap();
+        assert_eq!(second, root.join("新しいフォルダー (2)"));
+        assert!(create_new_item(&root.join("missing"), NewItem::Folder).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -165,7 +216,7 @@ mod tests {
         std::fs::create_dir(&root).unwrap();
         let source = root.join("CaseStudy.txt");
         std::fs::write(&source, "preserve case-only rename content").unwrap();
-        let target = execute(&NameOperation::Rename(source), "casestudy.TXT").unwrap();
+        let target = rename(&source, "casestudy.TXT").unwrap();
         assert_eq!(
             std::fs::read_to_string(&target).unwrap(),
             "preserve case-only rename content"
@@ -190,6 +241,6 @@ mod tests {
             std::process::id()
         ));
         let name = missing.file_name().unwrap().to_str().unwrap();
-        assert!(execute(&NameOperation::Rename(missing.clone()), name).is_err());
+        assert!(rename(&missing, name).is_err());
     }
 }
